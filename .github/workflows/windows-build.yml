@@ -1,0 +1,62 @@
+name: Build Mutagen Control for Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+      - name: Verify project and unit tests
+        run: |
+          python verify_source.py
+          python -m pytest -q tests --ignore=tests/test_gui_smoke.py
+      - name: Run Qt offscreen GUI smoke test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_gui_smoke.py
+      - name: Build fast-start portable folder
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx
+          --name MutagenControl --icon assets/mutagencontrol.ico
+          --version-file assets/version_info.txt --distpath dist-fast
+          --workpath build-fast app.py
+      - name: Build single-file executable
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx
+          --name MutagenControl --icon assets/mutagencontrol.ico
+          --version-file assets/version_info.txt --distpath dist
+          --workpath build app.py
+      - name: Verify actual packaged Windows EXEs
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ./dist-fast/MutagenControl/MutagenControl.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Fast EXE self-test failed" }
+          ./dist/MutagenControl.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Single EXE self-test failed" }
+      - name: Upload fast-start folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: MutagenControl-v8.2-fast
+          path: dist-fast/MutagenControl/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload single-file EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: MutagenControl-v8.2-onefile
+          path: dist/MutagenControl.exe
+          if-no-files-found: error
+          retention-days: 14

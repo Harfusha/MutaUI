@@ -1,0 +1,42 @@
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test cache
+.pytest_cache/
+
+# Build outputs (PyInstaller)
+build/
+build-fast/
+build-debug/
+dist/
+dist-fast/
+dist-debug/
+dist-folder/
+build-folder/
+*.spec
+
+# Packed/compiled artifacts
+*.exe
+*.pkg
+*.zip
+
+# IDE / editor
+.serena/
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Integrity manifest (generated artifact)
+MANIFEST.sha256
