@@ -1,10 +1,13 @@
 name: Build Mutagen Control for Windows
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -66,3 +69,15 @@ jobs:
           path: dist/MutagenControl.exe
           if-no-files-found: error
           retention-days: 14
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          $portableZip = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64-portable.zip"
+          $singleExe = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64.exe"
+          Compress-Archive -Path "./dist-fast/MutagenControl" -DestinationPath $portableZip
+          Copy-Item "./dist/MutagenControl.exe" $singleExe
+          gh release create "$env:RELEASE_TAG" $singleExe $portableZip --verify-tag --title "$env:RELEASE_TAG" --generate-notes
