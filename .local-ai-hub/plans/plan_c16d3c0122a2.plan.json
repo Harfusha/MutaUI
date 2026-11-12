@@ -1,0 +1,61 @@
+{
+  "default_target_ref": "refs/heads/master",
+  "description": "Audit, doložené opravy, optimalizace obnovování a vizuální polish. Zachovat lokální diffy.",
+  "id": "plan_c16d3c0122a2",
+  "lifecycle": "active",
+  "schema_version": 1,
+  "spec_refs": [],
+  "tasks": {
+    "task_audit": {
+      "acceptance_criteria": [],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Zmapovat nehotové části, rizika a současný vizuální systém.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Audit",
+      "work_status": "done"
+    },
+    "task_fixes": {
+      "acceptance_criteria": [],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Audit nenašel doloženou funkční mezeru; zachován stávající rozsah a lokální diffy.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Opravy",
+      "work_status": "done"
+    },
+    "task_gui": {
+      "acceptance_criteria": [
+        "Review every user-facing page and navigation label for confusing language, unclear actions, inconsistent terminology, and discoverability gaps.",
+        "Dashboard counters route to Sync or Forwarding and matching state, with accurate per-kind counts.",
+        "Forwarding purpose explained in-page; unclear Endpoints label corrected; stray non-English UI label removed.",
+        "Any further high-impact UI gaps found in the review are fixed or explicitly reported.",
+        "Live logs and export formats remain faithful; unrelated local changes remain intact."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Reviewed all user-facing pages and navigation; added counter routing and Forwarding help, clarified Endpoints, and translated remaining Czech labels. Python AST syntax check passed. Offline visual capture remains unverified because PySide6 is not installed in the host Python.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Whole UI polish",
+      "work_status": "done"
+    },
+    "task_verify": {
+      "acceptance_criteria": [],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "`git diff --check` bez chyb. Testy a runtime GUI kontrola nebyly spuštěny.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Kontrola",
+      "work_status": "done"
+    }
+  },
+  "title": "Dokončení a vyladění Mutagen Control"
+}

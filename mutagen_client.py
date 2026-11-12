@@ -7,19 +7,18 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import psutil
 
 SYNC_STATUS = {
-    0: "Odpojeno", 1: "Zastaveno: prázdný kořen", 2: "Zastaveno: smazaný kořen",
-    3: "Zastaveno: změna typu kořene", 4: "Připojování ALPHA",
-    5: "Připojování BETA", 6: "Sleduje změny", 7: "Skenování",
-    8: "Čeká na opakování", 9: "Porovnávání", 10: "Přenos do ALPHA",
-    11: "Přenos do BETA", 12: "Zapisování změn", 13: "Ukládání",
+    0: "Disconnected", 1: "Halted: empty root", 2: "Halted: deleted root",
+    3: "Halted: root type change", 4: "Connecting ALPHA",
+    5: "Connecting BETA", 6: "Watching", 7: "Scanning",
+    8: "Waiting to retry", 9: "Reconciling", 10: "Staging to ALPHA",
+    11: "Staging to BETA", 12: "Saving", 13: "Saving",
 }
-FORWARD_STATUS = {0: "Odpojeno", 1: "Připojování zdroje", 2: "Připojování cíle", 3: "Přesměrování běží"}
+FORWARD_STATUS = {0: "Disconnected", 1: "Connecting source", 2: "Connecting destination", 3: "Forwarding active"}
 
 
 def native_sync_startup_state(session: dict, daemon_registration: str) -> str:
@@ -53,9 +52,9 @@ def parse_sessions(output: str) -> list[dict]:
     try:
         payload = json.loads(output.strip())
     except json.JSONDecodeError as exc:
-        raise MutagenError("Mutagen nevrátil platný JSON. Zkontrolujte verzi Mutagenu a podporu --template.") from exc
+        raise MutagenError("Mutagen did not return valid JSON. Check the Mutagen version and --template support.") from exc
     if not isinstance(payload, list):
-        raise MutagenError("Neočekávaná datová struktura v odpovědi Mutagenu.")
+        raise MutagenError("Unexpected data structure in Mutagen response.")
     return [item for item in payload if isinstance(item, dict)]
 
 
@@ -83,13 +82,13 @@ def endpoint_text(endpoint: Any, kind: str = "sync") -> str:
 
 def classify(session: dict, kind: str) -> tuple[str, str]:
     if session.get("paused"):
-        return "paused", "Pozastaveno"
+        return "paused", "Paused"
     endpoints = (session.get("alpha") or {}, session.get("beta") or {})
     has_problems = any(endpoint.get(key) for endpoint in endpoints for key in
                        ("scanProblems", "transitionProblems", "excludedScanProblems", "excludedTransitionProblems"))
     if session.get("lastError") or (kind == "sync" and
         (session.get("conflicts") or session.get("excludedConflicts") or has_problems)):
-        return "error", "Vyžaduje pozornost"
+        return "error", "Needs attention"
     raw = session.get("status", 0)
     try:
         status = int(raw)
@@ -174,10 +173,10 @@ class MutagenClient:
 
     def command(self, args: list[str], *, timeout: int = 35, readonly: bool = False) -> str:
         if not self.binary:
-            raise MutagenError("Soubor mutagen.exe nebyl nalezen. Vyberte ho v Nastavení.")
+            raise MutagenError("mutagen.exe was not found. Please select it in Settings.")
         # PATH lookup may have been reconfigured; never use a shell command string.
         if not os.path.isfile(self.binary) and not shutil.which(self.binary):
-            raise MutagenError(f"Soubor Mutagenu neexistuje: {self.binary}")
+            raise MutagenError(f"Mutagen executable not found: {self.binary}")
         env = os.environ.copy()
         if readonly:
             env["MUTAGEN_DISABLE_AUTOSTART"] = "1"
@@ -190,17 +189,17 @@ class MutagenClient:
                 creationflags=creationflags, check=False,
             )
         except subprocess.TimeoutExpired as exc:
-            raise MutagenError(f"Příkaz překročil limit {timeout} s. Zkontrolujte připojení a SSH ověřování.") from exc
+            raise MutagenError(f"Command timed out after {timeout} s. Check your connection and SSH authentication.") from exc
         except OSError as exc:
-            raise MutagenError(f"Nepodařilo se spustit Mutagen: {exc}") from exc
+            raise MutagenError(f"Failed to launch Mutagen: {exc}") from exc
         if result.returncode:
-            detail = (result.stderr or result.stdout or f"Kód chyby: {result.returncode}").strip()
+            detail = (result.stderr or result.stdout or f"Exit code: {result.returncode}").strip()
             raise MutagenError(detail[:1600])
         return (result.stdout or "").strip()
 
     def list_sessions(self, kind: str) -> list[dict]:
         if kind not in ("sync", "forward"):
-            raise ValueError("Neznámý typ relace")
+            raise ValueError("Unknown session type")
         return parse_sessions(self.command([kind, "list", "--template", "{{ json . }}"], timeout=12, readonly=True))
 
     def execute(self, area: str, action: str, target: str = "", options: list[str] | None = None) -> str:
@@ -210,18 +209,18 @@ class MutagenClient:
             "forward": {"create", "pause", "resume", "terminate"},
         }
         if action not in allowed.get(area, set()):
-            raise MutagenError("Neplatný příkaz.")
+            raise MutagenError("Invalid command.")
         arguments = [area, action]
         if action == "create":
             if not options or len(options) < 2:
-                raise MutagenError("Pro vytvoření relace jsou nutné dva koncové body.")
+                raise MutagenError("Two endpoints are required to create a session.")
             arguments += options
         elif area in ("sync", "forward") and not target:
-            raise MutagenError("Musíte vybrat konkrétní relaci; hromadné operace nejsou povolené.")
+            raise MutagenError("You must select a specific session; bulk operations are not allowed.")
         elif target:
             # Accept only explicit identifier from session list, not raw CLI flags.
             if target.startswith("-"):
-                raise MutagenError("Neplatný identifikátor relace.")
+                raise MutagenError("Invalid session identifier.")
             arguments.append(target)
         return self.command(arguments, timeout=120 if action in {"create", "flush", "reset"} else 40)
 
@@ -233,12 +232,12 @@ class MutagenClient:
         allowed = {"sync": {"pause", "resume", "flush", "reset", "terminate"},
                    "forward": {"pause", "resume", "terminate"}}
         if action not in allowed.get(area, set()):
-            raise MutagenError("Hromadná akce není povolená.")
+            raise MutagenError("Bulk action is not allowed.")
         if not targets or len(targets) > 500:
-            raise MutagenError("Vyberte 1 až 500 konkrétních relací.")
+            raise MutagenError("Select between 1 and 500 specific sessions.")
         if any(not isinstance(t, str) or not t.strip() or t.startswith("-") or
                any(c.isspace() for c in t) for t in targets):
-            raise MutagenError("Neplatný identifikátor relace.")
+            raise MutagenError("Invalid session identifier.")
         unique = list(dict.fromkeys(targets))
         args = [area, action]
         if area == "sync" and action == "flush":
@@ -334,7 +333,7 @@ class ProcessSampler:
 def example_snapshot() -> Snapshot:
     return Snapshot(
         binary=r"C:\Program Files\Mutagen\mutagen.exe", daemon=True, cpu=4.8, memory=126_877_696,
-        processes=2, version="Mutagen version 0.18.1 (ukázková data)",
+        processes=2, version="Mutagen version 0.18.1 (demo data)",
         sync=[
             dict(identifier="sync_demo_alpha", name="web-project", alpha=dict(protocol=0, path=r"C:\Projects\website", connected=True, files=12486, directories=1380, totalFileSize=482344112), beta=dict(protocol=1, host="dev.example.com", user="deploy", path="/var/www/app", connected=True, files=12486), paused=False, status=6, successfulCycles=1324),
             dict(identifier="sync_demo_beta", name="docker-api", alpha=dict(protocol=0, path=r"C:\Projects\backend", connected=True, files=3840), beta=dict(protocol=11, host="api", path="/app", connected=True), paused=False, status=11, successfulCycles=849),

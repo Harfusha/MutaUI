@@ -92,20 +92,20 @@ def find_qt_layout_misuses(source: str) -> list[str]:
 
 def verify():
     if not ((3, 11) <= sys.version_info[:2] < (3, 14)):
-        raise RuntimeError('Použijte Python 3.11 až 3.13')
+        raise RuntimeError('Use Python 3.11 through 3.13')
     for name in (*MODULES, *FILES):
         file = ROOT / name
         if not file.is_file() or file.stat().st_size == 0:
-            raise RuntimeError('Chybí soubor: ' + name)
+            raise RuntimeError('Missing file: ' + name)
     for name in MODULES:
         ast.parse((ROOT / name).read_text(encoding='utf-8'), filename=name)
     mistakes = find_qt_layout_misuses((ROOT / 'app.py').read_text(encoding='utf-8'))
     if mistakes:
-        raise RuntimeError('Neplatné použití Qt layoutů:\n' + '\n'.join(mistakes))
+        raise RuntimeError('Invalid Qt layout usage:\n' + '\n'.join(mistakes))
     version = (ROOT / 'assets/version_info.txt').read_text(encoding='utf-8')
     if "'8.2.0'" not in version:
-        raise RuntimeError('Nesprávná verze EXE')
-    print(f'OK: {len(MODULES)} Python modulů, {len(FILES)} souborů a statická kontrola Qt layoutů')
+        raise RuntimeError('Incorrect EXE version')
+    print(f'OK: {len(MODULES)} Python modules, {len(FILES)} files, and static Qt layout checks')
 
 
 if __name__ == '__main__':

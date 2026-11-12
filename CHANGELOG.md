@@ -1,27 +1,26 @@
-# Mutagen Control v8.2 — opravy Windows GUI a profily sledování
+# Mutagen Control v8.2 — Windows GUI fixes and watch profiles
 
-## Opravy
+## Fixes
 
-- Opraven chybný předpoklad GUI smoke testu: první server může mít pouze forward relace. Test teď kontroluje skutečný obsah každé skupiny, včetně prázdných stavů.
-- Přehled **Servery** zobrazuje výslovně prázdné stavy podle typu relace.
-- Panel detailu relace již není sevřen ve vertikálním splitteru. Stránka synchronizací i stránka nastavení používají přirozenou výšku obsahu s posouváním.
-- Ovládací tlačítka detailu jsou rozmístěna do dvou řádků (3 + 2) místo jedné dlouhé řady.
-- Kruhový ukazatel stavu používá písmo v pixelech a oddělenou oblast popisku, aby se při vysokém DPI nepřekrývaly texty.
-- Ovládací prvky formulářů mají konzistentní minimální výšku a více místa pro obsah.
+- Fixed a GUI smoke test assumption: the first server may have forwarding sessions only. The test now checks the actual contents of each group, including empty states.
+- The **Servers** overview now shows explicit empty states for each session type.
+- Session details are no longer constrained by a vertical splitter. The sync and settings pages use their natural content height with scrolling.
+- Session detail controls are arranged in two rows (3 + 2) instead of one long row.
+- The circular status indicator uses pixel-sized text and a separate caption area to avoid overlap at high DPI.
+- Form controls have consistent minimum heights and more room for their contents.
+- Added `--self-test`, which runs directly from the packaged EXE. After packaging, the build checks the actual bundle and fails if the check fails. Diagnostics are written to `%TEMP%\mutagen-control-self-test.log`.
+- Added `gui_preview.cmd` for offline visual screenshots of all 11 pages at 100%, 150%, and 200% scaling.
 
-- Nový `--self-test` běžící přímo ze zabaleného EXE. Build po sestavení ověřuje i skutečný balík, jinak skončí chybou. Diagnostika se zapisuje do `%TEMP%\mutagen-control-self-test.log`.
-- Přiložen `gui_preview.cmd` pro offline vizuální snímky všech 11 stránek při 100/150/200 % škálování.
+## New settings
 
-## Nové nastavení
+- **Adaptive GUI status polling:** faster polling during status changes or active phases, with a lower-frequency interval after a configured idle period. Polling intervals and idle duration are configurable.
+- **Native profiles for new sync sessions:** default, event-driven, fast/medium/power-saving polling, and manual `no-watch`.
+- **Settings for an existing session:** local note, per-session notifications, and a preview of the watch/scan configuration read from Mutagen status.
+- Added independent tests for adaptive scheduling and session creation options.
 
-- **Adaptivní čtení stavů v GUI**: rychlé dotazování při změně stavu nebo v aktivní fázi, úsporný interval po nastavené době klidu. Konfigurovatelné intervaly a délka klidu.
-- **Nativní profily nových synchronizací**: výchozí, event-driven, rychlý/střední/úsporný polling a ruční `no-watch`.
-- **Nastavení jednotlivé existující relace**: místní poznámka, individuální vypnutí notifikací a náhled konfigurace watch/scan ze stavu Mutagenu.
-- Další nezávislé testy adaptivního plánování a parametrů vytváření relací.
+## Limitations
 
-## Omezení
-
-- Profily **nepřepisují již vytvořené** relace. Standardní Mutagen CLI nemá `sync edit/update` příkaz.
-- Nejde o limit přenosové rychlosti. Mutagen CLI v této cestě neumožňuje jednoduchý per-session bandwidth throttling. Polling interval je perioda kontroly změn, nikoli rychlost přenosu souborů.
-- Adaptivní čtení stavů GUI nemění vnitřní běh Mutagen daemonu. Po zavření GUI funguje synchronizace dál podle nativního nastavení Mutagenu.
-- Desktopové Windows GUI a PyInstaller jsou nutné pro konečné integrační ověření sestavení; tyto části nelze ověřit v prostředí bez PySide6 a Windows.
+- Profiles **do not modify existing sessions**. The standard Mutagen CLI has no `sync edit/update` command.
+- This is not a bandwidth limiter. The Mutagen CLI path used here does not offer simple per-session bandwidth throttling. The polling interval controls how often file changes are checked, not file transfer speed.
+- Adaptive GUI polling does not change the Mutagen daemon's internal behavior. Sync continues after the GUI closes according to Mutagen's native settings.
+- Final build integration was verified on Windows in a temporary Python environment with PySide6 6.12 and PyInstaller 6.22.3. The one-folder EXE built successfully and passed `--self-test`; the packaged artifact remains in the temporary verification folder.

@@ -1,0 +1,67 @@
+{
+  "default_target_ref": "refs/heads/master",
+  "description": "Specifikace: docs/superpowers/specs/2026-11-12-mutagenapp-quality-gates.md. Přidat měřitelné statické kontroly a testy napříč aplikací, zachovat lokální změny.",
+  "id": "plan_af94bba41219",
+  "lifecycle": "draft",
+  "schema_version": 1,
+  "spec_refs": [],
+  "tasks": {
+    "task_coverage_tests": {
+      "acceptance_criteria": [
+        "Významná aplikační logika a GUI cesty mají test assertions.",
+        "Celý suite a GUI smoke test projdou."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Přidat izolované regresní a GUI testy podle baseline.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Doplnění testů",
+      "work_status": "planned"
+    },
+    "task_full_validation": {
+      "acceptance_criteria": [
+        "Ruff, source guard, unit tests, coverage a GUI smoke projdou.",
+        "Coverage a externí/runtime limity přesně zdokumentovány."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Spustit quality gates v projektovém venv; zaznamenat omezení.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Kompletní ověření",
+      "work_status": "planned"
+    },
+    "task_inventory": {
+      "acceptance_criteria": [
+        "Každý zdrojový modul má přiřazené testy nebo doložený důvod výjimky.",
+        "Zaznamenané výchozí line/branch pokrytí a nástroje."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Změřit současné testy/pokrytí, namapovat aplikační moduly na testy, zaznamenat mezery.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Výchozí mapa a pokrytí",
+      "work_status": "ready"
+    },
+    "task_quality_gate": {
+      "acceptance_criteria": [
+        "Statická analýza běží lokálně i v CI.",
+        "Coverage měří řádky i větve a má zdůvodněný práh."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Přidat Ruff, coverage a přísné CI kroky před buildem.",
+      "kind": "code",
+      "next_action": "",
+      "title": "Statické kontroly a CI",
+      "work_status": "planned"
+    }
+  },
+  "title": "Rozšíření statických kontrol a testového pokrytí"
+}

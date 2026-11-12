@@ -9,28 +9,28 @@ import time
 from dataclasses import dataclass
 
 PROFILES = {
-    "default": ("Výchozí konfigurace Mutagenu", ()),
-    "events": ("Reakce na změny souborů (portable watch)", ("--watch-mode=portable", "--scan-mode=accelerated")),
-    "fast_poll": ("Kontrola každých 5 s (vyšší zátěž)", ("--watch-mode=force-poll", "--watch-polling-interval=5")),
-    "balanced_poll": ("Kontrola každých 20 s", ("--watch-mode=force-poll", "--watch-polling-interval=20")),
-    "eco_poll": ("Úsporná kontrola každých 60 s", ("--watch-mode=force-poll", "--watch-polling-interval=60")),
-    "manual": ("Bez sledování změn (Sync now ručně)", ("--watch-mode=no-watch",)),
+    "default": ("Default Mutagen configuration", ()),
+    "events": ("File change events (portable watch)", ("--watch-mode=portable", "--scan-mode=accelerated")),
+    "fast_poll": ("Poll every 5 s (higher load)", ("--watch-mode=force-poll", "--watch-polling-interval=5")),
+    "balanced_poll": ("Poll every 20 s", ("--watch-mode=force-poll", "--watch-polling-interval=20")),
+    "eco_poll": ("Eco poll every 60 s", ("--watch-mode=force-poll", "--watch-polling-interval=60")),
+    "manual": ("No file watching (Sync now manually)", ("--watch-mode=no-watch",)),
 }
 
 
 def profile_flags(profile: str) -> list[str]:
     if profile not in PROFILES:
-        raise ValueError(f"Neznámý profil: {profile}")
+        raise ValueError(f"Unknown profile: {profile}")
     return list(PROFILES[profile][1])
 
 
 def native_config_text(session: dict) -> str:
     watch = session.get("watch") or {}
     config = {
-        "Režim watch": watch.get("mode", "výchozí"),
-        "Polling interval": watch.get("pollingInterval", "výchozí"),
-        "Režim skenu": session.get("scanMode", "výchozí"),
-        "Kompresní algoritmus": (session.get("compression") or {}).get("algorithm", "výchozí"),
+        "Watch mode": watch.get("mode", "default"),
+        "Polling interval": watch.get("pollingInterval", "default"),
+        "Scan mode": session.get("scanMode", "default"),
+        "Compression algorithm": (session.get("compression") or {}).get("algorithm", "default"),
     }
     return "\n".join(f"{key}: {val}" for key, val in config.items())
 

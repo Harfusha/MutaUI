@@ -30,4 +30,4 @@ def test_adaptive_polling_settles_to_idle_and_wakes_after_change():
 def test_session_config_view_does_not_make_up_bandwidth_data():
     txt = native_config_text({"watch": {"mode": 1, "pollingInterval": 20}, "scanMode": 2})
     assert "20" in txt
-    assert "Režim skenu" in txt
+    assert "Scan mode" in txt

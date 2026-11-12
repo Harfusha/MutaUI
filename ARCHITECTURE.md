@@ -1,11 +1,11 @@
-# Architektura v8.2
+# Architecture
 
-Data: lokální `MutagenClient` volá výhradně nativní CLI (`sync list --template`, `forward list --template`). Pro obě strany synchronizace se používají exportované nativní endpoint modely. Seskupování hostů je čisté řetězcové a nespouští vlastní SSH/DNS/HTTP připojení.
+**Data:** The local `MutagenClient` calls only the native CLI (`sync list --template`, `forward list --template`). Exported native endpoint models are used for both sides of a sync. Host grouping is string-based and does not open its own SSH, DNS, or HTTP connections.
 
-Výkon: `QThreadPool` pro CLI a procesová měření, samostatný SQLite writer, cache historie a grafové geometrie. `AdaptivePolling` pouze mění interval čtení stavů v GUI podle detekovaných změn nebo běžící fáze Mutagenu. Nepředstírá změnu frekvence skutečných synchronizačních cyklů.
+**Performance:** `QThreadPool` handles CLI calls and process measurements; history uses a separate SQLite writer, history cache, and cached graph geometry. `AdaptivePolling` changes only the GUI status refresh interval in response to detected changes or Mutagen's current phase. It does not change the frequency of actual sync cycles.
 
-Native watch profily jsou whitelist parametrů `sync create`: `portable`, `force-poll`, `no-watch` a `watch-polling-interval`. Neumožňují za běhu měnit běžící relace. Nastavení existujících relací jsou výhradně lokální preference GUI (poznámky a notifikace), nativní hodnoty se zobrazují pouze pro čtení.
+**Native watch profiles:** A whitelist of `sync create` parameters: `portable`, `force-poll`, `no-watch`, and `watch-polling-interval`. They cannot change running sessions. Settings for existing sessions are local GUI preferences only (notes and notifications); native values are read-only.
 
-Qt: detail relací a nastavení používají QScrollArea a layout s minimální přirozenou velikostí, kruhový indikátor vykresluje relativně malý pixelový text. Tabulky mají specifické prázdné stavy. GUI smoke test porovnává počty synchronizací s aktuálně vybraným serverem a nepředpokládá pevné pořadí skupin.
+**Qt:** Session details and settings use `QScrollArea` and layouts with a minimum size based on their contents. The circular indicator draws small text in pixel units. Tables have specific empty states. The GUI smoke test checks sync counts against the selected server and does not assume a fixed group order.
 
-EXE: build skripty spouštějí jednotkové + Qt smoke testy na Windows před PyInstaller buildem. Python/PySide6 není potřebné po sestavení hotového EXE, Mutagen CLI zůstává externí.
+**EXE:** Build scripts run unit tests and the Qt smoke test on Windows before the PyInstaller build. Python/PySide6 is not needed to run the finished EXE; the Mutagen CLI remains an external dependency.

@@ -6,6 +6,7 @@ Preview (offline demo, actions disabled): python app.py --demo
 from __future__ import annotations
 
 import json
+from html import escape as html_escape
 import math
 import os
 import sys
@@ -24,7 +25,7 @@ from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
     QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QInputDialog, QLayout,
-    QSizePolicy, QSpinBox, QSplitter, QStackedWidget, QSystemTrayIcon,
+    QSizePolicy, QSpinBox, QStackedWidget, QSystemTrayIcon,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QProgressBar, QToolTip, QListWidget, QListWidgetItem,
 )
 
@@ -73,6 +74,9 @@ QPushButton {{ background: {CARD2}; color: {TEXT}; border: 1px solid {BORDER}; b
 QPushButton:hover {{ background: #26344E; border-color: #435675; }}
 QPushButton:pressed {{ background: #344866; }}
 QPushButton:disabled {{ color: #9BAAC0; background: #171E2D; border-color: #33435B; }}
+QPushButton:focus {{ border-color: {BLUE}; }}
+QPushButton#primary:focus {{ border-color: #B6FFE9; }}
+QPushButton#danger:focus {{ border-color: {RED}; }}
 QPushButton#primary {{ background: {TEAL}; color: #071A1A; border-color: {TEAL}; font-weight: 800; }}
 QPushButton#primary:hover {{ background: #94F4D9; }}
 QPushButton#primary:pressed {{ background: #3EC6A2; }}
@@ -89,7 +93,8 @@ QComboBox {{ padding-right: 27px; }}
 QComboBox::drop-down {{ width: 23px; border: 0; }}
 QComboBox::down-arrow {{ image: none; border: 2px solid {MUTED}; width: 6px; height: 6px; }}
 QSpinBox {{ padding-right: 20px; }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {TEAL}; }}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {TEAL}; }}
+QListWidget:focus, QTableWidget:focus {{ border: 1px solid {BLUE}; }}
 QComboBox QAbstractItemView {{ background: #17243A; border: 1px solid {BORDER}; selection-background-color: #2D4955; }}
 QTableWidget {{ background: {CARD}; alternate-background-color: #182136; border: 0; border-radius: 10px;
                 gridline-color: transparent; selection-background-color: #233D4F; }}
@@ -108,6 +113,7 @@ QCheckBox::indicator {{ width: 17px; height: 17px; border: 1px solid {BORDER}; b
                         background: #101829; }}
 QCheckBox::indicator:checked {{ background: {TEAL}; border-color: {TEAL}; }}
 QCheckBox::indicator:hover {{ border-color: {TEAL}; }}
+QCheckBox:focus::indicator {{ border-color: {BLUE}; }}
 QDialog {{ background: #101729; }}
 QDialogButtonBox QPushButton {{ min-width: 90px; }}
 QMenu {{ background: #17243A; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px; }}
@@ -191,6 +197,64 @@ def field_format(field: str, value: float) -> str:
     if field == "cpu": return f"{value:.1f} %"
     if field == "memory": return human_bytes(value)
     return human_bytes(value) + "/s"
+
+
+def readable_record_lines(value, *, indent=0):
+    """Turn nested Mutagen conflict/problem objects into labeled text lines."""
+    pad = " " * indent
+    if isinstance(value, dict):
+        lines = []
+        for key, item in value.items():
+            label_text = "".join(f" {char.lower()}" if char.isupper() else char for char in str(key))
+            label_text = label_text.replace("_", " ").strip().capitalize()
+            if isinstance(item, (dict, list, tuple)):
+                lines.append(f"{pad}{label_text}:")
+                lines.extend(readable_record_lines(item, indent=indent + 2))
+            else:
+                lines.append(f"{pad}{label_text}: {item}")
+        return lines or [f"{pad}Details unavailable"]
+    if isinstance(value, (list, tuple)):
+        lines = []
+        for index, item in enumerate(value, 1):
+            if isinstance(item, (dict, list, tuple)):
+                lines.append(f"{pad}Item {index}")
+                lines.extend(readable_record_lines(item, indent=indent + 2))
+            else:
+                lines.append(f"{pad}• {item}")
+        return lines or [f"{pad}None"]
+    return [f"{pad}{value}"]
+
+
+def session_detail_html(lines, separator_text):
+    """Render session detail rows with visual hierarchy while escaping values."""
+    rendered = []
+    for line in lines:
+        if line == separator_text:
+            rendered.append(f'<hr style="border:0;border-top:1px solid {BORDER};margin:9px 0;">')
+        elif "\n" in line:
+            field, value = line.split("\n", 1)
+            rendered.append(
+                '<div style="margin:4px 0 10px 0;">'
+                f'<div style="color:{MUTED};font-size:11px;font-weight:600;">{html_escape(field)}</div>'
+                f'<div style="color:{TEXT};font-size:13px;">{html_escape(value)}</div>'
+                '</div>')
+        elif line == line.upper() and len(line) <= 42:
+            rendered.append(
+                f'<div style="color:{BLUE};font-size:11px;font-weight:700;margin:5px 0;">'
+                f'{html_escape(line)}</div>')
+        elif ": " in line:
+            field, value = line.split(": ", 1)
+            indent = len(field) - len(field.lstrip())
+            rendered.append(
+                f'<div style="margin:2px 0 2px {indent * 10}px;">'
+                f'<span style="color:{MUTED};">{html_escape(field.strip())}:</span> '
+                f'<span style="color:{TEXT};">{html_escape(value)}</span></div>')
+        else:
+            indent = len(line) - len(line.lstrip())
+            rendered.append(
+                f'<div style="margin:2px 0 2px {indent * 10}px;color:{TEXT};">'
+                f'{html_escape(line.strip())}</div>')
+    return '<div style="line-height:1.35;">' + "".join(rendered) + "</div>"
 
 
 class Graph(QWidget):
@@ -290,7 +354,7 @@ class Graph(QWidget):
             p.drawText(QRectF(0, y-9, rect.left()-9, 18), Qt.AlignmentFlag.AlignRight, self.amount(upper*idx/4))
         if not items:
             p.setPen(QColor(MUTED))
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Čekám na první vzorky…")
+            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Waiting for the first samples…")
             p.end(); return
         start, end = items[0][0], items[-1][0]
         span = max(1.0, end - start)
@@ -381,7 +445,7 @@ class HealthRing(QWidget):
         self.total = 0
         self.healthy = 0
         self.setFixedSize(122, 122)
-        self.setToolTip("Podíl relací bez hlášených problémů")
+        self.setToolTip("Share of sessions with no reported issues")
 
     def set_health(self, total: int, problem: int):
         total = max(0, int(total))
@@ -409,7 +473,7 @@ class HealthRing(QWidget):
         p.setPen(QColor(MUTED))
         caption_font = QFont("Segoe UI"); caption_font.setPixelSize(9)
         p.setFont(caption_font)
-        p.drawText(QRectF(20, 77, 82, 13), Qt.AlignmentFlag.AlignCenter, "bez problémů")
+        p.drawText(QRectF(20, 77, 82, 13), Qt.AlignmentFlag.AlignCenter, "no issues")
         p.end()
 
 
@@ -438,63 +502,79 @@ class SessionDialog(QDialog):
     def __init__(self, kind: str, parent=None, default_profile: str = "default"):
         super().__init__(parent)
         self.kind = kind
-        self.setWindowTitle("Nová synchronizace" if kind == "sync" else "Nové přesměrování")
+        self.setWindowTitle("New Sync" if kind == "sync" else "New Forward")
         self.setMinimumWidth(520)
         box = QVBoxLayout(self)
         box.setSpacing(16); box.setContentsMargins(26, 24, 26, 22)
-        box.addWidget(label("Nastavení nové relace", size=21, bold=True))
-        box.addWidget(label("Cesty mohou být lokální, SSH nebo Docker. U SSH používejte předem připravené klíče.", muted=True))
+        box.addWidget(label("New Session Settings", size=21, bold=True))
+        box.addWidget(label("Paths can be local, SSH, or Docker. For SSH, use preconfigured keys.", muted=True))
         form = QFormLayout(); form.setVerticalSpacing(14); form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self.name = QLineEdit(); self.name.setPlaceholderText("např. muj-projekt")
-        form.addRow("Název", self.name)
+        self.name = QLineEdit(); self.name.setPlaceholderText("e.g. my-project")
+        form.addRow("Name", self.name)
         self.a = QLineEdit(); self.b = QLineEdit()
         if kind == "sync":
             self.a.setPlaceholderText(r"C:\Projects\web")
+            self.a.setToolTip("ALPHA: local or remote path.\nSSH: user@host:/path  |  Docker: docker://name/path")
             self.b.setPlaceholderText("user@server:/var/www/web")
+            self.b.setToolTip("BETA: the second sync endpoint. Mutagen synchronizes the contents of both directories.")
         else:
             self.a.setPlaceholderText("tcp:localhost:8080")
+            self.a.setToolTip("Source: local address where forwarding will listen.\nExample: tcp:localhost:8080")
             self.b.setPlaceholderText("docker://web:tcp:localhost:8080")
+            self.b.setToolTip("Destination: remote address to which traffic is forwarded (SSH or Docker).")
         rowa = QHBoxLayout(); rowa.addWidget(self.a)
         if kind == "sync": rowa.addWidget(button("…", self.browse_alpha))
-        form.addRow("ALPHA" if kind == "sync" else "Zdroj", rowa)
-        form.addRow("BETA" if kind == "sync" else "Cíl", self.b)
+        form.addRow("ALPHA" if kind == "sync" else "Source", rowa)
+        form.addRow("BETA" if kind == "sync" else "Destination", self.b)
         self.mode = QComboBox()
         self.mode.addItems(["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"])
+        self.mode.setToolTip(
+            "two-way-safe: bidirectional sync; preserves conflicts (safe).\n"
+            "two-way-resolved: bidirectional; resolves conflicts automatically (Alpha wins).\n"
+            "one-way-safe: copies from ALPHA to BETA; does not delete existing files.\n"
+            "one-way-replica: BETA becomes an exact copy of ALPHA — DELETES anything extra!")
         self.ignore = QPlainTextEdit(); self.ignore.setFixedHeight(75)
-        self.ignore.setPlaceholderText("Jeden ignorovaný vzor na řádek, např. node_modules")
-        self.ignore_vcs = QCheckBox("Ignorovat .git, .svn a další VCS")
-        self.pause = QCheckBox("Vytvořit pozastavenou")
+        self.ignore.setPlaceholderText("One ignore pattern per line, e.g. node_modules")
+        self.ignore.setToolTip("File/directory patterns to ignore (glob, one per line).\nExamples: node_modules, *.log, .DS_Store, build/")
+        self.ignore_vcs = QCheckBox("Ignore .git, .svn, and other VCS directories")
+        self.ignore_vcs.setToolTip("Adds standard ignore patterns for version control systems (.git, .svn, .hg, etc.).")
+        self.pause = QCheckBox("Start paused")
+        self.pause.setToolTip("The session will be created, but sync will not start. Start it manually with the Resume button.")
         if kind == "sync":
             self.profile = QComboBox()
             for code, (title, _flags) in PROFILES.items():
                 self.profile.addItem(title, code)
             self.profile.setCurrentIndex(max(0, self.profile.findData(default_profile)))
-            form.addRow("Sledování změn", self.profile)
-            form.addRow("Režim", self.mode)
-            form.addRow("Ignorovat", self.ignore)
+            self.profile.setToolTip(
+                "The profile controls how Mutagen watches for file changes when creating a session.\n"
+                "inotify/FSEvents = native OS events (fast, low overhead).\n"
+                "Polling = active checks — slower, but also works on network drives.")
+            form.addRow("File Change Detection", self.profile)
+            form.addRow("Mode", self.mode)
+            form.addRow("Ignore", self.ignore)
             form.addRow("", self.ignore_vcs)
         form.addRow("", self.pause)
         box.addLayout(form)
-        info = label("Pozor: režim one-way-replica může přepisovat a mazat soubory v cíli." if kind == "sync"
-                     else "Přesměrování zpřístupní cílové spojení prostřednictvím zadaného zdroje.", muted=True)
+        info = label("Warning: one-way-replica mode can overwrite and delete files at the destination." if kind == "sync"
+                     else "Forwarding exposes the destination connection through the specified source.", muted=True)
         info.setWordWrap(True); box.addWidget(info)
         controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok)
-        controls.button(QDialogButtonBox.StandardButton.Ok).setText("Vytvořit relaci")
-        controls.button(QDialogButtonBox.StandardButton.Cancel).setText("Zrušit")
+        controls.button(QDialogButtonBox.StandardButton.Ok).setText("Create Session")
+        controls.button(QDialogButtonBox.StandardButton.Cancel).setText("Cancel")
         controls.accepted.connect(self.validate); controls.rejected.connect(self.reject)
         box.addWidget(controls)
 
     def browse_alpha(self):
-        selected = QFileDialog.getExistingDirectory(self, "Lokální složka ALPHA")
+        selected = QFileDialog.getExistingDirectory(self, "Choose Local Directory")
         if selected: self.a.setText(selected.replace("/", "\\") if os.name == "nt" else selected)
 
     def validate(self):
         if not self.a.text().strip() or not self.b.text().strip():
-            QMessageBox.warning(self, "Chybějící údaje", "Vyplňte oba koncové body.")
+            QMessageBox.warning(self, "Missing Information", "Enter both endpoints.")
             return
         if self.kind == "sync" and self.mode.currentText() == "one-way-replica":
-            response = QMessageBox.warning(self, "Rizikový režim",
-                "Režim one-way-replica může přepsat nebo odstranit data na BETA. Pokračovat?",
+            response = QMessageBox.warning(self, "Risky Mode",
+                "one-way-replica mode can overwrite or delete data on BETA. Continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if response != QMessageBox.StandardButton.Yes: return
@@ -515,36 +595,36 @@ class SessionDialog(QDialog):
 
 class QuickNavigator(QDialog):
     """Keyboard-first, no-network palette for switching pages instantly."""
-    PAGES = ("Přehled", "Synchronizace", "Přesměrování", "Historie akcí", "Daemon",
-             "Nastavení", "Monitoring", "Diagnostika", "Upozornění", "Obě strany", "Servery")
+    PAGES = ("Overview", "Sync", "Forwarding", "Action History", "Daemon",
+             "Settings", "Monitoring", "Diagnostics", "Alerts", "Endpoints", "Servers")
     GLYPHS = ("◈", "⇄", "↗", "≡", "◉", "⚙", "▥", "⚕", "♢", "⇄", "▣")
     CAPTIONS = (
-        "Přehled relací a spotřeba systémových prostředků",
-        "Správa synchronizačních relací",
-        "Správa port-forwarding relací",
-        "Záznamy příkazů provedených přes aplikaci",
-        "Řízení a registrace Mutagen daemonu",
-        "Nastavení CLI, intervalů a chování",
-        "Historické grafy CPU, RAM a přenosů",
-        "Problémy relací a export diagnostiky",
-        "Limity prostředků a pravidla upozornění",
-        "Stav ALPHA/BETA endpointů z daemonu",
-        "Skupiny serverů a hromadné akce",
+        "Session overview and system resource usage",
+        "Manage sync sessions",
+        "Manage port-forwarding sessions",
+        "Records of commands run through the application",
+        "Mutagen daemon control and registration",
+        "CLI path, intervals and application behaviour",
+        "Historical CPU, RAM and traffic graphs",
+        "Session issues and diagnostics export",
+        "Resource limits and alert rules",
+        "ALPHA/BETA endpoint status from the daemon",
+        "Server groups and bulk actions",
     )
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.setWindowTitle("Rychlá navigace  ·  Ctrl+K")
+        self.setWindowTitle("Quick Navigation  ·  Ctrl+K")
         self.setMinimumSize(520, 420)
         self.target = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(23, 21, 23, 21)
         layout.setSpacing(13)
-        layout.addWidget(label("Přejít na stránku", size=19, bold=True))
-        hint = label("Pište název sekce · Enter / dvojklik pro přechod · Escape pro zavření", muted=True)
+        layout.addWidget(label("Go to page", size=19, bold=True))
+        hint = label("Type section name · Enter / double-click to go · Escape to close", muted=True)
         layout.addWidget(hint)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Hledat stránku…")
+        self.search.setPlaceholderText("Search page…")
         layout.addWidget(self.search)
         self.list = QListWidget()
         self.list.setSpacing(2)
@@ -558,10 +638,12 @@ class QuickNavigator(QDialog):
 
     def filter(self, term):
         self.list.clear()
+        query = term.casefold().split()
         for index, page in enumerate(self.PAGES):
-            if term.casefold().strip() in page.casefold():
+            caption = self.CAPTIONS[index] if index < len(self.CAPTIONS) else ""
+            searchable = f"{page} {caption}".casefold()
+            if all(word in searchable for word in query):
                 glyph = self.GLYPHS[index] if index < len(self.GLYPHS) else "·"
-                caption = self.CAPTIONS[index] if index < len(self.CAPTIONS) else ""
                 item = QListWidgetItem(f"  {glyph}   {page}")
                 item.setData(Qt.ItemDataRole.UserRole, index)
                 item.setToolTip(caption)
@@ -656,7 +738,7 @@ class MainWindow(QMainWindow):
             QShortcut(QKeySequence(f"Ctrl+{(_i + 1) % 10 if _i < 9 else 0}"), self,
                       activated=partial(self.set_page, _idx))
         QShortcut(QKeySequence("Ctrl+Shift+1"), self, activated=partial(self.set_page, 10))
-        self.add_log("Aplikace spuštěna" + (" (DEMO režim)" if demo else ""))
+        self.add_log("Application started" + (" (DEMO mode)" if demo else ""))
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(self.poll_period_ms())
@@ -734,9 +816,9 @@ class MainWindow(QMainWindow):
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
         self.tray.setToolTip("Mutagen Control")
         menu = QMenu(self)
-        show_action = QAction("Otevřít Mutagen Control", self)
+        show_action = QAction("Open Mutagen Control", self)
         show_action.triggered.connect(self.show_window)
-        quit_action = QAction("Ukončit", self)
+        quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.quit_app)
         menu.addAction(show_action); menu.addSeparator(); menu.addAction(quit_action)
         self.tray.setContextMenu(menu)
@@ -766,24 +848,24 @@ class MainWindow(QMainWindow):
         nav_layout.setContentsMargins(0, 0, 2, 0); nav_layout.setSpacing(4)
         self.nav = []
         nav_tooltips = [
-            "Ctrl+1 · Přehled stavu a grafů",
-            "Ctrl+2 · Správa synchronizačních relací",
-            "Ctrl+3 · Správa port-forwarding relací",
-            "Ctrl+4 · Záznamy akcí",
-            "Ctrl+5 · Daemon – spustit / zastavit / registrovat",
-            "Ctrl+6 · Nastavení aplikace",
-            "Ctrl+7 · Monitoring – historické grafy",
-            "Ctrl+8 · Diagnostika a export",
-            "Ctrl+9 · Upozornění na prostředky",
-            "Ctrl+0 · Stav ALPHA / BETA endpointů",
-            "Ctrl+Shift+1 · Skupiny serverů a hromadné akce",
+            "Ctrl+1 · Status overview and graphs",
+            "Ctrl+2 · Manage sync sessions",
+            "Ctrl+3 · Manage port-forwarding sessions",
+            "Ctrl+4 · Action records",
+            "Ctrl+5 · Daemon — start / stop / register",
+            "Ctrl+6 · Application settings",
+            "Ctrl+7 · Monitoring – historical graphs",
+            "Ctrl+8 · Diagnostics and export",
+            "Ctrl+9 · Resource alerts",
+            "Ctrl+0 · ALPHA / BETA endpoint status",
+            "Ctrl+Shift+1 · Server groups and bulk actions",
         ]
-        for title, glyph in [("Přehled", "◈"), ("Synchronizace", "⇄"), ("Přesměrování", "↗"),
-                             ("Historie akcí", "≡"), ("Daemon", "◉"), ("Nastavení", "⚙"),
-                             ("Monitoring", "▥"), ("Diagnostika", "⚕"), ("Upozornění", "♢"),
-                             ("Obě strany", "⇄"), ("Servery", "▣")]:
+        for title, glyph in [("Overview", "◈"), ("Sync", "⇄"), ("Forwarding", "↗"),
+                             ("Action History", "≡"), ("Daemon", "◉"), ("Settings", "⚙"),
+                             ("Monitoring", "▥"), ("Diagnostics", "⚕"), ("Alerts", "♢"),
+                             ("Endpoints", "⇄"), ("Servers", "▣")]:
             i = len(self.nav)
-            sections = {0:"PRACOVNÍ PROSTOR", 1:"RELACE", 3:"NÁSTROJE A DIAGNOSTIKA", 9:"STAV OBOU ENDPOINTŮ", 10:"SKUPINY PODLE SERVERŮ"}
+            sections = {0:"WORKSPACE", 1:"SESSIONS", 3:"TOOLS & DIAGNOSTICS", 9:"ENDPOINT STATUS", 10:"SERVER GROUPS"}
             if i in sections:
                 nav_layout.addSpacing(12 if i else 1)
                 nav_layout.addWidget(label(sections[i], muted=True, size=10))
@@ -799,18 +881,18 @@ class MainWindow(QMainWindow):
         sidelay.addWidget(nav_scroller, 1)
         statecard = QFrame(); statecard.setObjectName("inner")
         sc = QVBoxLayout(statecard); sc.setContentsMargins(15, 15, 15, 15)
-        sc.addWidget(label("STAV MUTAGENU", muted=True, size=10))
-        self.side_state = label("●  Zjišťuji…", bold=True)
+        sc.addWidget(label("MUTAGEN STATUS", muted=True, size=10))
+        self.side_state = label("●  Checking…", bold=True)
         sc.addWidget(self.side_state)
-        self.side_sub = label("Čekám na první aktualizaci", muted=True, size=11)
+        self.side_sub = label("Waiting for first update", muted=True, size=11)
         self.side_sub.setWordWrap(True); sc.addWidget(self.side_sub)
         sidelay.addWidget(statecard)
         # Footer row: version on left, keyboard shortcut hint on right
         footer_row = QHBoxLayout(); footer_row.setSpacing(4)
         footer_row.addWidget(label("v8.2", muted=True, size=10))
         footer_row.addStretch()
-        nav_hint = label("Ctrl+K  navigace", muted=True, size=10)
-        nav_hint.setToolTip("Ctrl+K — rychlá navigace mezi stránkami")
+        nav_hint = label("Ctrl+K  navigation", muted=True, size=10)
+        nav_hint.setToolTip("Ctrl+K — quick navigation between pages")
         footer_row.addWidget(nav_hint)
         sidelay.addLayout(footer_row)
         outer.addWidget(sidebar)
@@ -818,17 +900,17 @@ class MainWindow(QMainWindow):
         cr = QVBoxLayout(content); cr.setContentsMargins(31, 26, 31, 18); cr.setSpacing(18)
         topline = QHBoxLayout()
         titlearea = QVBoxLayout(); titlearea.setSpacing(3)
-        self.page_name = label("Přehled", size=25, bold=True)
-        self.page_caption = label("Správa Mutagenu na jednom místě", muted=True)
+        self.page_name = label("Overview", size=25, bold=True)
+        self.page_caption = label("Manage Mutagen in one place", muted=True)
         titlearea.addWidget(self.page_name); titlearea.addWidget(self.page_caption)
         topline.addLayout(titlearea); topline.addStretch()
-        self.updated = label("Neaktualizováno", muted=True, size=11)
+        self.updated = label("Not updated", muted=True, size=11)
         topline.addWidget(self.updated)
-        nav_btn = button("⌕  Přejít  Ctrl+K", self.open_navigator)
-        nav_btn.setToolTip("Ctrl+K — Rychlá navigace: přejít na libovolnou stránku")
+        nav_btn = button("⌕  Go  Ctrl+K", self.open_navigator)
+        nav_btn.setToolTip("Ctrl+K — Quick navigation: go to any page")
         topline.addWidget(nav_btn)
-        self.refresh_btn = button("↻  Obnovit stav", lambda: self.refresh(force=True))
-        self.refresh_btn.setToolTip("Ctrl+R nebo F5 — Vynutit okamžité načtení stavu z Mutagenu")
+        self.refresh_btn = button("↻  Refresh Status", lambda: self.refresh(force=True))
+        self.refresh_btn.setToolTip("Ctrl+R or F5 — Force immediate status refresh from Mutagen")
         topline.addWidget(self.refresh_btn)
         cr.addLayout(topline)
         self.pages = QStackedWidget(); cr.addWidget(self.pages, 1)
@@ -844,12 +926,12 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.endpoints_page())
         self.pages.addWidget(self.servers_page())
         bottom = QHBoxLayout()
-        self.footer = label("Mutagen CLI  /  lokální propojení", muted=True, size=11)
+        self.footer = label("Mutagen CLI  /  local connection", muted=True, size=11)
         bottom.addWidget(self.footer); bottom.addStretch()
-        self.writer_status = label("Historie: čekám na měření", muted=True, size=10)
+        self.writer_status = label("History: waiting for samples", muted=True, size=10)
         bottom.addWidget(self.writer_status)
         bottom.addSpacing(15)
-        bottom.addWidget(label("CPU/RAM = všechny místní procesy Mutagenu", muted=True, size=11))
+        bottom.addWidget(label("CPU/RAM = all local Mutagen processes", muted=True, size=11))
         cr.addLayout(bottom)
         outer.addWidget(content, 1)
         self.set_page(0)
@@ -861,17 +943,17 @@ class MainWindow(QMainWindow):
 
     def set_page(self, index):
         captions = [
-            ("Přehled", "Aktuální stav synchronizací a spotřeba systémových prostředků"),
-            ("Synchronizace", "Sledování, vytváření a správa synchronizačních relací"),
-            ("Přesměrování", "Správa port-forwarding relací a přenesených dat"),
-            ("Historie akcí", "Záznamy příkazů provedených přes tuto aplikaci"),
-            ("Daemon", "Řízení běhu a registrace démona ve Windows"),
-            ("Nastavení", "Umístění CLI, obnovení dat a chování aplikace"),
-            ("Monitoring", "Historické grafy CPU, RAM, diskových operací a přenosů"),
-            ("Diagnostika", "Problémy relací a bezpečný export podpůrných údajů"),
-            ("Upozornění", "Limity prostředků a pravidla upozorňování"),
-            ("Obě strany", "Stav ALPHA/BETA a přesměrování z lokálního Mutagen daemonu"),
-            ("Servery", "Seskupení relací podle vzdálených hostitelů a hromadné akce"),
+            ("Overview", "Current sync status and system resource usage"),
+            ("Sync", "Monitor, create and manage sync sessions"),
+            ("Forwarding", "Manage port-forwarding sessions and transferred data"),
+            ("Action History", "Records of commands run through this application"),
+            ("Daemon", "Daemon run control and Windows registration"),
+            ("Settings", "CLI path, data refresh and application behaviour"),
+            ("Monitoring", "Historical CPU, RAM, disk I/O and traffic graphs"),
+            ("Diagnostics", "Session issues and safe export of diagnostic data"),
+            ("Alerts", "Resource limits and alerting rules"),
+            ("Endpoints", "ALPHA/BETA and forwarding status from local Mutagen daemon"),
+            ("Servers", "Group sessions by remote hosts and bulk actions"),
         ]
         self.pages.setCurrentIndex(index)
         self.page_name.setText(captions[index][0]); self.page_caption.setText(captions[index][1])
@@ -894,7 +976,7 @@ class MainWindow(QMainWindow):
         body = QWidget(); body.setObjectName("scrollbody")
         l = QVBoxLayout(body); l.setContentsMargins(0, 3, 2, 12); l.setSpacing(19)
         hero, hl = card()
-        hero.setStyleSheet(f"QFrame#card {{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #152F35,stop:1 #13212F); border:1px solid #28665D; border-radius:16px;}}")
+        hero.setStyleSheet("QFrame#card {background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #152F35,stop:1 #13212F); border:1px solid #28665D; border-radius:16px;}")
         htop = QHBoxLayout()
         textblock = QVBoxLayout(); textblock.setSpacing(6)
         eyebrow = QHBoxLayout(); eyebrow.setSpacing(10)
@@ -904,31 +986,41 @@ class MainWindow(QMainWindow):
                                       f"background:#1A3A32; border:1px solid #2D6B5A; border-radius:5px; padding:1px 6px;")
         eyebrow.addWidget(self.hero_badge); eyebrow.addStretch()
         textblock.addLayout(eyebrow)
-        self.hero_title = label("Kontroluji připojení…", size=22, bold=True)
+        self.hero_title = label("Checking connection…", size=22, bold=True)
         textblock.addWidget(self.hero_title)
-        self.hero_sub = label("Zjišťuji stav démona a aktivních relací", muted=True)
+        self.hero_sub = label("Checking daemon and active session status", muted=True)
         textblock.addWidget(self.hero_sub)
         htop.addLayout(textblock, 1)
-        daemon_btn = button("Spravovat daemon  →", partial(self.set_page, 4))
-        daemon_btn.setToolTip("Přejít na stránku Daemon pro spuštění, zastavení a registraci")
+        daemon_btn = button("Manage Daemon  →", partial(self.set_page, 4))
+        daemon_btn.setToolTip("Go to the Daemon page to start, stop, or register it")
         htop.addWidget(daemon_btn)
         self.health_ring = HealthRing(hero)
-        self.health_ring.setToolTip("Poměr relací bez hlášených problémů")
+        self.health_ring.setToolTip("Share of sessions with no reported issues")
         htop.addWidget(self.health_ring)
         hl.addLayout(htop); l.addWidget(hero)
         metrics = QHBoxLayout(); metrics.setSpacing(14)
         self.metric_widgets = {}
         for key, title, note, color in [
-            ("all", "Relace celkem", "Synchronizace + porty", TEXT),
-            ("running", "Aktivní", "Připojeno / pracuje", TEAL),
-            ("paused", "Pozastavené", "Ruční pozastavení", AMBER),
-            ("errors", "Problémy", "Vyžadují pozornost", RED),
+            ("all", "Total Sessions", "Sync + forwards", TEXT),
+            ("running", "Active", "Connected / working", TEAL),
+            ("paused", "Paused", "Paused manually", AMBER),
+            ("errors", "Issues", "Needs attention", RED),
         ]:
             f, c = card()
             c.addWidget(label(title, muted=True, size=11))
-            val = label("—", size=28, bold=True)
-            val.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: 800")
-            c.addWidget(val); c.addWidget(label(note, muted=True, size=10))
+            val = QPushButton("—")
+            val.setObjectName("metricValue")
+            val.setCursor(Qt.CursorShape.PointingHandCursor)
+            val.setAccessibleName(f"{title}. Open matching sessions")
+            val.setToolTip("Choose Sync or Forwarding sessions")
+            val.setStyleSheet(
+                f"QPushButton#metricValue {{ color:{color}; font-size:28px; font-weight:800; "
+                "background:transparent; border:1px solid transparent; border-radius:7px; padding:2px 0; text-align:left; }"
+                f"QPushButton#metricValue:hover {{ background:#1A263A; border-color:{BORDER}; }}"
+                f"QPushButton#metricValue:focus {{ border-color:{BLUE}; }}"
+            )
+            val.clicked.connect(lambda _checked=False, k=key: self.show_metric_menu(k))
+            c.addWidget(val); c.addWidget(label(note + " · click to open", muted=True, size=10))
             self.metric_widgets[key] = val
             metrics.addWidget(f, 1)
         l.addLayout(metrics)
@@ -941,27 +1033,60 @@ class MainWindow(QMainWindow):
         graphs.addWidget(cpu_card, 1)
         graphs.addWidget(mem_card, 1)
         l.addLayout(graphs)
-        l.addWidget(button("▥  Otevřít kompletní monitoring a historii grafů →",
+        l.addWidget(button("▥  Open full monitoring and graph history →",
                            partial(self.set_page, 6)))
         recent, rr = card()
-        titlebar = QHBoxLayout(); titlebar.addWidget(label("Synchronizační relace", size=16, bold=True)); titlebar.addStretch()
-        titlebar.addWidget(button("Všechny synchronizace →", partial(self.set_page, 1)))
+        titlebar = QHBoxLayout(); titlebar.addWidget(label("Sync Sessions", size=16, bold=True)); titlebar.addStretch()
+        titlebar.addWidget(button("All Sync Sessions →", partial(self.set_page, 1)))
         rr.addLayout(titlebar)
-        self.dashboard_table = self.make_table(["NÁZEV", "STAV", "ALPHA", "BETA"], height=240)
-        self.dashboard_table.setToolTip("Dvojklik pro přechod na detail synchronizace")
+        self.dashboard_table = self.make_table(
+            ["NAME", "STATUS", "ALPHA", "BETA"], height=240, stretch_columns=(0, 2, 3))
+        self.dashboard_table.setToolTip("Double-click to view sync details")
         rr.addWidget(self.dashboard_table)
         self.dashboard_table.cellDoubleClicked.connect(self.dashboard_select)
         # Forward sessions summary row
         fwd_row = QHBoxLayout()
-        fwd_row.addWidget(label("Přesměrování:", muted=True, size=11))
+        fwd_row.addWidget(label("Forwarding:", muted=True, size=11))
         self.dashboard_forward_summary = label("—", size=11)
         fwd_row.addWidget(self.dashboard_forward_summary)
         fwd_row.addStretch()
-        fwd_row.addWidget(button("Všechna přesměrování →", partial(self.set_page, 2)))
+        fwd_row.addWidget(button("All Forwarding Sessions →", partial(self.set_page, 2)))
         rr.addLayout(fwd_row)
         l.addWidget(recent)
         l.addStretch(); page.setWidget(body)
         return page
+
+    def show_metric_menu(self, metric_key):
+        sessions_by_kind = {"sync": self.snapshot.sync, "forward": self.snapshot.forward}
+        metric_titles = {"all": "All sessions", "running": "Active / working",
+                         "paused": "Paused", "errors": "Issues"}
+        state_sets = {"running": {"active", "busy"}, "paused": {"paused"}, "errors": {"error"}}
+        menu = QMenu(self)
+        for kind, title in (("sync", "Sync"), ("forward", "Forwarding")):
+            sessions = sessions_by_kind[kind]
+            wanted = state_sets.get(metric_key)
+            count = sum(not wanted or classify(session, kind)[0] in wanted for session in sessions)
+            action = menu.addAction(f"{title} · {count} {metric_titles[metric_key].lower()}")
+            action.triggered.connect(lambda _checked=False, k=kind, m=metric_key: self.open_metric_sessions(k, m))
+        button = self.metric_widgets[metric_key]
+        menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
+
+    def open_metric_sessions(self, kind, metric_key):
+        self.set_page(1 if kind == "sync" else 2)
+        filters = self.sync_state_filter if kind == "sync" else self.forward_state_filter
+        search = self.sync_search if kind == "sync" else self.forward_search
+        favorites = self.sync_favorites_only if kind == "sync" else self.forward_favorites_only
+        if kind == "sync":
+            self.sync_server_filter.setCurrentIndex(0)
+        search.clear()
+        favorites.setChecked(False)
+        previous = filters.blockSignals(True)
+        filters.setCurrentIndex({"all": 0, "running": 3, "paused": 4, "errors": 5}[metric_key])
+        filters.blockSignals(previous)
+        self.filter_table(kind)
+
+    def session_state_filter_changed(self, kind):
+        self.filter_table(kind)
 
     def graph_card(self, title, suffix, color):
         f, vl = card()
@@ -975,13 +1100,13 @@ class MainWindow(QMainWindow):
         graph.setMinimumHeight(165)
         vl.addWidget(graph)
         footer = QHBoxLayout()
-        footer.addWidget(label("Historie od spuštění · aktuální hodnota", muted=True, size=10))
+        footer.addWidget(label("History since launch · current value", muted=True, size=10))
         footer.addStretch()
         footer.addWidget(label("▥  Monitoring →", muted=True, size=10))
         vl.addLayout(footer)
         return f, graph, value
 
-    def make_table(self, headers, height=370):
+    def make_table(self, headers, height=370, *, stretch_columns=()):
         table = QTableWidget(0, len(headers))
         table.setHorizontalHeaderLabels(headers)
         table.setAlternatingRowColors(True)
@@ -991,11 +1116,17 @@ class MainWindow(QMainWindow):
         table.setShowGrid(False)
         table.verticalHeader().setVisible(False)
         table.verticalHeader().setDefaultSectionSize(46)
-        table.horizontalHeader().setStretchLastSection(True)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        stretch_columns = set(stretch_columns)
+        for column in range(len(headers)):
+            mode = (QHeaderView.ResizeMode.Stretch if column in stretch_columns else
+                    QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(column, mode)
         table.setMinimumHeight(height)
         table.setSortingEnabled(True)
-        table.horizontalHeader().setMinimumSectionSize(85)
+        header.setMinimumSectionSize(85)
         table.setWordWrap(False)
         # Focus frame looks jarring with the dark theme — remove it
         table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
@@ -1008,50 +1139,58 @@ class MainWindow(QMainWindow):
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         top, tl = card()
         row = QHBoxLayout()
-        row.addWidget(label("SPRÁVCE RELACÍ", muted=True, size=11)); row.addStretch()
-        new_btn = button("+  Nová synchronizace" if kind == "sync" else "+  Nové přesměrování",
+        row.addWidget(label("SESSION MANAGER", muted=True, size=11)); row.addStretch()
+        new_btn = button("+  New Sync" if kind == "sync" else "+  New Forward",
                          partial(self.create_session, kind), kind="primary")
-        new_btn.setToolTip("Ctrl+N — Vytvořit novou relaci pomocí průvodce")
+        new_btn.setToolTip("Ctrl+N — Create a session with the wizard")
         row.addWidget(new_btn)
         tl.addLayout(row)
-        summary = label("Zatím nejsou načteny žádné relace", muted=True)
+        summary = label("No sessions loaded yet", muted=True)
         tl.addWidget(summary)
+        if kind == "forward":
+            forwarding_help = label(
+                "Forwarding carries network connections between two endpoints, for example from your "
+                "computer to a service on a server or container. It does not sync files.",
+                muted=True, size=11)
+            forwarding_help.setWordWrap(True)
+            tl.addWidget(forwarding_help)
         bulk_row = QHBoxLayout()
         if kind == "sync":
-            sync_now_btn = button("↻ Sync now · všechny", partial(self.bulk_action, "sync", "flush", "all"), kind="primary")
-            sync_now_btn.setToolTip("Spustí synchronizační cyklus pro všechny aktivní (nepozastavené) relace")
+            sync_now_btn = button("↻ Sync now · all", partial(self.bulk_action, "sync", "flush", "all"), kind="primary")
+            sync_now_btn.setToolTip("Starts a sync cycle for all active (unpaused) sessions")
             bulk_row.addWidget(sync_now_btn)
-        pause_btn = button("⏸ Pozastavit všechny", partial(self.bulk_action, kind, "pause", "all"))
-        pause_btn.setToolTip("Pozastaví všechny aktivní relace tohoto typu")
+        pause_btn = button("⏸ Pause All", partial(self.bulk_action, kind, "pause", "all"))
+        pause_btn.setToolTip("Pauses all active sessions of this type")
         bulk_row.addWidget(pause_btn)
-        resume_btn = button("▶ Pokračovat všechny", partial(self.bulk_action, kind, "resume", "all"))
-        resume_btn.setToolTip("Obnoví všechny pozastavené nebo chybové relace")
+        resume_btn = button("▶ Resume All", partial(self.bulk_action, kind, "resume", "all"))
+        resume_btn.setToolTip("Resumes all paused or errored sessions")
         bulk_row.addWidget(resume_btn)
         bulk_row.addStretch()
         tl.addLayout(bulk_row)
         layout.addWidget(top)
         table_frame, table_l = card()
-        header = QHBoxLayout(); header.addWidget(label("Aktuální relace", size=16, bold=True)); header.addStretch()
-        search = QLineEdit(); search.setPlaceholderText("Hledat podle názvu / cesty…")
+        header = QHBoxLayout(); header.addWidget(label("Current Sessions", size=16, bold=True))
+        header.addWidget(label("Select a row for details", muted=True, size=10)); header.addStretch()
+        search = QLineEdit(); search.setPlaceholderText("Search by name / path…")
         search.setMaximumWidth(300)
-        search.setToolTip("Filtruje řádky tabulky podle názvu nebo cesty endpointu")
+        search.setToolTip("Filters table rows by endpoint name or path")
         search.textChanged.connect(partial(self.filter_table, kind))
         header.addWidget(search)
         filter_row = QHBoxLayout()
         if kind == "sync":
             self.sync_server_filter = QComboBox()
-            self.sync_server_filter.addItem("Všechny servery", "__all__")
+            self.sync_server_filter.addItem("All Servers", "__all__")
             self.sync_server_filter.setMinimumWidth(155)
-            self.sync_server_filter.setToolTip("Filtrovat podle vzdáleného hostitele")
+            self.sync_server_filter.setToolTip("Filter by remote host")
             self.sync_server_filter.currentIndexChanged.connect(lambda _=None: self.filter_table("sync"))
             filter_row.addWidget(self.sync_server_filter)
-        states = QComboBox(); states.addItems(["Všechny stavy", "Aktivní", "Pracuje", "Pozastaveno", "Problém", "Odpojeno"])
+        states = QComboBox(); states.addItems(["All Statuses", "Active", "Working", "Active / Working", "Paused", "Issue", "Disconnected"])
         states.setMinimumWidth(140)
-        states.setToolTip("Filtrovat relace podle aktuálního stavu")
-        states.currentIndexChanged.connect(lambda _=None, k=kind: self.filter_table(k, None))
+        states.setToolTip("Filter sessions by current status")
+        states.currentIndexChanged.connect(lambda _=None, k=kind: self.session_state_filter_changed(k))
         filter_row.addWidget(states)
-        favorites_only = QCheckBox("★ Oblíbené")
-        favorites_only.setToolTip("Zobrazit pouze relace označené jako oblíbené")
+        favorites_only = QCheckBox("★ Favorites")
+        favorites_only.setToolTip("Show only sessions marked as favorites")
         favorites_only.toggled.connect(lambda _checked, k=kind: self.filter_table(k))
         filter_row.addWidget(favorites_only)
         filter_row.addStretch()
@@ -1063,23 +1202,23 @@ class MainWindow(QMainWindow):
         else: self.forward_state_filter = states
         if kind == "sync": self.sync_search = search
         else: self.forward_search = search
-        fields = ["NÁZEV", "STAV", "ALPHA", "BETA", "KONFLIKTY"] if kind == "sync" else ["NÁZEV", "STAV", "ZDROJ", "CÍL", "SPOJENÍ"]
-        table = self.make_table(fields, 225)
+        fields = ["NAME", "STATUS", "ALPHA", "BETA", "CONFLICTS"] if kind == "sync" else ["NAME", "STATUS", "SOURCE", "DESTINATION", "CONNECTION"]
+        table = self.make_table(fields, 225, stretch_columns=(0, 2, 3))
         table.itemSelectionChanged.connect(partial(self.on_select, kind))
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda point, k=kind: self.session_context_menu(k, point))
-        table.setMinimumHeight(260)
-        table.setMaximumHeight(350)
+        table.setMinimumHeight(0)
+        table.setMaximumHeight(16777215)
         table_l.addWidget(table)
         layout.addWidget(table_frame)
         detail, dl = card()
         hd = QHBoxLayout()
-        detail_title = label("Vyberte relaci", size=16, bold=True)
+        detail_title = label("Select a session", size=16, bold=True)
         hd.addWidget(detail_title); hd.addStretch()
         detail_tag = label("", muted=True)
         hd.addWidget(detail_tag); dl.addLayout(hd)
-        details = QLabel("Podrobnosti o relaci a ovládací prvky se zobrazí po výběru.")
-        details.setTextFormat(Qt.TextFormat.PlainText)
+        details = QLabel("Session details and controls appear after you select a session.")
+        details.setTextFormat(Qt.TextFormat.RichText)
         details.setWordWrap(True)
         details.setObjectName("muted")
         details.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -1091,36 +1230,36 @@ class MainWindow(QMainWindow):
         progress.setVisible(False)
         dl.addWidget(progress)
         utility_controls = QHBoxLayout()
-        favorite_button = button("☆ Do oblíbených", partial(self.toggle_favorite, kind))
+        favorite_button = button("☆ Add to Favorites", partial(self.toggle_favorite, kind))
         favorite_button.setEnabled(False)
         utility_controls.addWidget(favorite_button)
-        utility_controls.addWidget(button("Kopírovat ID", partial(self.copy_session_id, kind)))
+        utility_controls.addWidget(button("Copy ID", partial(self.copy_session_id, kind)))
         utility_controls.addWidget(button("Export JSON", partial(self.export_session_json, kind)))
         utility_controls.addStretch()
         dl.addLayout(utility_controls)
         if kind == "sync":
-            self.sync_autostart_button = button("Start při přihlášení: zjišťuji…", self.toggle_sync_startup)
-            self.sync_autostart_button.setToolTip("Nativní paused/resume + registrace daemonu; vypnutí synchronizaci ihned pozastaví.")
+            self.sync_autostart_button = button("Start at sign-in: checking…", self.toggle_sync_startup)
+            self.sync_autostart_button.setToolTip("Uses native pause/resume and daemon registration; turning this off pauses sync immediately.")
             startup_line = QHBoxLayout()
             startup_line.addWidget(self.sync_autostart_button)
             startup_line.addStretch()
             dl.addLayout(startup_line)
-            note = label("Automatický start relace = daemon se spouští po přihlášení a relace není pozastavená. "
-                         "Vypnutí auto-startu ji pozastaví i nyní; není potřeba další služba.", muted=True, size=10)
+            note = label("Automatic session start means the daemon starts at sign-in and the session is not paused. "
+                         "Turning off auto-start pauses it now; no additional service is needed.", muted=True, size=10)
             note.setWordWrap(True)
             dl.addWidget(note)
         controls = QGridLayout()
         controls.setHorizontalSpacing(10)
         controls.setVerticalSpacing(10)
         control_buttons = {}
-        actions = ([("pause", "⏸  Pauza"), ("resume", "▶  Pokračovat"), ("flush", "↻  Sync now"),
-                    ("reset", "Reset historie"), ("terminate", "Odstranit relaci")]
-                   if kind == "sync" else [("pause", "⏸  Pauza"), ("resume", "▶  Pokračovat"), ("terminate", "Odstranit relaci")])
+        actions = ([("pause", "⏸  Pause"), ("resume", "▶  Resume"), ("flush", "↻  Sync now"),
+                    ("reset", "Reset History"), ("terminate", "Terminate Session")]
+                   if kind == "sync" else [("pause", "⏸  Pause"), ("resume", "▶  Resume"), ("terminate", "Terminate Session")])
         for pos, (action, text) in enumerate(actions):
             b = button(text, partial(self.session_action, kind, action), kind="danger" if action in ("terminate", "reset") else "")
             b.setEnabled(False); controls.addWidget(b, pos // 3, pos % 3); control_buttons[action] = b
         dl.addLayout(controls)
-        session_prefs = button("⚙ Nastavení relace", partial(self.open_session_preferences, kind))
+        session_prefs = button("⚙ Session Settings", partial(self.open_session_preferences, kind))
         utility_controls.insertWidget(0, session_prefs)
         layout.addWidget(detail)
         layout.addStretch(1)
@@ -1145,14 +1284,14 @@ class MainWindow(QMainWindow):
         root = QWidget(); root.setObjectName("main")
         l = QVBoxLayout(root); l.setContentsMargins(0, 3, 0, 0); l.setSpacing(12)
         f, c = card(); row = QHBoxLayout()
-        row.addWidget(label("Živé události relací a aplikace", size=16, bold=True)); row.addStretch()
-        self.log_count_label = label("0 záznamů", muted=True, size=11)
+        row.addWidget(label("Live Session and Application Events", size=16, bold=True)); row.addStretch()
+        self.log_count_label = label("0 entries", muted=True, size=11)
         row.addWidget(self.log_count_label)
-        export_logs_btn = button("Uložit .txt", self.export_logs)
-        export_logs_btn.setToolTip("Uložit zobrazené záznamy do textového souboru")
+        export_logs_btn = button("Save .txt", self.export_logs)
+        export_logs_btn.setToolTip("Save displayed entries to a text file")
         row.addWidget(export_logs_btn)
-        clear_logs_btn = button("Vymazat", self.clear_logs)
-        clear_logs_btn.setToolTip("Vymaže záznamy z tohoto zobrazení (nezmaže historii v databázi)")
+        clear_logs_btn = button("Clear", self.clear_logs)
+        clear_logs_btn.setToolTip("Clears entries from this view (does not delete database history)")
         row.addWidget(clear_logs_btn)
         c.addLayout(row)
         self.log_view = QPlainTextEdit(); self.log_view.setReadOnly(True)
@@ -1162,33 +1301,33 @@ class MainWindow(QMainWindow):
         c.addWidget(self.log_view); l.addWidget(f, 1)
         logbox, contents = card()
         row = QHBoxLayout()
-        row.addWidget(label("Live log – sledování souboru", size=16, bold=True)); row.addStretch()
-        choose_btn = button("Vybrat log…", self.choose_tail_file, kind="primary")
-        choose_btn.setToolTip("Vybrat lokální log soubor ke sledování v reálném čase (pouze pro čtení)")
+        row.addWidget(label("Live Log — File Tracking", size=16, bold=True)); row.addStretch()
+        choose_btn = button("Select Log…", self.choose_tail_file, kind="primary")
+        choose_btn.setToolTip("Select a local log file to monitor in real time (read-only)")
         row.addWidget(choose_btn)
-        stop_btn = button("Zastavit", self.stop_tail_file)
-        stop_btn.setToolTip("Zastaví sledování aktuálního souboru")
+        stop_btn = button("Stop", self.stop_tail_file)
+        stop_btn.setToolTip("Stops monitoring the current file")
         row.addWidget(stop_btn)
         export_btn = button("Export", self.export_tail_file)
-        export_btn.setToolTip("Uložit aktuálně zobrazené řádky live logu")
+        export_btn.setToolTip("Save the currently displayed live log lines")
         row.addWidget(export_btn)
         contents.addLayout(row)
-        self.tail_info = label("Není vybrán log soubor.", muted=True, size=11)
+        self.tail_info = label("No log file selected.", muted=True, size=11)
         self.tail_info.setWordWrap(True); contents.addWidget(self.tail_info)
         filterline = QHBoxLayout()
-        filterline.addWidget(label("Filtr:", muted=True))
-        self.tail_filter = QLineEdit(); self.tail_filter.setPlaceholderText("Text, který se má v logu zobrazovat…")
-        self.tail_filter.setToolTip("Zobrazí pouze řádky obsahující zadaný text (bez ohledu na velikost písmen)")
+        filterline.addWidget(label("Filter:", muted=True))
+        self.tail_filter = QLineEdit(); self.tail_filter.setPlaceholderText("Text to display in the log…")
+        self.tail_filter.setToolTip("Shows only lines containing the entered text (case-insensitive)")
         self.tail_filter.textChanged.connect(self.render_tail)
         filterline.addWidget(self.tail_filter)
-        self.follow_tail = QCheckBox("Sledovat konec")
+        self.follow_tail = QCheckBox("Follow log end")
         self.follow_tail.setChecked(True)
-        self.follow_tail.setToolTip("Vypněte pro čtení starších záznamů bez automatického posouvání")
+        self.follow_tail.setToolTip("Turn off to read older entries without automatic scrolling")
         filterline.addWidget(self.follow_tail)
-        self.tail_count_label = label("0 řádků", muted=True, size=11)
+        self.tail_count_label = label("0 lines", muted=True, size=11)
         filterline.addWidget(self.tail_count_label)
-        clear_tail_btn = button("Smazat zobrazení", self.clear_tail)
-        clear_tail_btn.setToolTip("Vymaže zobrazené řádky (soubor zůstane beze změny)")
+        clear_tail_btn = button("Clear View", self.clear_tail)
+        clear_tail_btn.setToolTip("Clears displayed lines (the file remains unchanged)")
         filterline.addWidget(clear_tail_btn)
         contents.addLayout(filterline)
         self.tail_view = QPlainTextEdit(); self.tail_view.setReadOnly(True)
@@ -1196,26 +1335,26 @@ class MainWindow(QMainWindow):
         self.tail_view.setStyleSheet(f"font-family: Consolas, monospace; font-size:12px; background:#0A1421; color:{TEXT};")
         contents.addWidget(self.tail_view)
         l.addWidget(logbox, 1)
-        note = label("Živé události výše vznikají ze změn stavu vráceného lokálním Mutagen daemonem. "
-                     "Nejde o úplný interní debug log. Volitelně lze sledovat existující lokální "
-                     "log soubor bez zásahu do běžícího daemonu. Aplikace pro logování nic na serveru nespouští.",
+        note = label("Live events above come from status changes reported by the local Mutagen daemon. "
+                     "This is not a complete internal debug log. You can optionally monitor an existing local "
+                     "log file without affecting the running daemon. The application does not start any logging process on the server.",
                      muted=True, size=11)
         note.setWordWrap(True); l.addWidget(note)
         return root
 
     def choose_tail_file(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "Vybrat průběžně aktualizovaný log", "", "Textové logy (*.log *.txt);;Všechny soubory (*)")
+        filename, _ = QFileDialog.getOpenFileName(self, "Select a Continuously Updated Log", "", "Text Logs (*.log *.txt);;All Files (*)")
         if not filename: return
         self.tail_file = FileTail(filename)
         self.tail_timer.start(900)
         self.tail_lines.clear()
-        self.tail_info.setText("Sleduji pouze pro čtení: " + filename)
+        self.tail_info.setText("Monitoring read-only: " + filename)
         self.poll_tail()
 
     def stop_tail_file(self):
         self.tail_file = None
         self.tail_timer.stop()
-        self.tail_info.setText("Sledování logu zastaveno.")
+        self.tail_info.setText("Log monitoring stopped.")
 
     def clear_tail(self):
         self.tail_lines.clear()
@@ -1227,7 +1366,7 @@ class MainWindow(QMainWindow):
             found = self.tail_file.poll()
         except OSError as exc:
             self.stop_tail_file()
-            self.tail_info.setText("Nepodařilo se číst log: " + str(exc)[:200])
+            self.tail_info.setText("Could not read log: " + str(exc)[:200])
             return
         if not found: return
         self.tail_lines.extend(found)
@@ -1271,10 +1410,10 @@ class MainWindow(QMainWindow):
         scrollbar.setValue(scrollbar.maximum() if auto_follow else old_position)
         if hasattr(self, "tail_count_label"):
             n = self.tail_view.document().blockCount()
-            self.tail_count_label.setText(f"{n} {'řádek' if n == 1 else 'řádky' if 2 <= n <= 4 else 'řádků'}")
+            self.tail_count_label.setText(f"{n} {'line' if n == 1 else 'lines' if 2 <= n <= 4 else 'lines'}")
 
     def export_tail_file(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Exportovat aktuálně zobrazený live log", "mutagen-live-log.txt", "Text (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Currently Displayed Live Log", "mutagen-live-log.txt", "Text (*.txt)")
         if not path: return
         try:
             Path(path).write_text(self.tail_view.toPlainText() + "\n", encoding="utf-8")
@@ -1285,38 +1424,38 @@ class MainWindow(QMainWindow):
         root = QWidget(); root.setObjectName("main")
         l = QVBoxLayout(root); l.setContentsMargins(0, 3, 0, 0); l.setSpacing(18)
         stat, sl = card()
-        sl.addWidget(label("SLUŽBA MUTAGEN", muted=True, size=11))
-        self.daemon_title = label("Zjišťuji stav démona…", size=22, bold=True)
+        sl.addWidget(label("MUTAGEN DAEMON", muted=True, size=11))
+        self.daemon_title = label("Checking daemon status…", size=22, bold=True)
         sl.addWidget(self.daemon_title)
-        self.daemon_desc = label("Stav se ověřuje přes příkazové rozhraní bez automatického spouštění.", muted=True)
+        self.daemon_desc = label("Status is checked through the CLI without starting the daemon automatically.", muted=True)
         self.daemon_desc.setWordWrap(True); sl.addWidget(self.daemon_desc)
         l.addWidget(stat)
         actions, al = card()
-        al.addWidget(label("Životní cyklus démona", size=16, bold=True))
+        al.addWidget(label("Daemon Lifecycle", size=16, bold=True))
         r = QHBoxLayout()
-        self.start_button = button("▶  Spustit daemon", partial(self.daemon_action, "start"), kind="primary")
-        self.start_button.setToolTip("Spustí Mutagen daemon na pozadí příkazem 'mutagen daemon start'")
-        self.stop_button = button("■  Zastavit daemon", partial(self.daemon_action, "stop"), kind="danger")
-        self.stop_button.setToolTip("Zastaví daemon a tím přeruší všechny aktivní synchronizace a přesměrování")
+        self.start_button = button("▶  Start Daemon", partial(self.daemon_action, "start"), kind="primary")
+        self.start_button.setToolTip("Starts the Mutagen daemon in the background with 'mutagen daemon start'")
+        self.stop_button = button("■  Stop daemon", partial(self.daemon_action, "stop"), kind="danger")
+        self.stop_button.setToolTip("Stops the daemon and interrupts all active sync and forwarding sessions")
         r.addWidget(self.start_button); r.addWidget(self.stop_button); r.addStretch()
         al.addLayout(r)
-        warning_lbl = label("⚠  Zastavení démona přeruší všechny jeho synchronizace a přesměrování, dokud nebude znovu spuštěn.", muted=True)
+        warning_lbl = label("⚠  Stopping the daemon interrupts all its sync and forwarding sessions until it is restarted.", muted=True)
         warning_lbl.setWordWrap(True)
         al.addWidget(warning_lbl)
         l.addWidget(actions)
         registry, reg = card()
-        reg.addWidget(label("Automatické spuštění při přihlášení do Windows", size=16, bold=True))
-        reg.addWidget(label("Nativní registrace daemonu přes Mutagen CLI (HKCU Run). "
-                            "Po přihlášení pokračují jen nepozastavené relace; pozastavené zůstávají pozastavené.", muted=True))
+        reg.addWidget(label("Start Automatically at Windows Sign-In", size=16, bold=True))
+        reg.addWidget(label("Native daemon registration through the Mutagen CLI (HKCU Run). "
+                            "After sign-in, only unpaused sessions resume; paused sessions remain paused.", muted=True))
         row = QHBoxLayout()
-        reg_btn = button("Registrovat", partial(self.daemon_action, "register"), kind="primary")
-        reg_btn.setToolTip("Zaregistruje Mutagen daemon do HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run")
+        reg_btn = button("Register", partial(self.daemon_action, "register"), kind="primary")
+        reg_btn.setToolTip("Adds the Mutagen daemon to Windows Run so it can start automatically at sign-in.")
         row.addWidget(reg_btn)
-        unreg_btn = button("Odregistrovat", partial(self.daemon_action, "unregister"), kind="danger")
-        unreg_btn.setToolTip("Odstraní registraci daemonu — daemon se po přihlášení nespustí automaticky")
+        unreg_btn = button("Unregister", partial(self.daemon_action, "unregister"), kind="danger")
+        unreg_btn.setToolTip("Removes daemon registration — the daemon will not start automatically at sign-in")
         row.addWidget(unreg_btn)
         row.addStretch(); reg.addLayout(row)
-        self.register_message = label("Registrace: zjišťuji stav…", muted=True)
+        self.register_message = label("Registration: checking status…", muted=True)
         self.register_message.setWordWrap(True)
         reg.addWidget(self.register_message)
         # card() returns (QFrame, QVBoxLayout). Only the frame is a QWidget.
@@ -1329,34 +1468,39 @@ class MainWindow(QMainWindow):
         body = QWidget(); body.setObjectName("scrollbody")
         outer = QVBoxLayout(body); outer.setContentsMargins(0, 3, 3, 15); outer.setSpacing(18)
         status, sl = card()
-        sl.addWidget(label("Hlídání prostředků Mutagenu", size=17, bold=True))
-        sl.addWidget(label("Upozornění se aktivuje až po souvislém překročení prahu. "
-                           "Další upozornění se odešle až po návratu pod limit a novém překročení.", muted=True))
+        sl.addWidget(label("Mutagen Resource Monitoring", size=17, bold=True))
+        sl.addWidget(label("An alert is triggered only after the threshold is exceeded continuously. "
+                           "Another alert is sent only after values fall below the limit and exceed it again.", muted=True))
         form = QFormLayout(); form.setVerticalSpacing(15)
-        self.cpu_alert_on = QCheckBox("Hlásit dlouhodobě vysoké CPU")
+        self.cpu_alert_on = QCheckBox("Alert on Sustained High CPU")
         self.cpu_alert_on.setChecked(bool(self.conf.get("cpu_alert_on", False)))
+        self.cpu_alert_on.setToolTip("Shows a system notification when CPU exceeds the limit for the configured duration.")
         form.addRow("CPU", self.cpu_alert_on)
         self.cpu_alert_limit = QSpinBox(); self.cpu_alert_limit.setRange(1, 1600)
         self.cpu_alert_limit.setSuffix(" %"); self.cpu_alert_limit.setValue(int(self.conf.get("cpu_alert_limit", 90)))
-        form.addRow("Limit CPU (součet jader)", self.cpu_alert_limit)
-        self.ram_alert_on = QCheckBox("Hlásit dlouhodobě vysokou RAM")
+        self.cpu_alert_limit.setToolTip("CPU threshold across all cores (200% = 2 cores at full load).\nRecommended: 90–150% for a dual-core system.")
+        form.addRow("CPU Limit (All Cores)", self.cpu_alert_limit)
+        self.ram_alert_on = QCheckBox("Alert on Sustained High RAM")
         self.ram_alert_on.setChecked(bool(self.conf.get("ram_alert_on", False)))
+        self.ram_alert_on.setToolTip("Shows a system notification when RAM exceeds the limit for the configured duration.")
         form.addRow("RAM", self.ram_alert_on)
         self.ram_alert_limit = QSpinBox(); self.ram_alert_limit.setRange(64, 131072)
         self.ram_alert_limit.setSuffix(" MB"); self.ram_alert_limit.setValue(int(self.conf.get("ram_alert_limit", 1024)))
-        form.addRow("Limit RAM", self.ram_alert_limit)
+        self.ram_alert_limit.setToolTip("RAM threshold in MB for all Mutagen processes.\nRecommended: 512–2048 MB, depending on available memory.")
+        form.addRow("RAM Limit", self.ram_alert_limit)
         self.alert_hold = QSpinBox(); self.alert_hold.setRange(5, 600)
         self.alert_hold.setSuffix(" s"); self.alert_hold.setValue(int(self.conf.get("alert_hold", 20)))
-        form.addRow("Doba překročení", self.alert_hold)
+        self.alert_hold.setToolTip("How long the threshold must remain exceeded before an alert is sent.\nPrevents false alarms from brief spikes.")
+        form.addRow("Threshold Duration", self.alert_hold)
         sl.addLayout(form)
-        sl.addWidget(button("Uložit pravidla upozornění", self.save_alert_rules, kind="primary"))
+        sl.addWidget(button("Save Alert Rules", self.save_alert_rules, kind="primary"))
         outer.addWidget(status)
         detail, dl = card()
-        dl.addWidget(label("Aktuální hodnoty", size=16, bold=True))
-        self.alert_runtime_label = label("Čekám na měření…", muted=True)
+        dl.addWidget(label("Current Values", size=16, bold=True))
+        self.alert_runtime_label = label("Waiting for measurements…", muted=True)
         dl.addWidget(self.alert_runtime_label)
-        dl.addWidget(label("Upozornění se zapisují do Historie akcí a volitelně se zobrazují "
-                           "v oznamovací oblasti Windows. CPU/RAM se vztahují ke všem místním procesům Mutagenu.", muted=True))
+        dl.addWidget(label("Alerts are recorded in Action History and can also be shown "
+                           "in the Windows notification area. CPU/RAM values cover all local Mutagen processes.", muted=True))
         outer.addWidget(detail)
         outer.addStretch()
         page.setWidget(body)
@@ -1373,7 +1517,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc)); return
         self.alert_engine = AlertEngine()  # Re-arm with new thresholds
-        self.add_log("Pravidla upozornění uložena")
+        self.add_log("Alert rules saved")
 
     def settings_page(self):
         page = QScrollArea(); page.setWidgetResizable(True); page.setFrameShape(QFrame.Shape.NoFrame)
@@ -1381,89 +1525,101 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(root); layout.setContentsMargins(0, 3, 8, 14); layout.setSpacing(17)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         pathcard, pl = card()
-        pl.addWidget(label("Instalace Mutagenu", size=16, bold=True))
-        pl.addWidget(label("Aplikace komunikuje s mutagen.exe. Pokud není v systémové PATH, vyberte ho ručně.", muted=True))
+        pl.addWidget(label("Mutagen CLI Location", size=16, bold=True))
+        pl.addWidget(label("The application communicates with mutagen.exe. If it is not on the system PATH, select it manually.", muted=True))
         r = QHBoxLayout()
         self.binary_edit = QLineEdit(self.conf.get("binary", ""))
-        self.binary_edit.setPlaceholderText(r"C:\Program Files\Mutagen\mutagen.exe   (nebo prázdné = PATH)")
+        self.binary_edit.setPlaceholderText(r"C:\Program Files\Mutagen\mutagen.exe   (or blank = PATH)")
         r.addWidget(self.binary_edit, 1)
-        r.addWidget(button("Vybrat…", self.browse_binary)); pl.addLayout(r)
-        self.version_label = label("Verze: nezjištěna", muted=True)
+        r.addWidget(button("Select…", self.browse_binary)); pl.addLayout(r)
+        self.version_label = label("Version: not detected", muted=True)
         pl.addWidget(self.version_label)
         layout.addWidget(pathcard)
         prefs, pr = card()
-        pr.addWidget(label("Chování aplikace", size=16, bold=True))
+        pr.addWidget(label("Application Behavior", size=16, bold=True))
         form = QFormLayout(); form.setVerticalSpacing(18)
         self.interval_input = QSpinBox(); self.interval_input.setRange(2, 30)
         self.interval_input.setSuffix(" s")
         self.interval_input.setMinimumWidth(160)
         self.interval_input.setValue(max(2, min(30, int(self.conf.get("interval", 4)))))
-        form.addRow("Obnova relací", self.interval_input)
+        self.interval_input.setToolTip("How often the session list and statuses are refreshed.\nLower values = fresher data, higher CPU usage. Recommended: 4–8 s.")
+        form.addRow("Session Refresh", self.interval_input)
         self.metric_interval_input = QComboBox()
         for seconds in (1, 2, 3, 5, 10):
             self.metric_interval_input.addItem(f"{seconds} s", seconds)
         saved = int(self.conf.get("metric_interval", 2))
         self.metric_interval_input.setCurrentIndex(max(0, self.metric_interval_input.findData(saved)))
         self.metric_interval_input.setMinimumWidth(160)
-        form.addRow("Vzorkování CPU/RAM", self.metric_interval_input)
-        self.adaptive_input = QCheckBox("Automaticky zvýšit frekvenci čtení při aktivitě a zvolnit po zklidnění")
+        self.metric_interval_input.setToolTip("How often CPU and RAM usage of Mutagen processes is measured.\nLower values = more accurate graphs, higher load. Recommended: 2 s.")
+        form.addRow("CPU/RAM Sampling", self.metric_interval_input)
+        self.adaptive_input = QCheckBox("Increase polling frequency during activity and reduce it when idle")
         self.adaptive_input.setChecked(bool(self.conf.get("adaptive_poll", True)))
-        form.addRow("Adaptivní čtení stavů", self.adaptive_input)
+        self.adaptive_input.setToolTip(
+            "Adaptive polling: the UI refreshes faster during data transfers,\n"
+            "then switches to the slower ‘When Idle’ interval after activity subsides.\n"
+            "Saves resources while keeping active sync responsive.")
+        form.addRow("Adaptive Status Polling", self.adaptive_input)
         self.fast_interval_input = QSpinBox(); self.fast_interval_input.setRange(2, 15)
         self.fast_interval_input.setValue(int(self.conf.get("adaptive_fast", 2)))
         self.fast_interval_input.setSuffix(" s"); self.fast_interval_input.setMinimumWidth(160)
-        form.addRow("Při aktivitě", self.fast_interval_input)
+        self.fast_interval_input.setToolTip("Refresh interval while sync activity is detected (transfers or status changes).")
+        form.addRow("During Activity", self.fast_interval_input)
         self.idle_interval_input = QSpinBox(); self.idle_interval_input.setRange(5, 180)
         self.idle_interval_input.setValue(int(self.conf.get("adaptive_idle", 30)))
         self.idle_interval_input.setSuffix(" s"); self.idle_interval_input.setMinimumWidth(160)
-        form.addRow("Po zklidnění", self.idle_interval_input)
+        self.idle_interval_input.setToolTip("Refresh interval after the ‘Idle After’ period with no activity.\nLonger intervals save CPU while idle.")
+        form.addRow("When Idle", self.idle_interval_input)
         self.quiet_after_input = QSpinBox(); self.quiet_after_input.setRange(15, 900)
         self.quiet_after_input.setValue(int(self.conf.get("adaptive_quiet", 90)))
         self.quiet_after_input.setSuffix(" s"); self.quiet_after_input.setMinimumWidth(160)
-        form.addRow("Doba klidu", self.quiet_after_input)
+        self.quiet_after_input.setToolTip("How long without detected activity before switching to the slower ‘When Idle’ interval.")
+        form.addRow("Idle After", self.quiet_after_input)
         self.new_sync_profile_input = QComboBox()
         for code, (title, _) in PROFILES.items():
             self.new_sync_profile_input.addItem(title, code)
         self.new_sync_profile_input.setCurrentIndex(max(0, self.new_sync_profile_input.findData(
             self.conf.get("new_sync_profile", "default"))))
         self.new_sync_profile_input.setMinimumWidth(290)
-        form.addRow("Nové synchronizace", self.new_sync_profile_input)
-        self.eco_tray_input = QCheckBox("V oznamovací oblasti snížit frekvenci měření a obnovy relací")
+        self.new_sync_profile_input.setToolTip("Default change detection profile for newly created sync sessions.\nDoes not change existing sessions.")
+        form.addRow("New Sync Sessions", self.new_sync_profile_input)
+        self.eco_tray_input = QCheckBox("Reduce measurement and session refresh frequency in the notification area")
         self.eco_tray_input.setChecked(self.conf.get("eco_tray", True))
-        form.addRow("Úsporný režim", self.eco_tray_input)
-        self.tray_input = QCheckBox("Zavřením okna minimalizovat do oznamovací oblasti")
+        form.addRow("Power Saving Mode", self.eco_tray_input)
+        self.tray_input = QCheckBox("Minimize to the notification area when closing the window")
         self.tray_input.setChecked(self.conf.get("tray", True))
-        form.addRow("Oznamovací oblast", self.tray_input)
-        self.alert_input = QCheckBox("Upozornit v oznamovací oblasti při nově zjištěném problému")
+        self.tray_input.setToolTip("The application stays running and hides in the notification area (system tray). To exit completely, right-click its icon.")
+        form.addRow("Notification Area", self.tray_input)
+        self.alert_input = QCheckBox("Show a notification when a new issue is detected")
         self.alert_input.setChecked(self.conf.get("alerts", True))
-        form.addRow("Upozornění", self.alert_input)
+        self.alert_input.setToolTip("Shows a Windows notification when a session error or issue is detected.")
+        form.addRow("Notifications", self.alert_input)
         pr.addLayout(form)
-        explanation = label("Adaptivní režim mění pouze frekvenci čtení stavů GUI. Mutagen sleduje změny souborů sám. "
-                            "Profily pro nové relace nastavují nativní watch/polling při vytvoření. "
-                            "Již vytvořeným relacím zde neměníme interní konfiguraci ani neomezujeme rychlost přenosu.", muted=True, size=11)
+        explanation = label("Adaptive mode changes only how often the UI polls status. Mutagen watches for file changes itself. "
+                            "Profiles for new sessions configure native watch/polling settings at creation. "
+                            "This does not change existing sessions' internal configuration or limit transfer speed.", muted=True, size=11)
         explanation.setWordWrap(True); pr.addWidget(explanation)
-        pr.addWidget(button("Uložit nastavení", self.save_settings, kind="primary"))
+        pr.addWidget(button("Save Settings", self.save_settings, kind="primary"))
         layout.addWidget(prefs)
         note, nl = card()
-        nl.addWidget(label("Informace a omezení", size=16, bold=True))
-        text = label("• CPU, RAM a procesové I/O jsou souhrnem místních procesů Mutagenu, nikoliv jednotlivých relací.\n"
-                     "• Mutagen CLI neposkytuje univerzální limit přenosové rychlosti pro existující sync; profily watch/polling platí pro nové relace.\n"
-                     "• Počty souborů a konflikty pocházejí z exportovaného stavu relací.\n"
-                     "• Relace mohou vytvářet SSH výzvy; doporučeny jsou bezobslužné SSH klíče.\n"
-                     "• Tato aplikace není oficiálním produktem Mutagen a nemění jeho interní databázi.", muted=True)
+        nl.addWidget(label("Information and Limitations", size=16, bold=True))
+        text = label("• CPU, RAM, and process I/O are totals for local Mutagen processes, not individual sessions.\n"
+                     "• The Mutagen CLI provides no universal bandwidth limit for existing sync sessions; watch/polling profiles apply to new sessions.\n"
+                     "• File and conflict counts come from the exported session status.\n"
+                     "• Sessions may prompt for SSH credentials; unattended SSH keys are recommended.\n"
+                     "• This application is not an official Mutagen product and does not modify its internal database.", muted=True)
         text.setWordWrap(True); nl.addWidget(text)
         layout.addWidget(note)
         layout.addStretch(); page.setWidget(root); return page
 
     def browse_binary(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Vyberte mutagen.exe", str(Path.home()), "Executable (*.exe);;All files (*)")
+        path, _ = QFileDialog.getOpenFileName(self, "Select mutagen.exe", str(Path.home()), "Executable (*.exe);;All files (*)")
         if path: self.binary_edit.setText(path)
 
     def save_settings(self):
         binary = self.binary_edit.text().strip()
         client = MutagenClient(binary)
         if binary and not client.binary:
-            QMessageBox.warning(self, "Neplatný soubor", "Vybraný soubor mutagen.exe neexistuje nebo není dostupný.")
+            QMessageBox.warning(self, "Invalid File", "The selected mutagen.exe file does not exist or is unavailable.")
             return
         self.conf.update(binary=binary, interval=self.interval_input.value(),
                          metric_interval=self.metric_interval_input.currentData(),
@@ -1480,20 +1636,20 @@ class MainWindow(QMainWindow):
         try:
             write_settings(self.conf)
         except OSError as exc:
-            QMessageBox.critical(self, "Uložení selhalo", str(exc)); return
+            QMessageBox.critical(self, "Save Failed", str(exc)); return
         self.client = client
         self.poll_backoff.base = max(2, self.interval_input.value())
         self.poll_backoff.observe(True)
         self.update_polling_mode()
         self._version_cache = ("", 0.0, "")
         self._table_signatures.clear()
-        self.add_log("Nastavení uloženo")
+        self.add_log("Settings saved")
         self.refresh(force=True)
 
     def add_log(self, message):
         safe_message = str(message).replace("\r", "").strip()
         self.logs.append(f"[{datetime.now():%d.%m. %H:%M:%S}] {safe_message}")
-        severity = "warning" if "CHYBA" in safe_message or "POZOR" in safe_message else "info"
+        severity = "warning" if "ERROR" in safe_message or "WARNING" in safe_message else "info"
         if self.recorder is not None:
             self.recorder.add_event(safe_message, severity)
         else:
@@ -1504,7 +1660,7 @@ class MainWindow(QMainWindow):
             bar = self.log_view.verticalScrollBar(); bar.setValue(bar.maximum())
         if hasattr(self, "log_count_label"):
             n = len(self.logs)
-            self.log_count_label.setText(f"{n} {'záznam' if n == 1 else 'záznamy' if 2 <= n <= 4 else 'záznamů'}")
+            self.log_count_label.setText(f"{n} {'entry' if n == 1 else 'entries' if 2 <= n <= 4 else 'entries'}")
 
     def clear_logs(self):
         self.logs.clear(); self.log_view.clear()
@@ -1513,15 +1669,15 @@ class MainWindow(QMainWindow):
         else:
             try: self.history.clear_events()
             except sqlite3.Error: pass
-        self.add_log("Historie GUI vymazána")
+        self.add_log("UI history cleared")
 
     def export_logs(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Uložit historii", "mutagen-control-log.txt", "Text (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(self, "Save History", "mutagen-control-log.txt", "Text (*.txt)")
         if not path: return
         try:
             Path(path).write_text("\n".join(self.logs) + "\n", encoding="utf-8")
         except OSError as exc:
-            QMessageBox.critical(self, "Chyba zápisu", str(exc))
+            QMessageBox.critical(self, "Write Error", str(exc))
 
     def submit(self, func, on_result, on_error=None, on_done=None):
         worker = Worker(func)
@@ -1551,7 +1707,7 @@ class MainWindow(QMainWindow):
             snap = Snapshot(binary=client.binary)
             snap.registration, snap.registration_command = read_registration(client.binary)
             if not client.binary:
-                snap.error = "Není nastaven mutagen.exe. Otevřete Nastavení."
+                snap.error = "mutagen.exe is not configured. Open Settings."
                 return snap
             try:
                 snap.sync = client.list_sessions("sync")
@@ -1562,7 +1718,7 @@ class MainWindow(QMainWindow):
             try:
                 snap.forward = client.list_sessions("forward")
             except MutagenError as exc:
-                snap.error = "Přesměrování: " + str(exc)
+                snap.error = "Forwarding: " + str(exc)
             if version_valid:
                 snap.version = cached_version
             else:
@@ -1583,7 +1739,7 @@ class MainWindow(QMainWindow):
             return
         self._resource_pending = True
         self.submit(self.sampler.sample_detailed, self.apply_resource_metrics,
-                    on_error=lambda message: self.footer.setToolTip("Měření procesů: " + message),
+                    on_error=lambda message: self.footer.setToolTip("Process monitoring: " + message),
                     on_done=lambda: setattr(self, "_resource_pending", False))
 
     def apply_resource_metrics(self, data):
@@ -1599,25 +1755,25 @@ class MainWindow(QMainWindow):
                 cpu_limit=float(self.conf.get("cpu_alert_limit", 90)),
                 ram_limit_mb=float(self.conf.get("ram_alert_limit", 1024)),
                 hold_seconds=float(self.conf.get("alert_hold", 20))):
-                self.add_log("POZOR: " + alert.message)
+                self.add_log("WARNING: " + alert.message)
                 if self.conf.get("alerts", True) and self.tray.isVisible():
-                    self.tray.showMessage("Mutagen Control – limit", alert.message,
+                    self.tray.showMessage("Mutagen Control — Limit", alert.message,
                                           QSystemTrayIcon.MessageIcon.Warning, 7000)
         if self.recorder is not None:
             if self.recorder.last_error:
-                self.writer_status.setText('Historie: chyba zápisu')
+                self.writer_status.setText('History: write error')
                 self.writer_status.setToolTip(self.recorder.last_error)
             elif self.recorder.dropped:
-                self.writer_status.setText(f'Historie: vynecháno {self.recorder.dropped} vzorků')
+                self.writer_status.setText(f'History: skipped {self.recorder.dropped} samples')
             else:
-                self.writer_status.setText('Historie: průběžně ukládána')
+                self.writer_status.setText('History: saving continuously')
         else:
-            self.writer_status.setText('Historie: demonstrační režim')
+            self.writer_status.setText('History: demo mode')
         if hasattr(self, "gui_usage_label"):
             self.gui_usage_label.setText(
-                f"Zatížení aplikace: CPU {data.get('gui_cpu', 0):.1f} %  ·  "
+                f"Application load: CPU {data.get('gui_cpu', 0):.1f} %  ·  "
                 f"RAM {human_bytes(data.get('gui_memory', 0))}  ·  "
-                "měřeno za proces GUI, nikoliv za Mutagen")
+                "measured for the UI process, not Mutagen")
         self.snapshot.cpu, self.snapshot.memory, self.snapshot.processes = cpu, ram, count
         # State changes only on CLI polls, not on each CPU sample.
         active, problems = self.session_counts
@@ -1627,9 +1783,9 @@ class MainWindow(QMainWindow):
                         processes=count, active_sessions=active, problem_sessions=problems)
         if self.recorder is not None:
             if not self.recorder.add(sample):
-                self.footer.setToolTip('Zapisovač historie už není dostupný')
+                self.footer.setToolTip('History writer is no longer available')
             elif self.recorder.last_error:
-                self.footer.setToolTip('Historie: ' + self.recorder.last_error)
+                self.footer.setToolTip('History: ' + self.recorder.last_error)
         else:
             try: self.history.add(sample)
             except sqlite3.Error as exc: self.footer.setToolTip(str(exc))
@@ -1640,8 +1796,8 @@ class MainWindow(QMainWindow):
             self.monitor_labels["memory"].setText(human_bytes(ram))
             self.monitor_labels["disk"].setText(f"↓ {human_bytes(data['read_rate'])}/s · ↑ {human_bytes(data['write_rate'])}/s")
             self.monitor_labels["traffic"].setText(
-                f"ven {human_bytes(self.traffic_rates[0])}/s · dovnitř {human_bytes(self.traffic_rates[1])}/s")
-            self.monitor_labels["sessions"].setText(f"{active} aktivních · {problems} problémů")
+                f"out {human_bytes(self.traffic_rates[0])}/s · in {human_bytes(self.traffic_rates[1])}/s")
+            self.monitor_labels["sessions"].setText(f"{active} active · {problems} issues")
         if hasattr(self, "process_table") and self.pages.currentIndex() == 6:
             detail = ([{"pid": 1840, "name": "mutagen.exe", "cpu": 3.7, "memory": 100_000_000,
                         "read_rate": 50_000, "write_rate": 100_000},
@@ -1675,6 +1831,7 @@ class MainWindow(QMainWindow):
             table.setSortingEnabled(True)
         finally:
             table.setUpdatesEnabled(True)
+        self.fit_table_to_rows(table)
 
     def refresh_charts(self, *args, force=False):
         if self.chart_frozen and not force: return
@@ -1709,7 +1866,7 @@ class MainWindow(QMainWindow):
                 self.submit(
                     lambda: query_metrics_from_file(path, hours=hours),
                     lambda rows: self.apply_monitor_chart_data(rows, hours),
-                    lambda error: self.stats_label.setToolTip('Historie grafu: ' + str(error)[:150]),
+                    lambda error: self.stats_label.setToolTip('Graph history: ' + str(error)[:150]),
                     on_done=finished_query,
                 )
             else:
@@ -1725,12 +1882,12 @@ class MainWindow(QMainWindow):
                 self.apply_statistics(self.history.statistics(hours=hours), hours)
             else:
                 self._stats_pending = True
-                self.stats_label.setText("Načítám statistiky vybraného období…")
+                self.stats_label.setText("Loading statistics for the selected period…")
                 path = self.history.path
                 self.submit(
                     lambda: statistics_from_file(path, hours=hours),
                     lambda data: self.apply_statistics(data, hours),
-                    lambda error: self.stats_label.setText("Statistiky nelze načíst: " + str(error)[:140]),
+                    lambda error: self.stats_label.setText("Could not load statistics: " + str(error)[:140]),
                     on_done=lambda: setattr(self, "_stats_pending", False),
                 )
         except sqlite3.Error:
@@ -1758,16 +1915,16 @@ class MainWindow(QMainWindow):
         self._stats_cache_range = hours
         def fmt(field, unit):
             values = stats["fields"][field]
-            return (f"{unit}: aktuálně {field_format(field, values['latest'])}  ·  "
-                    f"průměr {field_format(field, values['avg'])}  ·  "
+            return (f"{unit}: current {field_format(field, values['latest'])}  ·  "
+                    f"average {field_format(field, values['avg'])}  ·  "
                     f"P95 {field_format(field, values['p95'])}  ·  "
                     f"maximum {field_format(field, values['max'])}")
         self.stats_label.setText(
-            f"Naměřeno {stats['samples']} vzorků; chybějící období nejsou dopočítávána.\n"
+            f"Measured {stats['samples']} samples; missing periods are not interpolated.\n"
             + fmt("cpu", "CPU") + "\n" + fmt("memory", "RAM") + "\n"
-            + fmt("read_rate", "Disk čtení") + "\n" + fmt("write_rate", "Disk zápis") + "\n"
+            + fmt("read_rate", "Disk Read") + "\n" + fmt("write_rate", "Disk Write") + "\n"
             + fmt("forward_out_rate", "Forward ven") + "\n"
-            + fmt("forward_in_rate", "Forward dovnitř"))
+            + fmt("forward_in_rate", "Forward Inbound"))
 
     def apply_snapshot(self, snap):
         # Preserve separately sampled resource measurements.
@@ -1789,34 +1946,38 @@ class MainWindow(QMainWindow):
             self.poll_backoff.observe(bool(snap.daemon))
         duration_ms = (time.monotonic() - self._poll_started_at) * 1000 if self._poll_started_at else 0
         self.updated.setText("DEMO DATA" if self.demo else
-            (f"Obnoveno {datetime.now():%H:%M:%S}  ·  CLI {duration_ms:.0f} ms" if snap.daemon
-             else f"Daemon offline · další pokus za {self.poll_backoff.remaining():.0f} s"))
-        self.version_label.setText(snap.version or "Verze: není dostupná")
+            (f"Refreshed {datetime.now():%H:%M:%S}  ·  CLI {duration_ms:.0f} ms" if snap.daemon
+             else f"Daemon offline · retrying in {self.poll_backoff.remaining():.0f} s"))
+        self.version_label.setText(snap.version or "Version: unavailable")
         regtexts = {
-            "registered": "Automatické spuštění: registrováno pro tuto instalaci",
-            "unregistered": "Automatické spuštění: neregistrováno",
-            "other": "Automatické spuštění: záznam ukazuje na jinou instalaci / příkaz",
-            "unknown": "Automatické spuštění: stav nelze zjistit",
-            "unsupported": "Automatické spuštění: zjištění dostupné jen ve Windows",
+            "registered": "Auto-start: registered for this installation",
+            "unregistered": "Auto-start: not registered",
+            "other": "Auto-start: entry points to another installation/command",
+            "unknown": "Auto-start: status unknown",
+            "unsupported": "Auto-start: detection is available on Windows only",
         }
-        self.register_message.setText(regtexts.get(snap.registration, "Registrace: nezjištěno"))
-        self.register_message.setToolTip(snap.registration_command or "Záznam v HKCU\\...\\Run\\Mutagen")
+        self.register_message.setText(regtexts.get(snap.registration, "Registration: unknown"))
+        self.register_message.setToolTip(snap.registration_command or "Registry entry in HKCU\\...\\Run\\Mutagen")
         available = bool(snap.binary)
         if not available:
-            self.side_state.setText("●  CLI nenalezeno")
+            self.side_state.setText("●  Mutagen CLI not found")
             self.side_state.setStyleSheet(f"color:{RED}")
-            self.side_sub.setText("Vyberte mutagen.exe v Nastavení")
+            self.side_sub.setText("Select mutagen.exe in Settings")
         elif snap.daemon:
             self.side_state.setText("●  Daemon online")
             self.side_state.setStyleSheet(f"color:{TEAL}")
-            self.side_sub.setText(f"{len(snap.sync)} synchronizací · {len(snap.forward)} přesměrování")
+            sync_count = len(snap.sync)
+            forward_count = len(snap.forward)
+            sync_noun = "sync" if sync_count == 1 else "syncs"
+            forward_noun = "port forward" if forward_count == 1 else "port forwards"
+            self.side_sub.setText(f"{sync_count} {sync_noun} · {forward_count} {forward_noun}")
         else:
             self.side_state.setText("●  Daemon offline")
             self.side_state.setStyleSheet(f"color:{AMBER}")
-            self.side_sub.setText((snap.error or "Zatím není spuštěn")[:120])
-        self.hero_title.setText("Daemon běží" if snap.daemon else "Daemon není dostupný")
-        self.hero_sub.setText("Synchronizace běží na pozadí. Systém sleduje jejich stav." if snap.daemon
-                              else "V části Daemon můžete službu spustit nebo otevřít Nastavení.")
+            self.side_sub.setText((snap.error or "Not running yet")[:120])
+        self.hero_title.setText("Daemon is running" if snap.daemon else "Daemon is unavailable")
+        self.hero_sub.setText("Sync runs in the background. The application monitors its status." if snap.daemon
+                              else "Go to the Daemon page to start the service or open Settings.")
         # Version badge in hero
         if hasattr(self, "hero_badge"):
             if snap.version:
@@ -1824,10 +1985,10 @@ class MainWindow(QMainWindow):
                 self.hero_badge.setVisible(True)
             else:
                 self.hero_badge.setVisible(False)
-        self.daemon_title.setText("●  Spuštěný" if snap.daemon else "●  Nedostupný / zastavený")
+        self.daemon_title.setText("●  Running" if snap.daemon else "●  Unavailable / stopped")
         self.daemon_title.setStyleSheet(f"color:{TEAL if snap.daemon else AMBER};font-size:22px;font-weight:750")
-        self.daemon_desc.setText(("Daemon odpovídá; " + snap.error if snap.error else "Daemon odpovídá na dotazy.") if snap.daemon
-                                 else (snap.error or "Daemon není spuštěný."))
+        self.daemon_desc.setText(("Daemon responded; " + snap.error if snap.error else "Daemon is responding.") if snap.daemon
+                                 else (snap.error or "Daemon is not running."))
         for b in (self.start_button, self.stop_button): b.setEnabled(not self.demo and available and not self.pending_action)
         all_sessions = [("sync", x) for x in snap.sync] + [("forward", x) for x in snap.forward]
         kinds = [classify(x, k)[0] for k, x in all_sessions]
@@ -1837,19 +1998,19 @@ class MainWindow(QMainWindow):
         self.metric_widgets["errors"].setText(str(kinds.count("error")))
         self.health_ring.set_health(len(kinds), kinds.count('error'))
         self.session_counts = (sum(s in ("active", "busy") for s in kinds), kinds.count("error"))
-        self.sync_summary.setText(f"{len(snap.sync)} synchronizací • {sum(bool(x.get('paused')) for x in snap.sync)} pozastavených")
-        self.forward_summary.setText(f"{len(snap.forward)} přesměrování • data a aktivní spojení v detailech")
+        self.sync_summary.setText(f"{len(snap.sync)} sync sessions • {sum(bool(x.get('paused')) for x in snap.sync)} paused")
+        self.forward_summary.setText(f"{len(snap.forward)} forwarding sessions • data and active connections in details")
         # Dashboard forward summary line
         if hasattr(self, "dashboard_forward_summary"):
             fwd_active = sum(1 for s in snap.forward if classify(s, "forward")[0] in ("active", "busy"))
             fwd_total = len(snap.forward)
             if fwd_total:
                 self.dashboard_forward_summary.setText(
-                    f"{fwd_total} celkem · {fwd_active} aktivních · "
-                    f"{sum(1 for s in snap.forward if s.get('openConnections', 0) > 0)} s otevřeným spojením"
+                    f"{fwd_total} total · {fwd_active} active · "
+                    f"{sum(1 for s in snap.forward if s.get('openConnections', 0) > 0)} with open connections"
                 )
             else:
-                self.dashboard_forward_summary.setText("Žádná přesměrování")
+                self.dashboard_forward_summary.setText("No forwarding sessions")
         # Rebuilding and re-sorting entire QTableWidgets on every 4 s poll
         # causes avoidable flicker and allocates dozens of QTableWidgetItems.
         for kind, sessions, table in (("sync", snap.sync, self.sync_table),
@@ -1875,8 +2036,8 @@ class MainWindow(QMainWindow):
             self.update_diagnostics(snap)
         self.update_endpoint_sessions(snap)
         self.update_server_groups()
-        self.footer.setText("DEMO • Vypnuty všechny akce" if self.demo else
-                            ("Připojeno k " + snap.binary if available else "Vyberte instalaci Mutagenu"))
+        self.footer.setText("DEMO • All actions are disabled" if self.demo else
+                            ("Connected to " + snap.binary if available else "Select a Mutagen installation"))
 
     def fill_table(self, table, sessions, kind, dashboard=False):
         """Reuse existing cells when possible instead of recreating the table.
@@ -1898,7 +2059,7 @@ class MainWindow(QMainWindow):
             for row, session in enumerate(sessions):
                 status, description = classify(session, kind)
                 identifier = session.get('identifier', '')
-                name = session.get('name') or identifier[:22] or '(bez názvu)'
+                name = session.get('name') or identifier[:22] or '(unnamed)'
                 if identifier in self.favorites[kind]:
                     name = '★ ' + name
                 source = endpoint_text(session.get('alpha' if kind == 'sync' else 'source'), kind)
@@ -1930,12 +2091,6 @@ class MainWindow(QMainWindow):
                         color = MUTED
                     if created or item.foreground().color() != QColor(color):
                         item.setForeground(QColor(color))
-            table.setColumnWidth(0, 195)
-            table.setColumnWidth(1, 182)
-            table.setColumnWidth(2, 255)
-            if not dashboard:
-                table.setColumnWidth(3, 265)
-                table.setColumnWidth(4, 105)
             if selection:
                 for row in range(table.rowCount()):
                     item = table.item(row, 0)
@@ -1951,13 +2106,23 @@ class MainWindow(QMainWindow):
         finally:
             table.setUpdatesEnabled(True)
             table.blockSignals(False)
+        self.fit_table_to_rows(table)
+
+    @staticmethod
+    def fit_table_to_rows(table):
+        visible_rows = [row for row in range(table.rowCount()) if not table.isRowHidden(row)]
+        rows_height = sum(table.rowHeight(row) for row in visible_rows)
+        header_height = max(table.horizontalHeader().height(), table.horizontalHeader().sizeHint().height())
+        height = max(160, header_height + rows_height + 2 * table.frameWidth() + 4)
+        table.setFixedHeight(height)
 
     def filter_table(self, kind, value=None):
         table = self.sync_table if kind == "sync" else self.forward_table
         search = self.sync_search if kind == "sync" else self.forward_search
         filters = self.sync_state_filter if kind == "sync" else self.forward_state_filter
         needle = (value if isinstance(value, str) else search.text()).casefold().strip()
-        code = {1: "active", 2: "busy", 3: "paused", 4: "error", 5: "idle"}.get(filters.currentIndex())
+        code = {1: "active", 2: "busy", 3: {"active", "busy"},
+                4: "paused", 5: "error", 6: "idle"}.get(filters.currentIndex())
         only_favorites = (self.sync_favorites_only if kind == "sync" else self.forward_favorites_only).isChecked()
         server_key = self.sync_server_filter.currentData() if kind == "sync" else "__all__"
         by_id = {s.get("identifier"): s for s in (self.snapshot.sync if kind == "sync" else self.snapshot.forward)}
@@ -1966,11 +2131,16 @@ class MainWindow(QMainWindow):
                                 if table.item(row, col)).casefold()
             identifier = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
             current = by_id.get(identifier)
-            meets_state = code is None or (current is not None and classify(current, kind)[0] == code)
+            current_state = classify(current, kind)[0] if current is not None else None
+            if isinstance(code, set):
+                meets_state = current_state in code
+            else:
+                meets_state = code is None or current_state == code
             meets_server = (server_key == "__all__" or (current is not None and
                              server_key in session_servers(current, kind)))
             table.setRowHidden(row, needle not in haystack or not meets_state or not meets_server or
                                (only_favorites and identifier not in self.favorites[kind]))
+        self.fit_table_to_rows(table)
 
     def dashboard_select(self, row, col):
         item = self.dashboard_table.item(row, 0)
@@ -2011,37 +2181,43 @@ class MainWindow(QMainWindow):
         progress_bar.hide()
         fav_button = self.sync_favorite_button if kind == "sync" else self.forward_favorite_button
         fav_button.setEnabled(bool(sess))
-        fav_button.setText("★ Odebrat z oblíbených" if sess and sess.get("identifier") in self.favorites[kind]
-                           else "☆ Do oblíbených")
+        fav_button.setText("★ Remove from Favorites" if sess and sess.get("identifier") in self.favorites[kind]
+                           else "☆ Add to Favorites")
         for b in controls.values(): b.setEnabled(bool(sess) and not self.demo and not self.pending_action)
         if kind == "sync":
             auto = self.sync_autostart_button
             auto.setEnabled(bool(sess) and not self.demo and not self.pending_action)
             if not sess:
-                auto.setText("Start při přihlášení: vyberte relaci")
+                auto.setText("Start at sign-in: select a session")
             elif sess.get("paused"):
-                auto.setText("◯ Start po přihlášení: vypnuto")
+                auto.setText("◯ Start at sign-in: off")
             elif self.snapshot.registration == "registered":
-                auto.setText("● Start po přihlášení: zapnuto")
+                auto.setText("● Start at sign-in: on")
             else:
-                auto.setText("⚠ Zapnout start po přihlášení · registrovat daemon")
+                auto.setText("⚠ Enable start at sign-in · register daemon")
         if not sess:
-            title.setText("Vyberte relaci"); tag.setText("")
-            details.setText("Vyberte řádek výše pro detail, stav, statistiky a dostupné akce.")
+            title.setText("Select a session"); tag.setText("")
+            details.setText("Select a row above to view details, status, statistics, and available actions.")
             return
         state, description = classify(sess, kind)
-        title.setText(sess.get("name") or "Relace bez názvu")
+        title.setText(sess.get("name") or "Untitled Session")
         tag.setText(description)
         tag.setStyleSheet(f"color:{ {'error': RED, 'active': TEAL, 'paused': AMBER}.get(state, BLUE) }")
         first = endpoint_text(sess.get("alpha" if kind == "sync" else "source"), kind)
         second = endpoint_text(sess.get("beta" if kind == "sync" else "destination"), kind)
-        lines = [f"Identifikátor: {sess.get('identifier', '—')}",
-                 f"{'ALPHA' if kind == 'sync' else 'Zdroj'}: {first}",
-                 f"{'BETA' if kind == 'sync' else 'Cíl'}: {second}"]
+        sep = '─' * 44
+        lines = [f"IDENTIFIER\n{sess.get('identifier', '—')}",
+                 sep,
+                 f"{'ENDPOINTS' if kind == 'sync' else 'CONNECTION'}",
+                 f"{'ALPHA' if kind == 'sync' else 'Source'}\n{first}",
+                 f"{'BETA' if kind == 'sync' else 'Destination'}\n{second}"]
         if kind == "sync":
             alpha = sess.get("alpha") or {}; beta = sess.get("beta") or {}
-            lines += [f"Souborů: ALPHA {alpha.get('files', '—')} · BETA {beta.get('files', '—')}    |    Velikost ALPHA: {human_bytes(alpha.get('totalFileSize', 0))}",
-                      f"Úspěšných cyklů: {sess.get('successfulCycles', 0)}    |    Konflikty: {conflict_count(sess)}    |    Problémy: {problem_count(sess)}"]
+            lines += [sep, "SYNC OVERVIEW",
+                      f"Files: ALPHA {alpha.get('files', '—')} · BETA {beta.get('files', '—')}",
+                      f"Total size: {human_bytes(alpha.get('totalFileSize', 0))}",
+                      f"Successful cycles: {sess.get('successfulCycles', 0)}",
+                      f"Conflicts: {conflict_count(sess)} · Issues: {problem_count(sess)}"]
             stages = [("ALPHA", alpha.get("stagingProgress")), ("BETA", beta.get("stagingProgress"))]
             for target, prog in stages:
                 if prog:
@@ -2049,23 +2225,35 @@ class MainWindow(QMainWindow):
                     if expected_size:
                         percentage = min(100, round(100 * float(prog.get("receivedSize") or 0) / expected_size))
                         progress_bar.setValue(percentage)
-                        progress_bar.setFormat(f"Přenos do {target}: %p %")
+                        progress_bar.setFormat(f"Transfer to {target}: %p %")
                         progress_bar.show()
                     expected = max(1, prog.get("expectedSize", 0))
-                    lines.append(f"Přenos do {target}: {prog.get('path','')} · {100*prog.get('receivedSize',0)/expected:.0f} % "
+                    lines.append(f"Transfer to {target}: {prog.get('path','')} · {100*prog.get('receivedSize',0)/expected:.0f} % "
                                  f"({human_bytes(prog.get('receivedSize',0))} / {human_bytes(prog.get('expectedSize',0))})")
             confs = sess.get("conflicts") or []
-            if confs: lines.append("Konflikty (první): " + json.dumps(confs[:2], ensure_ascii=False)[:450])
+            if confs:
+                lines += [sep, "RECENT CONFLICTS"]
+                for index, conflict in enumerate(confs, 1):
+                    lines.append(f"Conflict {index}")
+                    lines.extend(readable_record_lines(conflict, indent=2))
             probs = [*alpha.get("scanProblems", []), *alpha.get("transitionProblems", []),
                      *beta.get("scanProblems", []), *beta.get("transitionProblems", [])]
-            if probs: lines.append("Problémy (první): " + json.dumps(probs[:2], ensure_ascii=False)[:450])
+            if probs:
+                lines += [sep, "RECENT ISSUES"]
+                for index, problem in enumerate(probs, 1):
+                    lines.append(f"Issue {index}")
+                    lines.extend(readable_record_lines(problem, indent=2))
         else:
-            lines += [f"Otevřená spojení: {sess.get('openConnections', 0)}    |    Celkem spojení: {sess.get('totalConnections', 0)}",
-                      f"Směr ven: {human_bytes(sess.get('totalOutboundData',0))}    |    Směr dovnitř: {human_bytes(sess.get('totalInboundData',0))}"]
-        if sess.get("lastError"): lines.append("POSLEDNÍ CHYBA: " + str(sess["lastError"]))
+            lines += [sep, "CONNECTION OVERVIEW",
+                      f"Open connections: {sess.get('openConnections', 0)} · Total: {sess.get('totalConnections', 0)}",
+                      f"Data out: {human_bytes(sess.get('totalOutboundData',0))}",
+                      f"Data in: {human_bytes(sess.get('totalInboundData',0))}"]
+        if sess.get("lastError"):
+            lines += [sep, "⚠ LAST ERROR: " + str(sess["lastError"])]
         custom_note = self.conf.get("session_prefs", {}).get(str(sess.get("identifier") or ""), {}).get("note")
-        if custom_note: lines.append("POZNÁMKA: " + custom_note)
-        details.setText("\n".join(lines))
+        if custom_note:
+            lines += [sep, "📝 NOTE: " + custom_note]
+        details.setText(session_detail_html(lines, sep))
         if "flush" in controls: controls["flush"].setEnabled(not sess.get("paused") and not self.demo and not self.pending_action)
         if "pause" in controls: controls["pause"].setEnabled(not sess.get("paused") and not self.demo and not self.pending_action)
         if "resume" in controls: controls["resume"].setEnabled(bool(sess.get("paused")) or state in ("error", "idle") if not self.demo and not self.pending_action else False)
@@ -2073,29 +2261,29 @@ class MainWindow(QMainWindow):
     def open_session_preferences(self, kind):
         sess = self.selected_session(kind)
         if not sess:
-            QMessageBox.information(self, "Vyberte relaci", "Nejprve vyberte relaci v tabulce.")
+            QMessageBox.information(self, "Select a session", "First, select a session in the table.")
             return
         identifier = str(sess.get("identifier") or "")
         prefs = dict(self.conf.get("session_prefs", {}).get(identifier, {}))
         dialog = QDialog(self)
-        dialog.setWindowTitle("Nastavení relace · " + (sess.get("name") or identifier[:14]))
+        dialog.setWindowTitle("Session Settings · " + (sess.get("name") or identifier[:14]))
         dialog.setMinimumWidth(480)
         box = QVBoxLayout(dialog); box.setSpacing(15); box.setContentsMargins(24, 22, 24, 22)
-        box.addWidget(label("Nastavení zobrazení a upozornění", size=17, bold=True))
-        notifications = QCheckBox("Upozorňovat na nově vzniklé chyby této relace")
+        box.addWidget(label("Display and Notification Settings", size=17, bold=True))
+        notifications = QCheckBox("Notify about new errors in this session")
         notifications.setChecked(bool(prefs.get("notifications", True)))
         box.addWidget(notifications)
-        box.addWidget(label("Vlastní poznámka k relaci", muted=True))
+        box.addWidget(label("Session Note", muted=True))
         note = QLineEdit(str(prefs.get("note", ""))); note.setMaxLength(180)
         box.addWidget(note)
         if kind == "sync":
-            box.addWidget(label("Skutečná konfigurace synchronizace z Mutagenu", size=14, bold=True))
+            box.addWidget(label("Actual Mutagen Sync Configuration", size=14, bold=True))
             native = label(native_config_text(sess), muted=True)
             native.setWordWrap(True); native.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             box.addWidget(native)
-            explanation = label("Watch režim a rychlost polling skenů jsou parametry samotného Mutagenu, "
-                                "které CLI umožňuje nastavit při vytváření relace. U existující relace je "
-                                "nelze měnit tímto dialogem. GUI ani neomezuje přenosovou rychlost.", muted=True, size=11)
+            explanation = label("Watch mode and scan polling frequency are Mutagen settings "
+                                "that the CLI lets you set when creating a session. For an existing session, "
+                                "they cannot be changed here. The UI does not limit transfer speed.", muted=True, size=11)
             explanation.setWordWrap(True); box.addWidget(explanation)
         controls = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         controls.accepted.connect(dialog.accept); controls.rejected.connect(dialog.reject)
@@ -2109,7 +2297,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc)); return
         self.refresh_detail(kind)
-        self.add_log("Nastavení relace uloženo")
+        self.add_log("Session settings saved")
 
     def new_current_session(self):
         page = self.pages.currentIndex()
@@ -2140,17 +2328,17 @@ class MainWindow(QMainWindow):
         sess = self.selected_session(kind)
         if sess:
             QApplication.clipboard().setText(str(sess.get("identifier", "")))
-            self.add_log("Identifikátor relace zkopírován do schránky")
+            self.add_log("Session identifier copied to clipboard")
 
     def export_session_json(self, kind):
         sess = self.selected_session(kind)
         if not sess: return
-        path, _ = QFileDialog.getSaveFileName(self, "Export relace (může obsahovat názvy serverů a cesty)",
+        path, _ = QFileDialog.getSaveFileName(self, "Export Session (may contain server names and paths)",
                                                "mutagen-session.json", "JSON (*.json)")
         if not path: return
         try:
             Path(path).write_text(json.dumps(sess, indent=2, ensure_ascii=False), encoding="utf-8")
-            self.add_log("Export relace JSON dokončen")
+            self.add_log("Session JSON export complete")
         except OSError as exc:
             self.report_error(str(exc))
 
@@ -2162,43 +2350,51 @@ class MainWindow(QMainWindow):
         sess = self.selected_session(kind)
         if not sess: return
         menu = QMenu(table)
-        menu.addAction("★ Odebrat z oblíbených" if sess.get("identifier") in self.favorites[kind] else "☆ Přidat do oblíbených",
+        menu.addAction("★ Remove from Favorites" if sess.get("identifier") in self.favorites[kind] else "☆ Add to Favorites",
                        lambda: self.toggle_favorite(kind))
-        menu.addAction("Zkopírovat ID", lambda: self.copy_session_id(kind))
+        menu.addAction("Copy ID", lambda: self.copy_session_id(kind))
         menu.addAction("Exportovat JSON…", lambda: self.export_session_json(kind))
         menu.addSeparator()
         if not self.demo:
             if sess.get("paused"):
-                menu.addAction("Pokračovat", lambda: self.session_action(kind, "resume"))
+                menu.addAction("Resume", lambda: self.session_action(kind, "resume"))
             else:
-                menu.addAction("Pozastavit", lambda: self.session_action(kind, "pause"))
+                menu.addAction("Pause", lambda: self.session_action(kind, "pause"))
             if kind == "sync":
-                menu.addAction("Synchronizovat nyní", lambda: self.session_action(kind, "flush"))
-                menu.addAction("Zapnout start po přihlášení" if sess.get("paused") else
-                               "Vypnout start po přihlášení (pozastavit)", self.toggle_sync_startup)
+                menu.addAction("Sync Now", lambda: self.session_action(kind, "flush"))
+                menu.addAction("Enable Start at Sign-In" if sess.get("paused") else
+                               "Disable Start at Sign-In (Pause)", self.toggle_sync_startup)
         menu.exec(table.viewport().mapToGlobal(point))
 
     def endpoints_page(self):
-        """Both endpoints as reported by Mutagen itself. Never open an extra connection."""
+        """Both endpoints as reported by Mutagen itself. Nover open an extra connection."""
         page = QScrollArea(); page.setWidgetResizable(True); page.setFrameShape(QFrame.Shape.NoFrame)
         body = QWidget(); body.setObjectName("scrollbody")
         layout = QVBoxLayout(body); layout.setContentsMargins(0, 3, 3, 15); layout.setSpacing(17)
         intro, il = card()
-        il.addWidget(label("Stav obou stran z Mutagen daemonu", size=18, bold=True))
+        il.addWidget(label("Both Endpoint Statuses from the Mutagen Daemon", size=18, bold=True))
         information = label(
-            "Data ALPHA/BETA pocházejí z lokálního Mutagen daemonu přes příkaz 'mutagen sync list'. "
-            "Nevytváříme další SSH/HTTP spojení, nic neinstalujeme na server a nespouštíme žádnou službu. "
-            "Vzdálený mutagen-agent komunikuje pouze se svým stávajícím Mutagen daemonem.",
+            "ALPHA/BETA data come from the local Mutagen daemon through 'mutagen sync list'. "
+            "No additional SSH/HTTP connections are made, nothing is installed on the server, and no service is started. "
+            "The remote mutagen-agent communicates only with its existing Mutagen daemon.",
             muted=True, size=12)
         information.setWordWrap(True); il.addWidget(information)
         chooser = QHBoxLayout()
-        chooser.addWidget(label("Relace:", muted=True))
-        self.endpoint_combo = QComboBox(); self.endpoint_combo.setMinimumWidth(340)
+        chooser.addWidget(label("Session:", muted=True))
+        self.endpoint_combo = QComboBox(); self.endpoint_combo.setMinimumWidth(460)
+        self.endpoint_combo.setEditable(True)
+        self.endpoint_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.endpoint_combo.lineEdit().setPlaceholderText("Search name, status, server, or path…")
+        self.endpoint_combo.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.endpoint_combo.completer().setFilterMode(Qt.MatchFlag.MatchContains)
         self.endpoint_combo.currentIndexChanged.connect(self.update_endpoint_details)
+        self.endpoint_combo.setToolTip("Search by name, status, server, or path. Select a session for ALPHA/BETA details.")
         chooser.addWidget(self.endpoint_combo, 1)
-        chooser.addWidget(button("↻ Obnovit z Mutagenu", lambda: self.refresh(force=True)))
+        ep_refresh_btn = button("↻ Refresh from Mutagen", lambda: self.refresh(force=True))
+        ep_refresh_btn.setToolTip("Immediately refreshes status from the local Mutagen daemon.")
+        chooser.addWidget(ep_refresh_btn)
         il.addLayout(chooser)
-        self.endpoint_status = label("Čekám na informace z lokálního daemonu.", muted=True)
+        self.endpoint_status = label("Waiting for information from the local daemon.", muted=True)
         self.endpoint_status.setWordWrap(True); il.addWidget(self.endpoint_status)
         layout.addWidget(intro)
         panes = QHBoxLayout(); panes.setSpacing(14)
@@ -2222,17 +2418,17 @@ class MainWindow(QMainWindow):
             panes.addWidget(f, 1)
         layout.addLayout(panes)
         bottom, bl = card()
-        bl.addWidget(label("Synchronizace jako celek", size=15, bold=True))
+        bl.addWidget(label("Sync Session Overview", size=15, bold=True))
         self.endpoint_session_info = label("—", muted=True)
         self.endpoint_session_info.setWordWrap(True)
         bl.addWidget(self.endpoint_session_info)
         layout.addWidget(bottom)
         explanation, el = card()
-        el.addWidget(label("Co Mutagen neposkytuje", size=15, bold=True))
-        note = label("Tento přehled neměří CPU, RAM, disk nebo síť celého serveru, ani detailní "
-                     "interní logy vzdáleného agenta. Tyto údaje nejsou součástí běžného výpisu "
-                     "Mutagenu a bez dodatečného vzdáleného přístupu je nelze spolehlivě získat. "
-                     "Počty souborů jsou poslední známé skeny, nikoliv garantované živé čítače.",
+        el.addWidget(label("What Mutagen Does Not Provide", size=15, bold=True))
+        note = label("This view does not measure the server's overall CPU, RAM, disk, or network use, or detailed "
+                     "internal logs from the remote agent. This information is not included in the standard "
+                     "Mutagen output and cannot be reliably obtained without additional remote access. "
+                     "File counts are from the latest known scans, not guaranteed live counters.",
                      muted=True, size=11)
         note.setWordWrap(True); el.addWidget(note)
         layout.addWidget(explanation)
@@ -2245,19 +2441,31 @@ class MainWindow(QMainWindow):
             return
         options = [("sync", x) for x in snapshot.sync] + [("forward", x) for x in snapshot.forward]
         current = self.endpoint_combo.currentData()
-        keys = [(kind, str(s.get("identifier") or "")) for kind, s in options]
+        entries = []
+        for kind, session in options:
+            sid = str(session.get("identifier") or "")
+            kind_name = "SYNC" if kind == "sync" else "PORT"
+            name = session.get("name") or sid[:22]
+            _, status = classify(session, kind)
+            source = endpoint_text(session.get("alpha" if kind == "sync" else "source"), kind)
+            target = endpoint_text(session.get("beta" if kind == "sync" else "destination"), kind)
+            text = f"{kind_name} · {name} · {status} · {source} → {target}"
+            entries.append((kind, sid, text, f"{text}\nID: {sid}"))
+        keys = [(kind, sid) for kind, sid, _, _ in entries]
         old = [self.endpoint_combo.itemData(i) for i in range(self.endpoint_combo.count())]
-        if keys != old:
+        old_labels = [self.endpoint_combo.itemText(i) for i in range(self.endpoint_combo.count())]
+        labels = [text for _, _, text, _ in entries]
+        if keys != old or labels != old_labels:
             self.endpoint_combo.blockSignals(True)
             self.endpoint_combo.clear()
-            for kind, session in options:
-                sid = str(session.get("identifier") or "")
-                kind_name = "SYNC" if kind == "sync" else "PORT"
-                self.endpoint_combo.addItem(f"{kind_name} · {session.get('name') or sid[:22]}", (kind, sid))
+            for kind, sid, text, tooltip in entries:
+                index = self.endpoint_combo.count()
+                self.endpoint_combo.addItem(text, (kind, sid))
+                self.endpoint_combo.setItemData(index, tooltip, Qt.ItemDataRole.ToolTipRole)
             if current in keys:
                 self.endpoint_combo.setCurrentIndex(keys.index(current))
             self.endpoint_combo.blockSignals(False)
-        if self.pages.currentIndex() == 9 or keys != old:
+        if self.pages.currentIndex() == 9 or keys != old or labels != old_labels:
             self.update_endpoint_details()
 
     def update_endpoint_details(self, *_):
@@ -2270,34 +2478,34 @@ class MainWindow(QMainWindow):
             group = self.snapshot.sync if kind == "sync" else self.snapshot.forward
             session = next((s for s in group if s.get("identifier") == identifier), None)
         if not session:
-            self.endpoint_status.setText("Mutagen daemon nevrátil žádnou relaci." if self.snapshot.daemon
-                                         else "Lokální Mutagen daemon není dostupný.")
+            self.endpoint_status.setText("The Mutagen daemon returned no sessions." if self.snapshot.daemon
+                                         else "The local Mutagen daemon is unavailable.")
             self.endpoint_session_info.setText("—")
             for view in self.endpoint_cards.values():
                 view['address'].setText("—")
-                view['conn'].setText("Nedostupné")
+                view['conn'].setText("Unavailable")
                 view['stats'].setText("—")
                 view['issues'].setText("—")
                 view['progress'].hide()
                 view['stage'].setText("—")
             return
         data = inspect_session(session, kind)
-        self.endpoint_status.setText(f"{data['name']} · {data['state_text']} · stav získaný z místního daemonu")
+        self.endpoint_status.setText(f"{data['name']} · {data['state_text']} · status from the local daemon")
         for side, endpoint in (("left", data['left']), ("right", data['right'])):
             widgets = self.endpoint_cards[side]
             widgets['title'].setText(endpoint.side)
             widgets['address'].setText(endpoint.address)
-            widgets['conn'].setText("● Připojeno" if endpoint.connected else "● Nepřipojeno")
+            widgets['conn'].setText("● Connected" if endpoint.connected else "● Disconnected")
             widgets['conn'].setStyleSheet(f"color:{TEAL if endpoint.connected else AMBER};font-size:17px;font-weight:700")
             if kind == 'sync':
                 def count(number): return '—' if number is None else f'{number:,}'.replace(',', ' ')
-                scan = ('Ano' if endpoint.scanned else 'Ne') if endpoint.scanned is not None else 'Neznámo'
+                scan = ('Yes' if endpoint.scanned else 'No') if endpoint.scanned is not None else 'Unknown'
                 widgets['stats'].setText(
-                    f"Sken hotov: {scan}    •    Soubory: {count(endpoint.files)}\n"
-                    f"Složky: {count(endpoint.directories)}    •    Symlinky: {count(endpoint.symlinks)}\n"
-                    f"Celková velikost souborů: {human_bytes(endpoint.total_file_size) if endpoint.total_file_size is not None else '—'}")
+                    f"Scan complete: {scan}    •    Files: {count(endpoint.files)}\n"
+                    f"Directories: {count(endpoint.directories)}    •    Symlinks: {count(endpoint.symlinks)}\n"
+                    f"Total file size: {human_bytes(endpoint.total_file_size) if endpoint.total_file_size is not None else '—'}")
                 widgets['issues'].setText(
-                    f"Problémy skenu: {endpoint.scan_problems}    •    Problémy zápisu: {endpoint.transition_problems}")
+                    f"Scan issues: {endpoint.scan_problems}    •    Transition issues: {endpoint.transition_problems}")
                 if endpoint.staging_percent is not None:
                     widgets['progress'].setValue(round(endpoint.staging_percent))
                     widgets['progress'].show()
@@ -2305,23 +2513,23 @@ class MainWindow(QMainWindow):
                     widgets['progress'].hide()
                 if endpoint.staging_path or endpoint.staging_percent is not None:
                     widgets['stage'].setText(
-                        f"Příjem: {endpoint.staging_path or 'soubor'}\n"
+                        f"Receiving: {endpoint.staging_path or 'file'}\n"
                         f"{human_bytes(endpoint.staging_bytes)} / {human_bytes(endpoint.staging_expected_bytes)}"
-                        f" · {endpoint.staging_files}/{endpoint.staging_expected_files} souborů")
+                        f" · {endpoint.staging_files}/{endpoint.staging_expected_files} files")
                 else:
-                    widgets['stage'].setText("Nyní není hlášen aktivní příjem souboru.")
+                    widgets['stage'].setText("No active file transfer is currently reported.")
             else:
-                widgets['stats'].setText("Přesměrování portů — Mutagen hlásí pouze stav připojení endpointu.")
-                widgets['issues'].setText("Podrobnosti provozu jsou dostupné pro relaci jako celek.")
+                widgets['stats'].setText("Port forwarding — Mutagen reports only endpoint connection status.")
+                widgets['issues'].setText("Traffic details are available for the session as a whole.")
                 widgets['progress'].hide()
                 widgets['stage'].setText("—")
         if kind == 'sync':
-            lines = [f"Úspěšných cyklů: {data['successful_cycles']}    •    Konfliktů: {data['conflicts']}"]
+            lines = [f"Successful cycles: {data['successful_cycles']}    •    Conflicts: {data['conflicts']}"]
         else:
-            lines = [f"Otevřená spojení: {data['open_connections']}    •    Celkem spojení: {data['total_connections']}",
-                     f"Data do cíle: {human_bytes(data['total_outbound_data'])}    •    Zpět: {human_bytes(data['total_inbound_data'])}"]
+            lines = [f"Open connections: {data['open_connections']}    •    Total connections: {data['total_connections']}",
+                     f"Data to destination: {human_bytes(data['total_outbound_data'])}    •    Back: {human_bytes(data['total_inbound_data'])}"]
         if data['last_error']:
-            lines.append('Poslední chyba: ' + data['last_error'][:1200])
+            lines.append('Last error: ' + data['last_error'][:1200])
         self.endpoint_session_info.setText('\n'.join(lines))
 
     def servers_page(self):
@@ -2331,55 +2539,72 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(root); layout.setSpacing(15)
         layout.setContentsMargins(0, 3, 0, 0)
         top, tl = card()
-        tl.addWidget(label("Serverové skupiny", size=18, bold=True))
-        desc = label("Hostitele zjišťujeme z ALPHA/BETA a zdrojových/cílových adres Mutagenu. "
-                     "Žádná nová SSH spojení ani serverová služba. Alias stejného serveru může být rozpoznán jako jiný hostitel.",
+        tl.addWidget(label("Server Groups", size=18, bold=True))
+        desc = label("Hosts are identified from Mutagen ALPHA/BETA and source/destination addresses. "
+                     "No new SSH connections or server service are used. An alias for the same server may be recognized as a different host.",
                      muted=True, size=11)
         desc.setWordWrap(True); tl.addWidget(desc)
-        choose = QHBoxLayout(); choose.addWidget(label("Cíl operací:"))
-        self.server_selector = QComboBox(); self.server_selector.addItem("Všechny relace", "__all__")
+        choose = QHBoxLayout(); choose.addWidget(label("Action Scope:"))
+        self.server_selector = QComboBox(); self.server_selector.addItem("All Sessions", "__all__")
         self.server_selector.currentIndexChanged.connect(self.update_server_details)
         choose.addWidget(self.server_selector, 1)
-        choose.addWidget(button("↻ Obnovit", lambda: self.refresh(force=True)))
+        choose.addWidget(button("↻ Refresh", lambda: self.refresh(force=True)))
         tl.addLayout(choose)
-        self.server_overview = self.make_table(["SERVER", "SYNC", "PORTY", "PAUZA", "PROBLÉMY"], 175)
-        self.server_overview.setMaximumHeight(225)
+        self.server_overview = self.make_table(
+            ["SERVER", "SYNC", "PORTS", "PAUSED", "ISSUES"], 175, stretch_columns=(0,))
+        self.server_overview.setMinimumHeight(0)
+        self.server_overview.setMaximumHeight(16777215)
         self.server_overview.cellDoubleClicked.connect(self.pick_server_row)
         tl.addWidget(self.server_overview)
         layout.addWidget(top)
         actions, ac = card()
-        self.server_scope_label = label("Vyber server nebo všechny relace", size=15, bold=True)
+        self.server_scope_label = label("Select a server or all sessions", size=15, bold=True)
         ac.addWidget(self.server_scope_label)
         first = QHBoxLayout()
-        first.addWidget(button("↻ Sync now", partial(self.bulk_action, "sync", "flush", "server"), kind="primary"))
-        first.addWidget(button("⏸ Pauza synchronizací", partial(self.bulk_action, "sync", "pause", "server")))
-        first.addWidget(button("▶ Pokračovat synchronizace", partial(self.bulk_action, "sync", "resume", "server")))
+        b_srv_sync = button("↻ Sync now", partial(self.bulk_action, "sync", "flush", "server"), kind="primary")
+        b_srv_sync.setToolTip("Starts an immediate sync cycle for all sessions in the selected group.")
+        first.addWidget(b_srv_sync)
+        b_srv_pause = button("⏸ Pause Sync Sessions", partial(self.bulk_action, "sync", "pause", "server"))
+        b_srv_pause.setToolTip("Pauses all sync sessions in the selected group.")
+        first.addWidget(b_srv_pause)
+        b_srv_resume = button("▶ Resume Sync Sessions", partial(self.bulk_action, "sync", "resume", "server"))
+        b_srv_resume.setToolTip("Resumes paused sync sessions in the selected group.")
+        first.addWidget(b_srv_resume)
         first.addStretch(); ac.addLayout(first)
         second = QHBoxLayout()
-        second.addWidget(button("⏸ Pauza portů", partial(self.bulk_action, "forward", "pause", "server")))
-        second.addWidget(button("▶ Pokračovat porty", partial(self.bulk_action, "forward", "resume", "server")))
+        b_fwd_pause = button("⏸ Pause Forwards", partial(self.bulk_action, "forward", "pause", "server"))
+        b_fwd_pause.setToolTip("Pauses all port forwards in the selected group.")
+        second.addWidget(b_fwd_pause)
+        b_fwd_resume = button("▶ Resume Forwards", partial(self.bulk_action, "forward", "resume", "server"))
+        b_fwd_resume.setToolTip("Resumes paused port forwards in the selected group.")
+        second.addWidget(b_fwd_resume)
         second.addStretch(); ac.addLayout(second)
-        advanced = button("Další hromadné akce ▾", self.show_server_advanced_actions)
+        advanced = button("More Bulk Actions ▾", self.show_server_advanced_actions)
+        advanced.setToolTip("Shows more bulk actions: terminate sessions, reset, and group diagnostics.")
         ac.addWidget(advanced)
-        warning = label("Hromadné příkazy používají pouze vybraná ID. Pozastavení a obnovení platí hned "
-                        "a ovlivní také chování těchto relací po příštím startu daemonu. "
-                        "Pro start po přihlášení do Windows musí být daemon registrován v části Daemon.", muted=True, size=11)
+        warning = label("Bulk commands use only the selected IDs. Pausing and resuming take effect immediately "
+                        "and also affect these sessions after the daemon's next start. "
+                        "To start at Windows sign-in, register the daemon on the Daemon page.", muted=True, size=11)
         warning.setWordWrap(True); ac.addWidget(warning)
         layout.addWidget(actions)
         listings, ls = card()
-        ls.addWidget(label("Synchronizace vybrané skupiny · dvojklik otevře detail", muted=True))
-        self.server_sync_table = self.make_table(["RELACE", "STAV", "ALPHA", "BETA"], 155)
-        self.server_sync_table.setMaximumHeight(225)
+        ls.addWidget(label("Sync sessions in the selected group · double-click to view details", muted=True))
+        self.server_sync_table = self.make_table(
+            ["SESSION", "STATUS", "ALPHA", "BETA"], 155, stretch_columns=(0, 2, 3))
+        self.server_sync_table.setMinimumHeight(0)
+        self.server_sync_table.setMaximumHeight(16777215)
         self.server_sync_table.cellDoubleClicked.connect(lambda row, col: self.open_group_session("sync", row))
         ls.addWidget(self.server_sync_table)
-        self.server_sync_empty = label("Tento server nemá synchronizační relace.", muted=True)
+        self.server_sync_empty = label("This server has no sync sessions.", muted=True)
         ls.addWidget(self.server_sync_empty)
-        ls.addWidget(label("Přesměrování vybrané skupiny", muted=True))
-        self.server_forward_table = self.make_table(["RELACE", "STAV", "ZDROJ", "CÍL"], 130)
-        self.server_forward_table.setMaximumHeight(180)
+        ls.addWidget(label("Forwarding sessions in the selected group", muted=True))
+        self.server_forward_table = self.make_table(
+            ["SESSION", "STATUS", "SOURCE", "DESTINATION"], 130, stretch_columns=(0, 2, 3))
+        self.server_forward_table.setMinimumHeight(0)
+        self.server_forward_table.setMaximumHeight(16777215)
         self.server_forward_table.cellDoubleClicked.connect(lambda row, col: self.open_group_session("forward", row))
         ls.addWidget(self.server_forward_table)
-        self.server_forward_empty = label("Tento server nemá přesměrování portů.", muted=True)
+        self.server_forward_empty = label("This server has no port forwards.", muted=True)
         ls.addWidget(self.server_forward_empty)
         layout.addWidget(listings, 1)
         page.setWidget(root)
@@ -2397,7 +2622,7 @@ class MainWindow(QMainWindow):
         groups = group_servers(self.snapshot.sync, self.snapshot.forward)
         self._server_groups = {g.key: g for g in groups}
         current = self.server_selector.currentData()
-        choices = [("Všechny relace", "__all__")] + [(g.name, g.key) for g in groups]
+        choices = [("All Sessions", "__all__")] + [(g.name, g.key) for g in groups]
         if (choices != [(self.server_selector.itemText(i), self.server_selector.itemData(i))
                        for i in range(self.server_selector.count())]):
             self.server_selector.blockSignals(True)
@@ -2432,6 +2657,7 @@ class MainWindow(QMainWindow):
                     if col == 0: item.setData(Qt.ItemDataRole.UserRole, group.key)
         finally:
             view.setUpdatesEnabled(True)
+        self.fit_table_to_rows(view)
         if self.pages.currentIndex() == 10:
             self.update_server_details()
 
@@ -2446,11 +2672,13 @@ class MainWindow(QMainWindow):
     def update_server_details(self, *_):
         if not hasattr(self, "server_selector"):
             return
-        key = self.server_selector.currentData()
         selection_name = self.server_selector.currentText()
         sync = self.server_targets("sync", "server")
         forward = self.server_targets("forward", "server")
-        self.server_scope_label.setText(f"{selection_name} · {len(sync)} sync · {len(forward)} portů")
+        sync_noun = "session" if len(sync) == 1 else "sessions"
+        forward_noun = "port forward" if len(forward) == 1 else "port forwards"
+        self.server_scope_label.setText(
+            f"{selection_name} · {len(sync)} sync {sync_noun} · {len(forward)} {forward_noun}")
         self.server_sync_empty.setVisible(not sync)
         self.server_forward_empty.setVisible(not forward)
         for kind, sessions, table in (("sync", sync, self.server_sync_table),
@@ -2467,6 +2695,7 @@ class MainWindow(QMainWindow):
                     if item is None: item = QTableWidgetItem(); table.setItem(row, col, item)
                     item.setText(str(value))
                     if col == 0: item.setData(Qt.ItemDataRole.UserRole, sess.get("identifier"))
+            self.fit_table_to_rows(table)
 
     def open_group_session(self, kind, row):
         listing = self.server_sync_table if kind == "sync" else self.server_forward_table
@@ -2494,10 +2723,10 @@ class MainWindow(QMainWindow):
     def show_server_advanced_actions(self):
         """Keep reset/termination out of the one-click toolbar."""
         menu = QMenu(self)
-        menu.addAction("Reset historie synchronizací…", lambda: self.bulk_action("sync", "reset", "server"))
+        menu.addAction("Reset Sync History…", lambda: self.bulk_action("sync", "reset", "server"))
         menu.addSeparator()
-        menu.addAction("Trvale odstranit synchronizace…", lambda: self.bulk_action("sync", "terminate", "server"))
-        menu.addAction("Trvale odstranit přesměrování…", lambda: self.bulk_action("forward", "terminate", "server"))
+        menu.addAction("Permanently Terminate Sync Sessions…", lambda: self.bulk_action("sync", "terminate", "server"))
+        menu.addAction("Permanently Terminate Forwards…", lambda: self.bulk_action("forward", "terminate", "server"))
         menu.exec(self.cursor().pos())
 
     def bulk_action(self, kind: str, action: str, scope: str = "all"):
@@ -2512,31 +2741,31 @@ class MainWindow(QMainWindow):
         ids = [str(s.get("identifier") or "") for s in candidates]
         ids = list(dict.fromkeys(identifier for identifier in ids if identifier))
         if not ids:
-            QMessageBox.information(self, "Žádné relace", "Pro tuto operaci nejsou žádné vhodné relace.")
+            QMessageBox.information(self, "No Sessions", "No eligible sessions for this action.")
             return
-        action_name = {"flush":"Vynutit synchronizační cyklus", "pause":"Pozastavit",
-                       "resume":"Pokračovat", "reset":"Resetovat historii", "terminate":"Odstranit"}[action]
-        group_name = "všech relací" if scope == "all" else self.server_selector.currentText()
-        body = f"{action_name} {len(ids)} konkrétních relací ({group_name})?"
-        if action == "flush": body += "\n\nPříkaz zahájí synchronizaci a nebude čekat na dokončení všech přenosů."
+        action_name = {"flush":"Run Sync Cycle Now", "pause":"Pause",
+                       "resume":"Resume", "reset":"Reset History", "terminate":"Terminate"}[action]
+        group_name = "all sessions" if scope == "all" else self.server_selector.currentText()
+        body = f"{action_name} {len(ids)} selected sessions ({group_name})?"
+        if action == "flush": body += "\n\nThis starts a sync cycle and does not wait for all transfers to finish."
         if action in ("pause", "resume"):
-            body += "\n\nZmění se aktuální stav relací i jejich chování při dalším startu daemonu."
+            body += "\n\nThis changes the current session status and their behavior at the daemon's next start."
         if action in ("reset", "terminate"):
-            body += "\n\nTato operace může změnit historii synchronizací nebo trvale odstranit relace."
-        choice = QMessageBox.question(self, "Potvrdit hromadnou akci", body,
+            body += "\n\nThis may change sync history or permanently terminate sessions."
+        choice = QMessageBox.question(self, "Confirm Bulk Action", body,
                          QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if choice != QMessageBox.StandardButton.Yes: return
         if action in ("reset", "terminate"):
-            expected = "RESETOVAT" if action == "reset" else "ODSTRANIT"
-            value, accepted = QInputDialog.getText(self, "Druhé potvrzení", 
-                f"Pro potvrzení operace nad {len(ids)} relacemi napište {expected}:")
+            expected = "RESET" if action == "reset" else "TERMINATE"
+            value, accepted = QInputDialog.getText(self, "Second Confirmation",
+                f"To confirm this action for {len(ids)} sessions, type {expected}:")
             if not accepted or value.strip() != expected:
                 return
         self.pending_action = True
-        self.add_log(f"Hromadná akce: {kind} {action} · {len(ids)} explicitních ID")
+        self.add_log(f"Bulk action: {kind} {action} · {len(ids)} explicit IDs")
         client = MutagenClient(self.client.binary)
         def success(output):
-            self.add_log(f"Hromadná akce odeslána: {action}, {len(ids)} relací")
+            self.add_log(f"Bulk action submitted: {action}, {len(ids)} sessions")
             if output: self.add_log(output[:1000])
         def done():
             self.pending_action = False
@@ -2552,17 +2781,17 @@ class MainWindow(QMainWindow):
         if not ident: return
         if not session.get("paused"):
             if self.snapshot.registration != "registered":
-                answer = QMessageBox.question(self, "Aktivovat start po přihlášení?",
-                    "Synchronizace nyní běží, ale automatický start Mutagen daemonu není registrovaný. "
-                    "Chceš registrovat daemon pro přihlášení do Windows? Ovlivní to i jiné aktivní relace.",
+                answer = QMessageBox.question(self, "Enable Start at Sign-In?",
+                    "Sync is running, but automatic start of the Mutagen daemon is not registered. "
+                    "Register the daemon to start at Windows sign-in? This also affects other active sessions.",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No)
                 if answer == QMessageBox.StandardButton.Yes:
                     self.run_command("daemon", "register")
                 return
-            choice = QMessageBox.question(self, "Vypnout start synchronizace?",
-                "Mutagen nemá samostatnou volbu 'nespouštět příště, ale nechat běžet nyní'. "
-                "Vypnutí proto relaci okamžitě pozastaví. Pokračovat?",
+            choice = QMessageBox.question(self, "Turn Off Sync Start?",
+                "Mutagen has no separate option to ‘not start next time but keep running now’. "
+                "Turning this off therefore pauses the session immediately. Resume?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if choice == QMessageBox.StandardButton.Yes:
@@ -2571,9 +2800,9 @@ class MainWindow(QMainWindow):
         needs_registration = self.snapshot.registration != "registered"
         if needs_registration:
             response = QMessageBox.question(self, "Registrovat start Mutagen daemonu?",
-                "Pro obnovení po přihlášení musí být registrován samotný Mutagen daemon. "
-                "Registrace ovlivní i ostatní nepozastavené relace. "
-                "Zaregistrovat daemon a pokračovat v této synchronizaci nyní?",
+                "For sessions to resume at sign-in, the Mutagen daemon itself must be registered. "
+                "Registration also affects other unpaused sessions. "
+                "Register the daemon and resume this sync now?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No)
             if response != QMessageBox.StandardButton.Yes: return
@@ -2585,33 +2814,33 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(body); layout.setContentsMargins(0, 3, 3, 18); layout.setSpacing(18)
         control, cl = card()
         heading = QHBoxLayout()
-        heading.addWidget(label("Vývoj prostředků a provozu", size=17, bold=True))
-        heading.addStretch(); heading.addWidget(label("Zobrazit:", muted=True))
+        heading.addWidget(label("Resource and Traffic Trends", size=17, bold=True))
+        heading.addStretch(); heading.addWidget(label("Show:", muted=True))
         self.monitor_range = QComboBox()
-        for title, hours in [("5 minut", 5/60), ("30 minut", .5), ("2 hodiny", 2),
-                             ("12 hodin", 12), ("24 hodin", 24), ("48 hodin", 48)]:
+        for title, hours in [("5 minutes", 5/60), ("30 minutes", .5), ("2 hours", 2),
+                             ("12 hours", 12), ("24 hours", 24), ("48 hours", 48)]:
             self.monitor_range.addItem(title, hours)
         self.monitor_range.setCurrentIndex(1)
         self.monitor_range.currentIndexChanged.connect(lambda _=None: self.refresh_charts(force=True))
         heading.addWidget(self.monitor_range)
-        self.monitor_live_button = button("⏸ Zmrazit grafy", self.toggle_charts)
-        self.monitor_live_button.setToolTip("Zastaví automatické aktualizace grafů pro snadnější prohlížení")
+        self.monitor_live_button = button("⏸ Freeze Graphs", self.toggle_charts)
+        self.monitor_live_button.setToolTip("Stops automatic graph updates for easier viewing")
         heading.addWidget(self.monitor_live_button)
-        png_btn = button("Uložit PNG", self.export_monitor_png)
-        png_btn.setToolTip("Uloží aktuálně zobrazené grafy jako PNG obrázek")
+        png_btn = button("Save PNG", self.export_monitor_png)
+        png_btn.setToolTip("Saves the currently displayed graphs as a PNG image")
         heading.addWidget(png_btn)
         csv_btn = button("Export CSV", self.export_metrics, kind="primary")
-        csv_btn.setToolTip("Exportuje naměřená data do CSV souboru pro analýzu v externím nástroji")
+        csv_btn.setToolTip("Exports measured data to a CSV file for analysis in another tool")
         heading.addWidget(csv_btn)
         cl.addLayout(heading)
-        cl.addWidget(label("Data se ukládají lokálně po dobu 48 hodin. Grafy ukazují skutečné naměřené hodnoty; "
-                           "při vypnuté aplikaci vzniká v historii mezera.", muted=True, size=11))
-        self.gui_usage_label = label("Zatížení aplikace: čekám na měření", muted=True, size=11)
+        cl.addWidget(label("Data are stored locally for 48 hours. Graphs show actual measurements; "
+                           "history has a gap while the application is closed.", muted=True, size=11))
+        self.gui_usage_label = label("Application load: waiting for measurements", muted=True, size=11)
         cl.addWidget(self.gui_usage_label)
         layout.addWidget(control)
         stats_panel, stats_layout = card()
-        stats_layout.addWidget(label("Souhrn vybraného období · skutečná měření", size=15, bold=True))
-        self.stats_label = QLabel("Čekám na data…")
+        stats_layout.addWidget(label("Selected Period Summary · Actual Measurements", size=15, bold=True))
+        self.stats_label = QLabel("Waiting for data…")
         self.stats_label.setTextFormat(Qt.TextFormat.PlainText)
         self.stats_label.setWordWrap(True)
         self.stats_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -2620,11 +2849,11 @@ class MainWindow(QMainWindow):
         self.monitor_graphs = {}
         self.monitor_labels = {}
         chart_specs = [
-            ("cpu", "Procesor", "Spotřeba lokálních procesů Mutagenu (může přesáhnout 100 %)", BLUE, None, "percent"),
-            ("memory", "Paměť RAM", "Rezidentní paměť místních procesů", TEAL, None, "memory"),
-            ("disk", "Procesové diskové I/O", "Čtení (modrá) · zápis (zelená); hodnoty podle operačního systému", BLUE, TEAL, "bytes_s"),
-            ("traffic", "Přesměrovaná data", "Ven (modrá) · dovnitř (zelená); počítáno z kumulativních čítačů forward relací", BLUE, TEAL, "bytes_s"),
-            ("sessions", "Stav relací", "Aktivní (zelená) · problémové (červená)", TEAL, RED, "number"),
+            ("cpu", "CPU", "Local Mutagen process usage (may exceed 100%)", BLUE, None, "percent"),
+            ("memory", "RAM", "Resident memory of local processes", TEAL, None, "memory"),
+            ("disk", "Process Disk I/O", "Read (blue) · write (green); values depend on the operating system", BLUE, TEAL, "bytes_s"),
+            ("traffic", "Forwarded Data", "Outbound (blue) · inbound (green); based on cumulative forward-session counters", BLUE, TEAL, "bytes_s"),
+            ("sessions", "Session Status", "Active (green) · issues (red)", TEAL, RED, "number"),
         ]
         for index in range(0, len(chart_specs), 2):
             line = QHBoxLayout(); line.setSpacing(14)
@@ -2642,16 +2871,13 @@ class MainWindow(QMainWindow):
             if len(chart_specs[index:index+2]) == 1: line.addStretch(1)
             layout.addLayout(line)
         process_card, process_l = card()
-        process_l.addWidget(label("Jednotlivé lokální procesy Mutagenu", size=16, bold=True))
-        process_l.addWidget(label("Spotřeba je vztažena k procesům, nikoliv k jednotlivým synchronizačním relacím.", muted=True))
-        self.process_table = self.make_table(["PID", "PROCES", "CPU", "RAM", "ČTENÍ", "ZÁPIS"], height=180)
-        self.process_table.setMinimumHeight(180)
-        self.process_table.setMaximumHeight(280)
-        self.process_table.setColumnWidth(0, 100)
-        self.process_table.setColumnWidth(1, 185)
-        self.process_table.setColumnWidth(2, 95)
-        self.process_table.setColumnWidth(3, 105)
-        self.process_table.setColumnWidth(4, 110)
+        process_l.addWidget(label("Individual Local Mutagen Processes", size=16, bold=True))
+        process_l.addWidget(label("Usage is measured per process, not per sync session.", muted=True))
+        self.process_table = self.make_table(
+            ["PID", "PROCESS", "CPU", "RAM", "READ", "WRITE"], height=180,
+            stretch_columns=(1,))
+        self.process_table.setMinimumHeight(0)
+        self.process_table.setMaximumHeight(16777215)
         process_l.addWidget(self.process_table)
         layout.addWidget(process_card)
         layout.addStretch(); page.setWidget(body)
@@ -2659,11 +2885,11 @@ class MainWindow(QMainWindow):
 
     def toggle_charts(self):
         self.chart_frozen = not self.chart_frozen
-        self.monitor_live_button.setText("▶ Obnovovat grafy" if self.chart_frozen else "⏸ Zmrazit grafy")
+        self.monitor_live_button.setText("▶ Resume Graph Updates" if self.chart_frozen else "⏸ Freeze Graphs")
         if not self.chart_frozen: self.refresh_charts(force=True)
 
     def export_monitor_png(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Uložit aktuální grafy do PNG",
+        path, _ = QFileDialog.getSaveFileName(self, "Save Current Graphs to PNG",
                                                "mutagen-monitoring.png", "PNG (*.png)")
         if not path: return
         # Export exactly what is visible on the monitoring page: all five graphs.
@@ -2675,16 +2901,16 @@ class MainWindow(QMainWindow):
         image.fill(QColor(BG))
         body.render(image)
         if not image.save(path, "PNG"):
-            self.report_error("Nepodařilo se uložit obrázek PNG.")
+            self.report_error("Could not save PNG image.")
         else:
-            self.add_log("Monitoring uložen jako PNG")
+            self.add_log("Monitoring saved as PNG")
 
     def export_metrics(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export monitoringu", "mutagen-metrics.csv", "CSV (*.csv)")
         if not path: return
         try:
             self.history.export_csv(path, hours=float(self.monitor_range.currentData()))
-            self.add_log("Historie monitoringu exportována do CSV")
+            self.add_log("Monitoring history exported to CSV")
         except (sqlite3.Error, OSError) as exc:
             self.report_error(str(exc))
 
@@ -2693,28 +2919,28 @@ class MainWindow(QMainWindow):
         l = QVBoxLayout(root); l.setContentsMargins(0, 3, 0, 0); l.setSpacing(16)
         card1, vl = card()
         head = QHBoxLayout()
-        head.addWidget(label("Diagnostický přehled", size=17, bold=True))
+        head.addWidget(label("Diagnostics Overview", size=17, bold=True))
         head.addStretch()
-        safe_btn = button("Bezpečný report JSON", self.export_safe_report, kind="primary")
-        safe_btn.setToolTip("Exportuje diagnostiku bez reálných cest a adres — bezpečné pro sdílení")
+        safe_btn = button("Safe JSON Report", self.export_safe_report, kind="primary")
+        safe_btn.setToolTip("Exports diagnostics without actual paths or addresses — safe to share")
         head.addWidget(safe_btn)
-        full_btn = button("Úplný snapshot JSON", self.export_snapshot)
-        full_btn.setToolTip("Exportuje kompletní snapshot včetně cest, adres a chybových zpráv")
+        full_btn = button("Full JSON Snapshot", self.export_snapshot)
+        full_btn.setToolTip("Exports the full snapshot, including paths, addresses, and error messages")
         head.addWidget(full_btn)
-        copy_btn = button("Kopírovat souhrn", self.copy_diagnostics)
-        copy_btn.setToolTip("Zkopíruje diagnostický souhrn do schránky")
+        copy_btn = button("Copy Summary", self.copy_diagnostics)
+        copy_btn.setToolTip("Copies the diagnostic summary to the clipboard")
         head.addWidget(copy_btn)
         vl.addLayout(head)
-        note_lbl = label("Úplný export obsahuje skutečné endpointy, cesty a chyby. Před odesláním jiné osobě zkontrolujte obsah.", muted=True)
+        note_lbl = label("The full export includes actual endpoints, paths, and errors. Review it before sharing.", muted=True)
         note_lbl.setWordWrap(True)
         vl.addWidget(note_lbl)
-        self.diag_summary = QLabel("Čekám na data…"); self.diag_summary.setWordWrap(True)
+        self.diag_summary = QLabel("Waiting for data…"); self.diag_summary.setWordWrap(True)
         self.diag_summary.setTextFormat(Qt.TextFormat.PlainText)
         self.diag_summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         vl.addWidget(self.diag_summary); l.addWidget(card1)
         problems, pl = card()
         problems_head = QHBoxLayout()
-        problems_head.addWidget(label("Konflikty, chyby a problémy", size=16, bold=True))
+        problems_head.addWidget(label("Conflicts, Errors, and Issues", size=16, bold=True))
         problems_head.addStretch()
         self.diag_problem_count = label("", muted=True, size=11)
         problems_head.addWidget(self.diag_problem_count)
@@ -2725,12 +2951,12 @@ class MainWindow(QMainWindow):
         return root
 
     def update_diagnostics(self, snap):
-        summary = (f"Mutagen: {snap.binary or 'nenalezen'}\nVerze: {snap.version or 'nezjištěna'}\n"
+        summary = (f"Mutagen: {snap.binary or 'not found'}\nVersion: {snap.version or 'unknown'}\n"
                    f"Daemon: {'online' if snap.daemon else 'offline'}\n"
-                   f"Procesů Mutagenu: {snap.processes} | CPU: {snap.cpu:.1f} % | RAM: {human_bytes(snap.memory)}\n"
-                   f"Synchronizace: {len(snap.sync)} | Přesměrování: {len(snap.forward)}\n"
-                   f"Autostart daemonu: {snap.registration}")
-        if snap.error: summary += "\nChyba CLI: " + snap.error
+                   f"Mutagen processes: {snap.processes} | CPU: {snap.cpu:.1f} % | RAM: {human_bytes(snap.memory)}\n"
+                   f"Sync sessions: {len(snap.sync)} | Forwarding: {len(snap.forward)}\n"
+                   f"Daemon autostart: {snap.registration}")
+        if snap.error: summary += "\nCLI error: " + snap.error
         self.diag_summary.setText(summary)
         notes = []
         for kind, sessions in (("sync", snap.sync), ("forward", snap.forward)):
@@ -2738,41 +2964,41 @@ class MainWindow(QMainWindow):
                 state, description = classify(sess, kind)
                 if state != "error": continue
                 notes.append(f"[{kind}] {sess.get('name') or sess.get('identifier')} — {description}")
-                if sess.get("lastError"): notes.append("  Chyba: " + str(sess["lastError"]))
+                if sess.get("lastError"): notes.append("  Error: " + str(sess["lastError"]))
                 if kind == "sync":
                     for idx, conflict in enumerate(sess.get("conflicts") or []):
-                        if idx >= 10: notes.append("  … další konflikty nezobrazeny"); break
-                        notes.append("  Konflikt: " + json.dumps(conflict, ensure_ascii=False)[:500])
+                        if idx >= 10: notes.append("  … more conflicts omitted"); break
+                        notes.append("  Conflict: " + json.dumps(conflict, ensure_ascii=False)[:500])
                     for side in ("alpha", "beta"):
                         endpoint = sess.get(side) or {}
                         for field in ("scanProblems", "transitionProblems"):
                             for problem in (endpoint.get(field) or [])[:10]:
                                 notes.append(f"  {side}.{field}: " + json.dumps(problem, ensure_ascii=False)[:500])
-        self.diagnostics_view.setPlainText("\n".join(notes) if notes else "Žádné problémové relace nebyly při poslední obnově zjištěny.")
+        self.diagnostics_view.setPlainText("\n".join(notes) if notes else "No sessions with issues were found in the latest refresh.")
         if hasattr(self, "diag_problem_count"):
             if notes:
                 n = sum(1 for line in notes if not line.startswith("  "))
-                self.diag_problem_count.setText(f"⚠  {n} problémová {'relace' if n == 1 else 'relace' if 2 <= n <= 4 else 'relací'}")
+                self.diag_problem_count.setText(f"⚠  {n} session{'s' if n != 1 else ''} with issues")
                 self.diag_problem_count.setStyleSheet(f"color:{RED};font-size:11px;")
             else:
-                self.diag_problem_count.setText("✓  vše OK")
+                self.diag_problem_count.setText("✓  all clear")
                 self.diag_problem_count.setStyleSheet(f"color:{TEAL};font-size:11px;")
 
     def export_safe_report(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Bezpečný diagnostický report",
+        path, _ = QFileDialog.getSaveFileName(self, "Safe Diagnostics Report",
                                                "mutagen-safe-report.json", "JSON (*.json)")
         if not path: return
         try:
             data = safe_diagnostic_report(self.snapshot)
             data["resource_summary"] = self.history.statistics(hours=1)
             Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            self.add_log("Bezpečný diagnostický report uložen (bez cest a adres)")
+            self.add_log("Safe diagnostics report saved (no paths or addresses)")
         except (OSError, sqlite3.Error) as exc:
             self.report_error(str(exc))
 
     def copy_diagnostics(self):
         QApplication.clipboard().setText(self.diag_summary.text() + "\n\n" + self.diagnostics_view.toPlainText())
-        self.add_log("Diagnostický souhrn zkopírován")
+        self.add_log("Diagnostics summary copied")
 
     def export_snapshot(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export diagnostiky", "mutagen-snapshot.json", "JSON (*.json)")
@@ -2784,14 +3010,14 @@ class MainWindow(QMainWindow):
                 "sync": self.snapshot.sync, "forward": self.snapshot.forward}
         try:
             Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-            self.add_log("Export diagnostiky dokončen")
+            self.add_log("Diagnostics export complete")
         except OSError as exc:
             self.report_error(str(exc))
 
     def check_alerts(self, snap):
         # Do not misclassify sessions as deleted during a temporary daemon outage.
         if self.previous_daemon is not None and self.previous_daemon != snap.daemon:
-            self.add_log("Daemon znovu odpovídá" if snap.daemon else "POZOR: Daemon neodpovídá")
+            self.add_log("Daemon is responding again" if snap.daemon else "WARNING: Daemon is not responding")
         self.previous_daemon = snap.daemon
         if not snap.daemon:
             return
@@ -2803,24 +3029,24 @@ class MainWindow(QMainWindow):
                 group = snap.sync if kind == "sync" else snap.forward
                 sess = next((s for s in group if s.get("identifier") == identifier), {})
                 title = sess.get("name") or str(identifier)[:14]
-                if state == "error": message = f"POZOR: Relace {title} vyžaduje pozornost"
-                elif previous == "error": message = f"Relace {title} se zotavila ({state})"
-                elif state == "paused": message = f"Relace {title} byla pozastavena"
-                elif previous == "paused": message = f"Relace {title} byla obnovena"
-                else: message = f"Relace {title}: {previous} → {state}"
+                if state == "error": message = f"WARNING: Session {title} needs attention"
+                elif previous == "error": message = f"Session {title} recovered ({state})"
+                elif state == "paused": message = f"Session {title} was paused"
+                elif previous == "paused": message = f"Session {title} resumed"
+                else: message = f"Session {title}: {previous} → {state}"
                 self.add_log(message)
                 wants_alert = self.conf.get("session_prefs", {}).get(str(identifier), {}).get("notifications", True)
                 if state == "error" and wants_alert and self.conf.get("alerts", True) and self.tray.isVisible():
-                    self.tray.showMessage("Mutagen Control – problém", message,
+                    self.tray.showMessage("Mutagen Control — Issue", message,
                                           QSystemTrayIcon.MessageIcon.Warning, 7000)
         self.previous_states = new_states
 
     def create_session(self, kind):
         if self.demo:
-            QMessageBox.information(self, "Demo", "V demo režimu jsou zásahy vypnuté.")
+            QMessageBox.information(self, "Demo", "Actions are disabled in demo mode.")
             return
         if not self.client.binary:
-            QMessageBox.warning(self, "Mutagen nenalezen", "Nejprve nastavte mutagen.exe v Nastavení.")
+            QMessageBox.warning(self, "Mutagen not found", "First, configure mutagen.exe in Settings.")
             self.set_page(5); return
         dlg = SessionDialog(kind, self, default_profile=self.conf.get("new_sync_profile", "default"))
         if dlg.exec() == QDialog.DialogCode.Accepted:
@@ -2832,20 +3058,20 @@ class MainWindow(QMainWindow):
         name = sess.get("name") or sess.get("identifier")
         if action in ("terminate", "reset"):
             if action == "terminate":
-                info = (f"Opravdu trvale odstranit relaci „{name}“?\n\n"
-                        "Příkaz terminate neodstraňuje soubory na koncových bodech, ale relace již nebude pokračovat.")
+                info = (f"Permanently terminate session “{name}”?\n\n"
+                        "The terminate command does not delete endpoint files, but the session will not continue.")
             else:
-                info = (f"Resetovat historii synchronizace „{name}“?\n\n"
-                        "Mutagen se bude chovat jako u nově vytvořené relace a může znovu vyhodnocovat změny.")
-            choice = QMessageBox.warning(self, "Potvrzení operace", info,
+                info = (f"Reset sync history for “{name}”?\n\n"
+                        "Mutagen will treat this as a newly created session and may reevaluate changes.")
+            choice = QMessageBox.warning(self, "Confirm Action", info,
                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
             if choice != QMessageBox.StandardButton.Yes: return
         self.run_command(kind, action, target=sess.get("identifier", ""))
 
     def daemon_action(self, action):
         if action == "stop":
-            response = QMessageBox.warning(self, "Zastavit daemon?",
-                "Zastavení přeruší všechny synchronizace a přesměrování spravované tímto démonem. Pokračovat?",
+            response = QMessageBox.warning(self, "Stop daemon?",
+                "Stopping interrupts all sync and forwarding sessions managed by this daemon. Resume?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
             if response != QMessageBox.StandardButton.Yes: return
         self.run_command("daemon", action)
@@ -2853,7 +3079,7 @@ class MainWindow(QMainWindow):
     def run_command(self, kind, action, target="", options=None, register_before=False):
         if self.demo or self.pending_action: return
         self.pending_action = True
-        self.add_log(f"Spouštím: mutagen {kind} {action}" + (" (vybraná relace)" if target else ""))
+        self.add_log(f"Running: mutagen {kind} {action}" + (" (selected session)" if target else ""))
         client = MutagenClient(self.client.binary)
         def do():
             if register_before:
@@ -2861,7 +3087,7 @@ class MainWindow(QMainWindow):
             return client.execute(kind, action, target, options)
         def success(output):
             if output: self.add_log(output[:1800])
-            self.add_log(f"Dokončeno: {kind} {action}")
+            self.add_log(f"Completed: {kind} {action}")
         def error(message):
             self.report_error(message)
         def done():
@@ -2870,8 +3096,8 @@ class MainWindow(QMainWindow):
         self.submit(do, success, error, done)
 
     def report_error(self, message):
-        self.add_log("CHYBA: " + message)
-        QMessageBox.critical(self, "Mutagen – chyba", message)
+        self.add_log("ERROR: " + message)
+        QMessageBox.critical(self, "Mutagen — Error", message)
 
     def show_window(self):
         self.showNormal(); self.raise_(); self.activateWindow()
@@ -2879,8 +3105,8 @@ class MainWindow(QMainWindow):
 
     def quit_app(self):
         if self.pending_action:
-            QMessageBox.information(self, "Probíhá příkaz Mutagenu",
-                                    "Nejprve nechte dokončit právě spuštěný příkaz.")
+            QMessageBox.information(self, "Mutagen Command in Progress",
+                                    "Wait for the current command to finish first.")
             self.show_window()
             return
         self.tail_timer.stop()
@@ -2891,8 +3117,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         if self.pending_action and self._allow_exit:
             event.ignore()
-            QMessageBox.information(self, "Probíhá příkaz Mutagenu",
-                                    "Nejprve nechte dokončit právě spuštěný příkaz.")
+            QMessageBox.information(self, "Mutagen Command in Progress",
+                                    "Wait for the current command to finish first.")
             return
         if self.conf.get("tray", True) and QSystemTrayIcon.isSystemTrayAvailable() and not self._allow_exit:
             self.hide(); event.ignore()
@@ -2952,7 +3178,7 @@ def main():
                 window.server_selector.setCurrentIndex(index)
                 assert window.server_sync_table.rowCount() == len(window.server_targets("sync", "server"))
                 assert window.server_forward_table.rowCount() == len(window.server_targets("forward", "server"))
-            result_path.write_text("OK: GUI stranky a serverove skupiny se vykreslily.\n", encoding="utf-8")
+            result_path.write_text("OK: UI pages and server groups rendered.\n", encoding="utf-8")
             exit_code = 0
         except Exception:
             result_path.write_text(traceback.format_exc(), encoding="utf-8")

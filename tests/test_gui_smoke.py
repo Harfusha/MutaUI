@@ -67,12 +67,13 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         window.endpoint_combo.setCurrentIndex(0)
         window.update_endpoint_details()
         assert 'web-project' in window.endpoint_status.text()
-        assert 'Připojeno' in window.endpoint_cards['right']['conn'].text()
+        assert 'Connected' in window.endpoint_cards['right']['conn'].text()
         assert '12 486' in window.endpoint_cards['left']['stats'].text()
         window.set_page(10)
         assert window.server_selector.count() >= 4
         assert window.server_overview.rowCount() >= 3
         assert window.server_sync_table.rowCount() == 3
+        assert "3 sync sessions · 1 port forward" in window.server_scope_label.text()
         # The first server can legitimately have only port forwarding sessions.
         for index in range(1, window.server_selector.count()):
             window.server_selector.setCurrentIndex(index)
@@ -82,7 +83,7 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         assert any(group.forward_ids and not group.sync_ids for group in window._server_groups.values())
         window.set_page(1)
         assert window.sync_server_filter.count() == window.server_selector.count()
-        assert "přihlášení" in window.sync_autostart_button.text()
+        assert "sign-in" in window.sync_autostart_button.text()
         window.set_page(1)
         assert isinstance(window.pages.widget(1), QScrollArea)
         window.set_page(5)

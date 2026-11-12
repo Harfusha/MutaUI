@@ -5,7 +5,6 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import pytest
 from monitoring import HistoryStore, ForwardTrafficMeter, Sample
 
 
@@ -29,8 +28,8 @@ def test_store_persistence_aggregate_and_export(tmp_path):
     store.add(Sample(ts=1000, cpu=20, memory=100, read_rate=25, processes=1, active_sessions=1))
     store.add(Sample(ts=1001, cpu=40, memory=200, read_rate=50, processes=2, active_sessions=2))
     store.add(Sample(ts=1002, cpu=60, memory=300, read_rate=75, processes=3, active_sessions=3))
-    store.add_event('Spuštěno', now=1000)
-    assert store.events() == [(1000, 'info', 'Spuštěno')]
+    store.add_event('Started', now=1000)
+    assert store.events() == [(1000, 'info', 'Started')]
     store.close()
     store = HistoryStore(filepath)
     rows = store.query(hours=1, now=1010, max_points=10)

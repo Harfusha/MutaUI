@@ -83,14 +83,14 @@ def session_views(session: dict, kind: str) -> tuple[EndpointView, EndpointView]
     if kind == 'sync':
         return endpoint_view(session.get('alpha'), 'ALPHA', kind), endpoint_view(session.get('beta'), 'BETA', kind)
     if kind == 'forward':
-        return endpoint_view(session.get('source'), 'ZDROJ', kind), endpoint_view(session.get('destination'), 'CÍL', kind)
-    raise ValueError('Neznámý typ relace')
+        return endpoint_view(session.get('source'), 'SOURCE', kind), endpoint_view(session.get('destination'), 'DESTINATION', kind)
+    raise ValueError('Unknown session type')
 
 
 def summary(session: dict, kind: str) -> dict:
     left, right = session_views(session, kind)
     state, text = classify(session, kind)
-    base = {'name': str(session.get('name') or session.get('identifier') or 'Relace'),
+    base = {'name': str(session.get('name') or session.get('identifier') or 'Session'),
             'identifier': str(session.get('identifier') or ''), 'state': state,
             'state_text': text, 'paused': bool(session.get('paused')),
             'last_error': str(session.get('lastError') or ''),

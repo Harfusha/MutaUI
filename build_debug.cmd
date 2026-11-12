@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Mutagen Control 8.2 - Debug builder
 set "PYTHONUTF8=1"
 if not exist ".venv\Scripts\python.exe" (
-  echo Nejprve spustte start.cmd nebo build_fast.cmd.
+  echo Run start.cmd or build_fast.cmd first.
   pause
   exit /b 1
 )
@@ -27,11 +27,11 @@ set "QT_QPA_PLATFORM=offscreen"
 "dist-debug\MutagenControl-Debug\MutagenControl-Debug.exe" --self-test
 if errorlevel 1 goto :error
 set "QT_QPA_PLATFORM="
-echo HOTOVO: dist-debug\MutagenControl-Debug\MutagenControl-Debug.exe
+echo DONE: dist-debug\MutagenControl-Debug\MutagenControl-Debug.exe
 pause
 exit /b 0
 :error
 set "QT_QPA_PLATFORM="
-echo Debug build selhal nebo neprosly bezpecnostni a GUI testy.
+echo The debug build failed or the security and GUI tests did not pass.
 pause
 exit /b 1

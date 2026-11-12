@@ -1,0 +1,26 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".venv", "build", "dist", "dist-fast"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]
+
+[tool.coverage.run]
+branch = true
+source = [
+    "app",
+    "async_recorder",
+    "endpoint_inspector",
+    "insights",
+    "log_stream",
+    "monitoring",
+    "mutagen_client",
+    "performance",
+    "server_groups",
+    "sync_profiles",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

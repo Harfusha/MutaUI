@@ -4,7 +4,7 @@ cd /d "%~dp0"
 title Mutagen Control 8.2 - Fast-start builder
 set "PYTHONUTF8=1"
 echo ========================================================
-echo   MUTAGEN CONTROL 8.2 - rychly start (onedir)
+echo   MUTAGEN CONTROL 8.2 - Fast Startup (one-folder)
 echo ========================================================
 echo.
 if /I not "%OS%"=="Windows_NT" goto :error
@@ -19,7 +19,7 @@ if not exist ".venv\Scripts\python.exe" (
   )
   if errorlevel 1 goto :error
 )
-".venv\Scripts\python.exe" -c "import sys; assert (3,11)<=sys.version_info[:2]<(3,14), 'Pouzijte Python 3.11 az 3.13'"
+".venv\Scripts\python.exe" -c "import sys; assert (3,11)<=sys.version_info[:2]<(3,14), 'Use Python 3.11 through 3.13'"
 if errorlevel 1 goto :error
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
 if errorlevel 1 goto :error
@@ -38,19 +38,19 @@ set "QT_QPA_PLATFORM="
 ".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name MutagenControl --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist-fast" --workpath "build-fast" app.py
 if errorlevel 1 goto :error
 if not exist "dist-fast\MutagenControl\MutagenControl.exe" goto :error
-echo [SELF TEST] Overuji zabaleny EXE bez pripojeni k Mutagenu...
+echo [SELF-TEST] Checking the packaged EXE without connecting to Mutagen...
 set "QT_QPA_PLATFORM=offscreen"
 "dist-fast\MutagenControl\MutagenControl.exe" --self-test
 if errorlevel 1 goto :error
 set "QT_QPA_PLATFORM="
 
 echo.
-echo HOTOVO: %CD%\dist-fast\MutagenControl\MutagenControl.exe
-echo Kopirujte celou slozku MutagenControl, ne jen EXE.
+echo DONE: %CD%\dist-fast\MutagenControl\MutagenControl.exe
+echo Copy the entire MutagenControl folder, not just the EXE.
 pause
 exit /b 0
 :error
 set "QT_QPA_PLATFORM="
-echo [CHYBA] Fast build selhal; zkontrolujte vystup.
+echo [ERROR] Fast build failed; check the output.
 pause
 exit /b 1

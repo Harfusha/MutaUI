@@ -1,5 +1,4 @@
 """Performance constraints verified without a GUI or a live daemon."""
-import random
 from performance import envelope_downsample, nearest_time_index, RefreshGate
 
 

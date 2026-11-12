@@ -1,6 +1,5 @@
 """Tests for the CLI adapter; no Mutagen installation is required."""
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -20,7 +19,7 @@ def test_json_export_model():
     }]
     sessions = parse_sessions(json.dumps(payload))
     assert sessions[0]["name"] == "web"
-    assert classify(sessions[0], "sync") == ("active", "Sleduje změny")
+    assert classify(sessions[0], "sync") == ("active", "Watching")
     assert endpoint_text(sessions[0]["beta"]) == "root@test:/app"
 
 
@@ -51,13 +50,13 @@ def test_endpoints():
 
 def test_command_validation_prevents_bulk_actions():
     client = MutagenClient("")
-    with pytest.raises(MutagenError, match="konkrétní"):
+    with pytest.raises(MutagenError, match="specific session"):
         client.execute("sync", "terminate")
-    with pytest.raises(MutagenError, match="Neplatný"):
+    with pytest.raises(MutagenError, match="Invalid command"):
         client.execute("sync", "shell", "x")
-    with pytest.raises(MutagenError, match="Neplatný identifikátor"):
+    with pytest.raises(MutagenError, match="Invalid session identifier"):
         client.execute("sync", "pause", "--all")
-    with pytest.raises(MutagenError, match="dva koncové"):
+    with pytest.raises(MutagenError, match="Two endpoints"):
         client.execute("sync", "create")
 
 

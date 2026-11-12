@@ -76,7 +76,7 @@ class AlertEngine:
             self.started.setdefault(key, now)
             if key not in self.fired and now - self.started[key] >= max(0, hold_seconds):
                 self.fired.add(key)
-                alerts.append(ResourceAlert(key, f"{name} Mutagenu: {value:.1f} {unit} (limit {threshold:.1f} {unit})", value))
+                alerts.append(ResourceAlert(key, f"Mutagen {name}: {value:.1f} {unit} (limit {threshold:.1f} {unit})", value))
         return alerts
 
 

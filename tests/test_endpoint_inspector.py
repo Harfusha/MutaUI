@@ -41,8 +41,8 @@ def test_problem_totals_include_truncated_records():
 def test_forwarding_has_source_and_destination_and_traffic():
     s = example_snapshot().forward[0]
     v = summary(s, 'forward')
-    assert v['left'].side == 'ZDROJ'
-    assert v['right'].side == 'CÍL'
+    assert v['left'].side == 'SOURCE'
+    assert v['right'].side == 'DESTINATION'
     assert v['open_connections'] == 2
     assert v['total_inbound_data'] > v['total_outbound_data']
     assert v['left'].files is None

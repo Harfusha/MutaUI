@@ -67,7 +67,7 @@ class RefreshGate:
     """Coalesce UI refreshes; forcing bypasses limit, but updates the clock."""
     def __init__(self, min_seconds: float, clock=time.monotonic):
         if min_seconds < 0:
-            raise ValueError("Interval musí být nezáporný")
+            raise ValueError("Interval must be non-negative")
         self.min_seconds = float(min_seconds)
         self.clock = clock
         self.last = float("-inf")

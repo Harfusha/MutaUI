@@ -1,5 +1,4 @@
 """Ensure background writes never require a Qt event loop."""
-import sqlite3
 import time
 
 from async_recorder import AsyncRecorder

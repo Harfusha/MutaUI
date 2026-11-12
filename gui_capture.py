@@ -8,6 +8,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from pathlib import Path
 import sys
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
 from app import MainWindow
 
@@ -16,6 +17,12 @@ def main() -> None:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else "ui-preview")
     root.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
+    if os.name == "nt" and not QFontDatabase.families():
+        font_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        for font_name in ("segoeui.ttf", "seguisym.ttf", "seguiemj.ttf"):
+            font_file = font_dir / font_name
+            if font_file.is_file():
+                QFontDatabase.addApplicationFont(str(font_file))
     window = MainWindow(demo=True)
     try:
         window.resize(1380, 900)
