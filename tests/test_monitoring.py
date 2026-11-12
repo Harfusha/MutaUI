@@ -1,11 +1,11 @@
 """No Qt/Mutagen dependency: local metrics and rate handling."""
-from pathlib import Path
 import csv
 import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from monitoring import HistoryStore, ForwardTrafficMeter, Sample
+from monitoring import ForwardTrafficMeter, HistoryStore, Sample
 
 
 def session(name, outbound, inbound):
@@ -61,8 +61,9 @@ def test_retention_and_query_bounding(tmp_path):
 
 
 def test_process_sampler_calculates_deltas_and_excludes_other_apps(monkeypatch):
-    import mutagen_client
     from types import SimpleNamespace
+
+    import mutagen_client
 
     class Process:
         pid = 42
@@ -93,7 +94,8 @@ def test_process_sampler_calculates_deltas_and_excludes_other_apps(monkeypatch):
 
 def test_separate_chart_connection_returns_same_bins(tmp_path):
     import time
-    from monitoring import query_metrics_from_file, HistoryStore, Sample
+
+    from monitoring import HistoryStore, Sample, query_metrics_from_file
     path = tmp_path / 'chart.sqlite3'
     store = HistoryStore(path)
     now = time.time()

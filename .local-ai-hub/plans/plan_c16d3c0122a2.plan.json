@@ -18,14 +18,25 @@
       "work_status": "done"
     },
     "task_fixes": {
-      "acceptance_criteria": [],
+      "acceptance_criteria": [
+        "Settings validate root shape, supported types and ranges, migrations, and safe recovery while preserving invalid source.",
+        "Dangerous mode confirmation blocks Mutagen create on cancel.",
+        "Refresh errors preserve last valid snapshot and visibly mark stale/offline.",
+        "Async refresh generations prevent older results overwriting newer state.",
+        "Traffic history uses real measurement timestamps and a sample cadence separate from GUI refresh.",
+        "High-volume tables use model/view; benchmark includes 10, 100, 500, 1000 synthetic sessions.",
+        "CI self-test logs print and upload; push and PR run lightweight checks; packaging remains dispatch-only.",
+        "Opt-in isolated local Mutagen integration tests exist; SSH recovery requirements documented.",
+        "README has no fixed test counts; Ruff includes E9/F/B/I/UP/selected SIM; dependency scope evaluated; full export warns.",
+        "Relevant tests/checks run; Windows EXE, live daemon and SSH limits are explicit."
+      ],
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
-      "description": "Audit nenašel doloženou funkční mezeru; zachován stávající rozsah a lokální diffy.",
+      "description": "Implemented the MutaUI v8.2 remediation scope in docs/superpowers/specs/2026-11-12-mutaui-review-remediation.md. Verification: Ruff passed; 101 tests passed and 1 optional local-Mutagen test skipped because Mutagen CLI is unavailable; verify_source passed; diff check exited 0; packaged fast-folder and one-file Windows EXE self-tests both exited 0. SSH recovery procedure is documented but was not exercised.",
       "kind": "code",
       "next_action": "",
-      "title": "Opravy",
+      "title": "Review remediation",
       "work_status": "done"
     },
     "task_gui": {

@@ -4,12 +4,16 @@ No Mutagen CLI commands are executed: the window uses demo=True.
 Run via gui_preview.cmd after installing the Qt dependencies.
 """
 from __future__ import annotations
+
 import os
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from pathlib import Path
 import sys
+from pathlib import Path
+
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QApplication
+
 from app import MainWindow
 
 

@@ -9,9 +9,9 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 PySide6 = pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication, QFrame, QScrollArea
-from sync_profiles import PROFILES
 
 from app import MainWindow, SessionDialog
+from sync_profiles import PROFILES
 
 
 def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
@@ -25,8 +25,9 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         qapp.processEvents()
         assert window.pages.count() == 11
         window.apply_snapshot(window.snapshot)
-        import shiboken6
         import gc
+
+        import shiboken6
         gc.collect()
         # Regression for the real Windows crash: Graph's owning QFrame must live.
         assert shiboken6.isValid(window.cpu_chart)

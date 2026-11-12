@@ -1,37 +1,24 @@
-# Static checks and tests
+# Runtime and integration testing
 
-Run the same checks as Windows CI from the repository root:
+## Packaged application
+
+Run the `Build Mutagen Control for Windows` workflow manually to build both EXEs and run their `--self-test` checks. If either check fails, inspect the uploaded `mutagen-control-self-test.log` artifact before changing packaging inputs.
+
+## Isolated local Mutagen daemon
+
+The optional test `tests/test_mutagen_integration.py` starts a real Mutagen daemon against temporary local folders. It sets `MUTAGEN_DATA_DIRECTORY` to a temporary directory so the test does not use the normal daemon's session database. Run it on a machine with Mutagen installed:
 
 ```powershell
-python -m ruff check .
-python verify_source.py
-$env:QT_QPA_PLATFORM = "offscreen"
-python -m pytest -q tests --tb=short --cov --cov-branch --cov-report=term-missing:skip-covered
+$env:MUTAGEN_BINARY = "C:\Program Files\Mutagen\mutagen.exe"
+.venv\Scripts\python.exe -m pytest -q tests/test_mutagen_integration.py
 ```
 
-Coverage uses branches and fails below 75%. CI runs all tests, including the Qt
-smoke test, before building and self-testing both packaged Windows variants.
+The test uses a temporary `two-way-safe` session, checks that a marker file reaches the second local folder, then terminates the test session and daemon. CI skips it when no Mutagen executable is installed.
 
-## Source-to-test map
+## SSH recovery check
 
-| Source area | Main tests |
-| --- | --- |
-| Main window, dialogs, startup and UI actions (`app.py`) | `test_mainwindow_flows.py`, `test_gui_smoke.py`, `test_ui_formatting.py`, `test_remote_history.py`, `test_v5_migration.py` |
-| Mutagen CLI adapter (`mutagen_client.py`) | `test_client.py`, `test_bulk_cli.py` |
-| Background history writer (`async_recorder.py`) | `test_async_recorder.py` |
-| SQLite history, sampling and monitoring (`monitoring.py`) | `test_monitoring.py`, `test_remote_history.py`, `test_async_recorder.py` |
-| Endpoint summaries (`endpoint_inspector.py`) | `test_endpoint_inspector.py`, `test_insights.py`, `test_benchmark.py` |
-| Log stream (`log_stream.py`) | `test_log_stream.py` |
-| Performance helpers (`performance.py`) | `test_performance.py` |
-| Server groups (`server_groups.py`) | `test_server_groups.py` |
-| Sync profiles (`sync_profiles.py`) | `test_sync_profiles.py`, `test_mainwindow_flows.py` |
-| Insights (`insights.py`) | `test_insights.py` |
-| Local benchmark tool (`benchmark.py`) | `test_benchmark.py` |
-| Offline GUI capture (`gui_capture.py`) | `test_gui_capture.py` |
-| Static source invariants and Qt layout guards | `verify_source.py`, `test_qt_source_guard.py` |
+SSH integration needs an operator-provided test host and credentials, so CI does not invent or use them. To validate recovery manually, use two disposable folders and a separate SSH account/path, create a `two-way-safe` session, confirm the initial sync, briefly make the SSH endpoint unavailable, then restore it and confirm the session returns to an active state and transfers a new marker. Inspect the session error and logs during the outage. Do not use production data for this check. No SSH recovery run is claimed by this repository's automated tests.
 
-The suite uses fixture data and mocked Mutagen/process boundaries; it does not
-claim live SSH, remote server, network, or real Mutagen-daemon acceptance.
-Coverage is a regression floor, not proof that every line or platform-specific
-runtime path is exercised. The Windows CI packaging self-tests exercise the
-actual generated executables; local source tests alone do not establish that.
+## Qt dependency
+
+The application imports QtCore, QtGui, and QtWidgets only. Runtime requirements therefore pin `PySide6-Essentials` 6.8.3; the larger PySide6 distribution adds Qt modules the application does not import. The pin was checked in a clean Python 3.12 environment by building the Windows one-folder app and passing its packaged self-test. Qt Essentials 6.11.1 and 6.12.0 failed at frozen `QtCore` import on that same host, so they are not used until packaging is verified again.

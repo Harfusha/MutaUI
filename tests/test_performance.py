@@ -1,5 +1,5 @@
 """Performance constraints verified without a GUI or a live daemon."""
-from performance import envelope_downsample, nearest_time_index, RefreshGate
+from performance import RefreshGate, envelope_downsample, nearest_time_index
 
 
 def test_downsample_is_bounded_and_retains_short_peaks():

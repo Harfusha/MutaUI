@@ -7,8 +7,8 @@ This is NOT a substitute for the GUI smoke test on Windows.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 MODULES = (
@@ -62,7 +62,7 @@ def find_qt_layout_misuses(source: str) -> list[str]:
             if name == 'card' and len(node.targets) == 1 and isinstance(node.targets[0], ast.Tuple):
                 elements = node.targets[0].elts
                 if len(elements) == 2:
-                    for target, kind in zip(elements, ('widget', 'layout')):
+                    for target, kind in zip(elements, ('widget', 'layout'), strict=True):
                         if isinstance(target, ast.Name):
                             types.setdefault(target.id, []).append((node.lineno, kind))
             elif name in LAYOUT_CONSTRUCTORS or name in WIDGET_CONSTRUCTORS:

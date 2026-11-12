@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from log_stream import FileTail
 
 
@@ -27,7 +28,7 @@ def test_tail_detects_truncation_and_rotation(tmp_path: Path):
 
 def test_tail_bounds_memory_with_large_file(tmp_path: Path):
     file = tmp_path / "large.log"
-    file.write_bytes((b"line of data\n" * 10000))
+    file.write_bytes(b"line of data\n" * 10000)
     tail = FileTail(file, max_chunk=4096)
     result = tail.poll()
     assert 0 < len(result) < 10000

@@ -42,10 +42,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          ./dist-fast/MutagenControl/MutagenControl.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Fast EXE self-test failed" }
-          ./dist/MutagenControl.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Single EXE self-test failed" }
+          ./scripts/run-self-test.ps1 -Executable "./dist-fast/MutagenControl/MutagenControl.exe" -Label "Fast"
+          ./scripts/run-self-test.ps1 -Executable "./dist/MutagenControl.exe" -Label "Single"
+      - name: Upload self-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MutagenControl-self-test-diagnostics
+          path: ${{ runner.temp }}/mutagen-control-self-test.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload fast-start folder
         uses: actions/upload-artifact@v4
         with:

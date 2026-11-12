@@ -48,7 +48,7 @@ The application shows live status changes and can follow an **existing local log
 - `python verify_source.py` checks the code and known static issues with Qt layouts.
 - `python -m pytest -q tests --ignore=tests/test_gui_smoke.py` runs the available logic tests.
 - `QT_QPA_PLATFORM=offscreen python -m pytest -q tests/test_gui_smoke.py` on Windows checks **actual page creation**, navigation, graphs, and server groups. This test must pass before a build.
-- Verification used a temporary Python environment with PySide6 6.12: all 62 tests passed, all 11 GUI pages were captured, and a one-folder EXE build passed `--self-test`. The EXE is a local verification artifact and is not included in this source folder.
+- Current verification results belong to the GitHub Actions run that produced them. The workflow runs static checks, tests, both Windows builds, and packaged EXE self-tests; this source checkout does not include those generated executables.
 
 This is not an official application from the Mutagen project. The demo mode does not perform operations on real sessions.
 

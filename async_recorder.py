@@ -6,14 +6,14 @@ provides consistent committed snapshots. Queue is bounded to cap memory usage.
 """
 from __future__ import annotations
 
-from collections import deque
-from pathlib import Path
 import sqlite3
 import threading
 import time
+from collections import deque
+from pathlib import Path
 from typing import Any
 
-from monitoring import HistoryStore, METRIC_COLUMNS, REMOTE_COLUMNS, Sample
+from monitoring import METRIC_COLUMNS, REMOTE_COLUMNS, HistoryStore, Sample
 
 
 class AsyncRecorder:

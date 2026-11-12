@@ -1,7 +1,8 @@
 """Server grouping must never need a network connection or other service."""
 import pytest
-from server_groups import group_servers, session_servers
+
 from mutagen_client import example_snapshot
+from server_groups import group_servers, session_servers
 
 
 def ep(host, protocol=1, port=0):

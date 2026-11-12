@@ -48,10 +48,15 @@ def test_quick_navigator_filters_words_and_selects_page(window):
 
 def test_session_dialog_validation_blocks_missing_and_risky_inputs(window, monkeypatch):
     warnings = []
+    warning_text = []
+    def reject_warning(*args):
+        warnings.append(args[1])
+        warning_text.append(args[2])
+        return QMessageBox.StandardButton.No
     monkeypatch.setattr(
         QMessageBox,
         "warning",
-        lambda *args: warnings.append(args[1]) or QMessageBox.StandardButton.No,
+        reject_warning,
     )
     dialog = app_module.SessionDialog("sync", window)
     dialog.validate()
@@ -60,9 +65,16 @@ def test_session_dialog_validation_blocks_missing_and_risky_inputs(window, monke
 
     dialog.a.setText("C:/source")
     dialog.b.setText("user@host:/target")
+    dialog.mode.setCurrentText("two-way-resolved")
+    dialog.validate()
+    assert warnings[-1] == "Risky Mode"
+    assert "ALPHA" in warning_text[-1]
+    assert dialog.result() == 0
+
     dialog.mode.setCurrentText("one-way-replica")
     dialog.validate()
     assert warnings[-1] == "Risky Mode"
+    assert "delete" in warning_text[-1].lower()
     assert dialog.result() == 0
 
     monkeypatch.setattr(
@@ -123,6 +135,57 @@ def test_invalid_binary_does_not_save_settings(window, monkeypatch):
 
     assert warnings == ["Invalid File"]
     assert writes == []
+
+
+def test_failed_daemon_refresh_retains_last_successful_sessions(window):
+    previous = window.snapshot
+    previous.daemon = True
+    window.demo = False
+
+    window.apply_snapshot(app_module.Snapshot(binary=previous.binary, error="daemon stopped"))
+
+    assert window.snapshot.sync == previous.sync
+    assert window.snapshot.forward == previous.forward
+    assert window.snapshot.sessions_stale is True
+    assert "last successful sessions" in window.updated.text().lower()
+
+
+def test_refresh_ignores_result_from_obsolete_generation(window, monkeypatch):
+    callbacks = {}
+    window.demo = False
+    window.poll_backoff.can_retry = lambda _force: True
+    monkeypatch.setattr(app_module, "MutagenClient", lambda binary: SimpleNamespace(binary=binary))
+    monkeypatch.setattr(app_module, "read_registration", lambda _binary: ("registered", ""))
+
+    def capture_submit(work, on_result, on_error=None, on_done=None):
+        callbacks.update(work=work, result=on_result, error=on_error, done=on_done)
+
+    monkeypatch.setattr(window, "submit", capture_submit)
+    window.refresh(force=True)
+    before = window.snapshot
+    window._refresh_generation += 1
+
+    callbacks["result"](app_module.Snapshot(binary=window.client.binary, daemon=True))
+
+    assert window.snapshot is before
+
+
+def test_history_does_not_repeat_old_forward_rates(window, monkeypatch):
+    samples = []
+    monkeypatch.setattr(window.history, "add", samples.append)
+    window.demo = False
+    window.recorder = None
+    window.traffic_rates = (120.0, 75.0)
+    window._traffic_sample_pending = True
+    data = {"cpu": 1.0, "memory": 2048, "processes": 1,
+            "read_rate": 0.0, "write_rate": 0.0, "gui_cpu": 0.0, "gui_memory": 4096}
+
+    window.apply_resource_metrics(data)
+    window.apply_resource_metrics(data)
+
+    assert (samples[0].forward_out_rate, samples[0].forward_in_rate) == (120.0, 75.0)
+    assert samples[1].forward_out_rate is None
+    assert samples[1].forward_in_rate is None
 
 
 def test_demo_bulk_action_never_prompts_or_submits(window, monkeypatch):
@@ -255,6 +318,20 @@ def test_logs_are_recorded_cleared_and_exported(window, monkeypatch, tmp_path):
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(target), "Text (*.txt)"))
     window.export_logs()
     assert "ERROR transfer failed" in target.read_text(encoding="utf-8")
+
+
+def test_full_snapshot_export_requires_privacy_confirmation(window, monkeypatch, tmp_path):
+    target = tmp_path / "snapshot.json"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(target), "JSON (*.json)"))
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
+
+    window.export_snapshot()
+
+    assert not target.exists()
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
+    window.export_snapshot()
+    assert "sync" in target.read_text(encoding="utf-8")
 
     window.clear_logs()
     assert len(window.logs) == 1

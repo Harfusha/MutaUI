@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+
 import pytest
-from sync_profiles import PROFILES, profile_flags, AdaptivePolling, native_config_text
+
+from sync_profiles import PROFILES, AdaptivePolling, native_config_text, profile_flags
 
 
 def test_profiles_use_supported_cli_create_flags_only():

@@ -30,8 +30,8 @@ class Sample:
     memory: float = 0.0
     read_rate: float = 0.0
     write_rate: float = 0.0
-    forward_out_rate: float = 0.0
-    forward_in_rate: float = 0.0
+    forward_out_rate: float | None = 0.0
+    forward_in_rate: float | None = 0.0
     processes: int = 0
     active_sessions: int = 0
     problem_sessions: int = 0
@@ -131,7 +131,7 @@ class HistoryStore:
             "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)",
             (now - hours * 3600, now, interval, interval),
         )
-        return [{"ts": ts, **dict(zip(METRIC_COLUMNS, fields))} for ts, *fields in cursor]
+        return [{"ts": ts, **dict(zip(METRIC_COLUMNS, fields, strict=True))} for ts, *fields in cursor]
 
     def statistics(self, hours: float = 1.0, now: float | None = None) -> dict:
         """Summary of raw measurements over the range (not downsampled chart points)."""
@@ -139,7 +139,7 @@ class HistoryStore:
         now = time.time() if now is None else now
         hours = max(1 / 60, min(float(hours), self.retention_hours))
         cols = ", ".join(METRIC_COLUMNS)
-        rows = [dict(zip(METRIC_COLUMNS, values)) for values in self.db.execute(
+        rows = [dict(zip(METRIC_COLUMNS, values, strict=True)) for values in self.db.execute(
             f"SELECT {cols} FROM metrics WHERE ts >= ? AND ts <= ? ORDER BY ts",
             (now - hours * 3600, now))]
         return measurement_summary(rows)
@@ -192,7 +192,7 @@ class HistoryStore:
             "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)",
             (host, now - hours * 3600, now, interval, interval),
         )
-        return [{"ts": ts, **dict(zip(REMOTE_COLUMNS, values))} for ts, *values in cursor]
+        return [{"ts": ts, **dict(zip(REMOTE_COLUMNS, values, strict=True))} for ts, *values in cursor]
 
     def export_remote(self, path: Path | str, host: str, hours: float = 24.0):
         """Export a chosen host's raw measurements. Host strings are private."""
@@ -226,7 +226,7 @@ def statistics_from_file(path: Path | str, hours: float = 1.0,
     connection = sqlite3.connect(uri, uri=True, timeout=5)
     try:
         names = ', '.join(METRIC_COLUMNS)
-        rows = [dict(zip(METRIC_COLUMNS, values)) for values in connection.execute(
+        rows = [dict(zip(METRIC_COLUMNS, values, strict=True)) for values in connection.execute(
             f'SELECT {names} FROM metrics WHERE ts >= ? AND ts <= ? ORDER BY ts',
             (now - hours * 3600, now))]
         return measurement_summary(rows)
@@ -257,6 +257,6 @@ def query_metrics_from_file(path: Path | str, hours: float = 1.0,
             f'SELECT AVG(ts), {cols} FROM metrics WHERE ts >= ? AND ts <= ? '
             'GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)',
             (now - hours * 3600, now, interval, interval))
-        return [{'ts': ts, **dict(zip(METRIC_COLUMNS, values))} for ts, *values in cursor]
+        return [{'ts': ts, **dict(zip(METRIC_COLUMNS, values, strict=True))} for ts, *values in cursor]
     finally:
         connection.close()

@@ -8,7 +8,7 @@ from __future__ import annotations
 import bisect
 import math
 import time
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tuple]:

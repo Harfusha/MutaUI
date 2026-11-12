@@ -6,9 +6,17 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mutagen_client import (MutagenClient, MutagenError, classify, conflict_count,
-                            endpoint_text, human_bytes, parse_sessions, problem_count,
-                            read_registration)
+from mutagen_client import (
+    MutagenClient,
+    MutagenError,
+    classify,
+    conflict_count,
+    endpoint_text,
+    human_bytes,
+    parse_sessions,
+    problem_count,
+    read_registration,
+)
 
 
 def test_json_export_model():

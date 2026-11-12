@@ -1,5 +1,6 @@
 """Bulk commands are explicit, safe and never use shell or --all."""
 import pytest
+
 import mutagen_client
 from mutagen_client import MutagenClient, MutagenError
 

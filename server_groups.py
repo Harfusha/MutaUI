@@ -5,8 +5,8 @@ may point at the same machine, but we never guess or make network requests.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 
 def _remote_key(endpoint: dict) -> tuple[str, str] | None:

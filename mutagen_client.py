@@ -136,6 +136,7 @@ class Snapshot:
     memory: int = 0
     processes: int = 0
     error: str = ""
+    sessions_stale: bool = False
     version: str = ""
     registration: str = "unknown"
     registration_command: str = ""

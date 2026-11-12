@@ -6,40 +6,124 @@ Preview (offline demo, actions disabled): python app.py --demo
 from __future__ import annotations
 
 import json
-from html import escape as html_escape
 import math
 import os
+import sqlite3
 import sys
 import time
-import sqlite3
 from collections import deque
+from contextlib import suppress
 from datetime import datetime
-from pathlib import Path
 from functools import partial
+from html import escape as html_escape
+from pathlib import Path
 
-from PySide6.QtCore import (Qt, QTimer, QObject, QRunnable, QThreadPool,
-                            Signal, QRectF, QPointF, QEvent)
-from PySide6.QtGui import (QAction, QBrush, QColor, QFont, QIcon, QLinearGradient,
-                           QPainter, QPainterPath, QPen, QPixmap, QKeySequence, QShortcut)
+# PyInstaller places Qt and Shiboken DLLs in separate bundle subdirectories.
+# Register both before importing any PySide module so Windows cannot resolve
+# a same-named DLL from another Python or Qt installation on PATH.
+_DLL_DIRECTORY_HANDLES = []
+if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):
+    _dll_directories = (Path(sys._MEIPASS) / "PySide6", Path(sys._MEIPASS) / "shiboken6")
+    os.environ["PATH"] = os.pathsep.join(
+        [*(str(path) for path in _dll_directories), str(Path(sys._MEIPASS)), os.environ.get("PATH", "")])
+    for _dll_directory in _dll_directories:
+        if _dll_directory.is_dir():
+            _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(_dll_directory)))
+
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPointF,
+    QRectF,
+    QRunnable,
+    Qt,
+    QThreadPool,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import (
+    QAction,
+    QBrush,
+    QColor,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-    QFormLayout, QFrame, QGridLayout, QHBoxLayout, QLabel, QLineEdit,
-    QMainWindow, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QScrollArea, QInputDialog, QLayout,
-    QSizePolicy, QSpinBox, QStackedWidget, QSystemTrayIcon,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QProgressBar, QToolTip, QListWidget, QListWidgetItem,
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLayout,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPlainTextEdit,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSpinBox,
+    QStackedWidget,
+    QSystemTrayIcon,
+    QTableView,
+    QTableWidget,
+    QTableWidgetItem,
+    QToolTip,
+    QVBoxLayout,
+    QWidget,
 )
 
-from mutagen_client import (MutagenClient, MutagenError, ProcessSampler, Snapshot,
-                            classify, conflict_count, endpoint_text, example_snapshot,
-                            human_bytes, problem_count, read_registration)
-from monitoring import HistoryStore, ForwardTrafficMeter, Sample, statistics_from_file, query_metrics_from_file
-from insights import AlertEngine, safe_diagnostic_report
-from endpoint_inspector import summary as inspect_session
-from server_groups import group_servers, session_servers
-from log_stream import FileTail, TrackedLogLines
-from performance import envelope_downsample, nearest_time_index, RefreshGate, PollBackoff
 from async_recorder import AsyncRecorder
-from sync_profiles import PROFILES, profile_flags, native_config_text, AdaptivePolling
+from endpoint_inspector import summary as inspect_session
+from insights import AlertEngine, safe_diagnostic_report
+from log_stream import FileTail, TrackedLogLines
+from monitoring import (
+    ForwardTrafficMeter,
+    HistoryStore,
+    Sample,
+    query_metrics_from_file,
+    statistics_from_file,
+)
+from mutagen_client import (
+    MutagenClient,
+    MutagenError,
+    ProcessSampler,
+    Snapshot,
+    classify,
+    conflict_count,
+    endpoint_text,
+    example_snapshot,
+    human_bytes,
+    problem_count,
+    read_registration,
+)
+from performance import PollBackoff, RefreshGate, envelope_downsample, nearest_time_index
+from server_groups import group_servers, session_servers
+from settings import load_settings
+from settings import write_settings as save_settings_file
+from sync_profiles import PROFILES, AdaptivePolling, native_config_text, profile_flags
 
 BG = "#0B1019"
 CARD = "#141D2A"
@@ -133,30 +217,11 @@ def settings_path() -> Path:
 
 
 def read_settings() -> dict:
-    try:
-        return json.loads(settings_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
+    return load_settings(settings_path()).values
 
 
 def write_settings(data: dict) -> None:
-    path = settings_path()
-    # Atomic replacement avoids a corrupted settings file after a crash/power loss.
-    import tempfile
-    path.parent.mkdir(parents=True, exist_ok=True)
-    content = json.dumps(data, indent=2, ensure_ascii=False)
-    temp = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                         prefix=".settings-", suffix=".tmp", delete=False) as f:
-            temp = Path(f.name)
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(temp, path)
-    finally:
-        if temp is not None:
-            temp.unlink(missing_ok=True)
+    save_settings_file(settings_path(), data)
 
 
 def label(text: str, *, muted=False, size=None, bold=False) -> QLabel:
@@ -499,6 +564,105 @@ class Worker(QRunnable):
             self.signals.finished.emit()
 
 
+class SessionTableModel(QAbstractTableModel):
+    """Small model/view data adapter for the frequently refreshed session lists."""
+
+    def __init__(self, headers, kind, *, dashboard=False, parent=None):
+        super().__init__(parent)
+        self.headers = list(headers)
+        self.kind = kind
+        self.dashboard = dashboard
+        self.sessions = []
+        self.favorites = set()
+        self.sort_column = -1
+        self.sort_order = Qt.SortOrder.AscendingOrder
+
+    def rowCount(self, parent=None):
+        return 0 if parent is not None and parent.isValid() else len(self.sessions)
+
+    def columnCount(self, parent=None):
+        return 0 if parent is not None and parent.isValid() else len(self.headers)
+
+    def _cells(self, session):
+        status, description = classify(session, self.kind)
+        identifier = str(session.get("identifier") or "")
+        name = session.get("name") or identifier[:22] or "(unnamed)"
+        if identifier in self.favorites:
+            name = "★ " + name
+        source = endpoint_text(session.get("alpha" if self.kind == "sync" else "source"), self.kind)
+        target = endpoint_text(session.get("beta" if self.kind == "sync" else "destination"), self.kind)
+        extra = (conflict_count(session) + problem_count(session) if self.kind == "sync"
+                 else session.get("openConnections", 0))
+        return [name, description, source, target] + ([] if self.dashboard else [str(extra)]), status, identifier, extra
+
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < len(self.sessions)):
+            return None
+        session = self.sessions[index.row()]
+        cells, status, identifier, extra = self._cells(session)
+        value = cells[index.column()]
+        if role == Qt.ItemDataRole.DisplayRole or role == Qt.ItemDataRole.ToolTipRole:
+            return value
+        if role == Qt.ItemDataRole.UserRole and index.column() == 0:
+            return identifier
+        if role == Qt.ItemDataRole.ForegroundRole:
+            color = TEXT if index.column() == 0 else (
+                {"active": TEAL, "busy": BLUE, "error": RED, "paused": AMBER}.get(status, MUTED)
+                if index.column() == 1 else MUTED)
+            return QColor(color)
+        if role == Qt.ItemDataRole.FontRole and index.column() == 0:
+            font = QFont()
+            font.setBold(True)
+            return font
+        if role == Qt.ItemDataRole.UserRole + 1:
+            return extra if index.column() == len(cells) - 1 and not self.dashboard else value.casefold()
+        return None
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
+            return self.headers[section] if 0 <= section < len(self.headers) else None
+        return None
+
+    def set_sessions(self, sessions, favorites=()):
+        self.beginResetModel()
+        self.sessions = list(sessions)
+        self.favorites = set(favorites)
+        if self.sort_column >= 0:
+            self._sort_rows()
+        self.endResetModel()
+
+    def row_for_identifier(self, identifier):
+        return next((row for row, session in enumerate(self.sessions)
+                     if session.get("identifier") == identifier), -1)
+
+    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
+        if not 0 <= column < len(self.headers):
+            return
+        persistent = self.persistentIndexList()
+        identity = [(index.data(Qt.ItemDataRole.UserRole), index.column()) for index in persistent]
+        self.layoutAboutToBeChanged.emit()
+        self.sort_column = column
+        self.sort_order = order
+        self._sort_rows()
+        updated = [self.index(self.row_for_identifier(identifier), col)
+                   if self.row_for_identifier(identifier) >= 0 else QModelIndex()
+                   for identifier, col in identity]
+        self.changePersistentIndexList(persistent, updated)
+        self.layoutChanged.emit()
+
+    def _sort_rows(self):
+        reverse = self.sort_order == Qt.SortOrder.DescendingOrder
+        def sort_key(session):
+            cells, _status, _identifier, extra = self._cells(session)
+            if not self.dashboard and self.sort_column == len(cells) - 1:
+                try:
+                    return int(extra)
+                except (TypeError, ValueError):
+                    return 0
+            return cells[self.sort_column].casefold()
+        self.sessions.sort(key=sort_key, reverse=reverse)
+
+
 class SessionDialog(QDialog):
     def __init__(self, kind: str, parent=None, default_profile: str = "default"):
         super().__init__(parent)
@@ -573,12 +737,26 @@ class SessionDialog(QDialog):
         if not self.a.text().strip() or not self.b.text().strip():
             QMessageBox.warning(self, "Missing Information", "Enter both endpoints.")
             return
-        if self.kind == "sync" and self.mode.currentText() == "one-way-replica":
-            response = QMessageBox.warning(self, "Risky Mode",
-                "one-way-replica mode can overwrite or delete data on BETA. Continue?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if response != QMessageBox.StandardButton.Yes: return
+        if self.kind == "sync":
+            mode_warnings = {
+                "two-way-resolved": (
+                    "This mode resolves conflicts automatically with ALPHA as the winner. "
+                    "Unmerged changes on BETA can be lost. Continue?"
+                ),
+                "one-way-replica": (
+                    "This mode makes BETA an exact copy of ALPHA and can overwrite or delete "
+                    "files on BETA that are not on ALPHA. Continue?"
+                ),
+            }
+            warning = mode_warnings.get(self.mode.currentText())
+            if warning:
+                response = QMessageBox.warning(
+                    self, "Risky Mode", warning,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if response != QMessageBox.StandardButton.Yes:
+                    return
         self.accept()
 
     def arguments(self):
@@ -663,7 +841,8 @@ class MainWindow(QMainWindow):
     def __init__(self, demo=False):
         super().__init__()
         self.demo = demo
-        self.conf = read_settings()
+        self.settings_load = load_settings(settings_path())
+        self.conf = self.settings_load.values
         self.client = MutagenClient(self.conf.get("binary", ""))
         self.sampler = ProcessSampler()
         self.snapshot = example_snapshot() if demo else Snapshot(binary=self.client.binary)
@@ -680,6 +859,7 @@ class MainWindow(QMainWindow):
             self.seed_demo_history()
         self.traffic_meter = ForwardTrafficMeter()
         self.traffic_rates = (0.0, 0.0)
+        self._traffic_sample_pending = False
         self.last_metrics = {"cpu": 0, "memory": 0, "read_rate": 0, "write_rate": 0, "processes": 0}
         self.previous_states = None
         self.previous_daemon = None
@@ -699,6 +879,8 @@ class MainWindow(QMainWindow):
         self.logs = deque((f"[{datetime.fromtimestamp(ts):%d.%m. %H:%M:%S}] {message}"
                            for ts, severity, message in self.history.events(800)), maxlen=800)
         self.pending_poll = False
+        self._refresh_generation = 0
+        self._refresh_again = False
         self.pending_action = False
         self.poll_backoff = PollBackoff(base=max(2, int(self.conf.get('interval', 4))))
         self.adaptive_policy = AdaptivePolling(
@@ -740,6 +922,11 @@ class MainWindow(QMainWindow):
                       activated=partial(self.set_page, _idx))
         QShortcut(QKeySequence("Ctrl+Shift+1"), self, activated=partial(self.set_page, 10))
         self.add_log("Application started" + (" (DEMO mode)" if demo else ""))
+        if self.settings_load.warnings:
+            self.statusBar().showMessage(
+                "Some settings were invalid. Safe defaults are active; the original will be backed up when settings are saved.",
+                15000,
+            )
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.timer.start(self.poll_period_ms())
@@ -1040,11 +1227,13 @@ class MainWindow(QMainWindow):
         titlebar = QHBoxLayout(); titlebar.addWidget(label("Sync Sessions", size=16, bold=True)); titlebar.addStretch()
         titlebar.addWidget(button("All Sync Sessions →", partial(self.set_page, 1)))
         rr.addLayout(titlebar)
-        self.dashboard_table = self.make_table(
-            ["NAME", "STATUS", "ALPHA", "BETA"], height=240, stretch_columns=(0, 2, 3))
+        self.dashboard_table = self.make_session_table(
+            ["NAME", "STATUS", "ALPHA", "BETA"], height=240, stretch_columns=(0, 2, 3),
+            dashboard=True)
         self.dashboard_table.setToolTip("Double-click to view sync details")
         rr.addWidget(self.dashboard_table)
-        self.dashboard_table.cellDoubleClicked.connect(self.dashboard_select)
+        self.dashboard_table.doubleClicked.connect(
+            lambda index: self.dashboard_select(index.row(), index.column()))
         # Forward sessions summary row
         fwd_row = QHBoxLayout()
         fwd_row.addWidget(label("Forwarding:", muted=True, size=11))
@@ -1133,6 +1322,31 @@ class MainWindow(QMainWindow):
         table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         return table
 
+    def make_session_table(self, headers, height=370, *, stretch_columns=(), kind="sync", dashboard=False):
+        table = QTableView()
+        model = SessionTableModel(headers, kind, dashboard=dashboard, parent=table)
+        table.setModel(model)
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        table.setShowGrid(False)
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(46)
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        for column in range(len(headers)):
+            mode = (QHeaderView.ResizeMode.Stretch if column in set(stretch_columns) else
+                    QHeaderView.ResizeMode.ResizeToContents)
+            header.setSectionResizeMode(column, mode)
+        table.setMinimumHeight(height)
+        table.setSortingEnabled(True)
+        header.setMinimumSectionSize(85)
+        table.setWordWrap(False)
+        table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        return table
+
     def sessions_page(self, kind):
         page = QScrollArea(); page.setWidgetResizable(True); page.setFrameShape(QFrame.Shape.NoFrame)
         root = QWidget(); root.setObjectName("scrollbody")
@@ -1204,8 +1418,8 @@ class MainWindow(QMainWindow):
         if kind == "sync": self.sync_search = search
         else: self.forward_search = search
         fields = ["NAME", "STATUS", "ALPHA", "BETA", "CONFLICTS"] if kind == "sync" else ["NAME", "STATUS", "SOURCE", "DESTINATION", "CONNECTION"]
-        table = self.make_table(fields, 225, stretch_columns=(0, 2, 3))
-        table.itemSelectionChanged.connect(partial(self.on_select, kind))
+        table = self.make_session_table(fields, 225, stretch_columns=(0, 2, 3), kind=kind)
+        table.selectionModel().selectionChanged.connect(lambda *_args, k=kind: self.on_select(k))
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(lambda point, k=kind: self.session_context_menu(k, point))
         table.setMinimumHeight(0)
@@ -1654,8 +1868,7 @@ class MainWindow(QMainWindow):
         if self.recorder is not None:
             self.recorder.add_event(safe_message, severity)
         else:
-            try: self.history.add_event(safe_message, severity)
-            except sqlite3.Error: pass
+            with suppress(sqlite3.Error): self.history.add_event(safe_message, severity)
         if hasattr(self, "log_view"):
             self.log_view.appendPlainText(self.logs[-1])
             bar = self.log_view.verticalScrollBar(); bar.setValue(bar.maximum())
@@ -1668,8 +1881,7 @@ class MainWindow(QMainWindow):
         if self.recorder is not None:
             self.recorder.clear_events()
         else:
-            try: self.history.clear_events()
-            except sqlite3.Error: pass
+            with suppress(sqlite3.Error): self.history.clear_events()
         self.add_log("UI history cleared")
 
     def export_logs(self):
@@ -1697,8 +1909,17 @@ class MainWindow(QMainWindow):
         if self.demo:
             self.apply_snapshot(self.snapshot)
             return
-        if self.pending_poll or self.pending_action: return
+        if self.pending_poll:
+            if force:
+                # A settings change or completed command requested newer data.
+                # Ignore this worker's now-obsolete result and rerun once.
+                self._refresh_generation += 1
+                self._refresh_again = True
+            return
+        if self.pending_action: return
         self.pending_poll = True
+        self._refresh_generation += 1
+        generation = self._refresh_generation
         self._poll_started_at = time.monotonic()
         binary = self.client.binary
         client = MutagenClient(binary)
@@ -1720,6 +1941,7 @@ class MainWindow(QMainWindow):
                 snap.forward = client.list_sessions("forward")
             except MutagenError as exc:
                 snap.error = "Forwarding: " + str(exc)
+                snap.sessions_stale = True
             if version_valid:
                 snap.version = cached_version
             else:
@@ -1728,7 +1950,17 @@ class MainWindow(QMainWindow):
                 except MutagenError:
                     snap.version = cached_version if cache_binary == binary else ""
             return snap
-        self.submit(work, self.apply_snapshot, on_done=lambda: setattr(self, "pending_poll", False))
+        def apply_if_current(snap):
+            if generation == self._refresh_generation:
+                self.apply_snapshot(snap, generation=generation)
+        def finish_poll():
+            self.pending_poll = False
+            if self._refresh_again:
+                self._refresh_again = False
+                self.refresh(force=True)
+        self.submit(work, apply_if_current,
+                    on_error=lambda message: self.report_error(message) if generation == self._refresh_generation else None,
+                    on_done=finish_poll)
 
     def refresh_resources(self):
         if self.demo:
@@ -1778,9 +2010,12 @@ class MainWindow(QMainWindow):
         self.snapshot.cpu, self.snapshot.memory, self.snapshot.processes = cpu, ram, count
         # State changes only on CLI polls, not on each CPU sample.
         active, problems = self.session_counts
+        forward_rates = (self.traffic_rates if self.demo or self._traffic_sample_pending
+                         else (None, None))
+        self._traffic_sample_pending = False
         sample = Sample(ts=time.time(), cpu=cpu, memory=ram,
                         read_rate=data["read_rate"], write_rate=data["write_rate"],
-                        forward_out_rate=self.traffic_rates[0], forward_in_rate=self.traffic_rates[1],
+                        forward_out_rate=forward_rates[0], forward_in_rate=forward_rates[1],
                         processes=count, active_sessions=active, problem_sessions=problems)
         if self.recorder is not None:
             if not self.recorder.add(sample):
@@ -1927,10 +2162,22 @@ class MainWindow(QMainWindow):
             + fmt("forward_out_rate", "Forward ven") + "\n"
             + fmt("forward_in_rate", "Forward Inbound"))
 
-    def apply_snapshot(self, snap):
+    def apply_snapshot(self, snap, *, generation=None):
+        if generation is not None and generation != self._refresh_generation:
+            return
         # Preserve separately sampled resource measurements.
         if not self.demo:
             snap.cpu, snap.memory, snap.processes = self.snapshot.cpu, self.snapshot.memory, self.snapshot.processes
+        if not self.demo and snap.binary == self.snapshot.binary:
+            if not snap.daemon:
+                # An unreachable daemon must not make the last known sessions
+                # disappear. Keep them visible and label them as stale.
+                snap.sync = list(self.snapshot.sync)
+                snap.forward = list(self.snapshot.forward)
+                snap.sessions_stale = self.snapshot.daemon or self.snapshot.sessions_stale
+            elif snap.sessions_stale:
+                # Sync list succeeded; keep only the failed forwarding list.
+                snap.forward = list(self.snapshot.forward)
         self.snapshot = snap
         if snap.daemon:
             self.adaptive_policy.observe(snap)
@@ -1940,14 +2187,18 @@ class MainWindow(QMainWindow):
             if (snap.version != current_version or snap.binary != cached_binary or
                     time.monotonic() - cached_at >= 600):
                 self._version_cache = (snap.version, time.monotonic(), snap.binary)
-        if not self.demo:
+        if not self.demo and snap.daemon and not snap.sessions_stale:
             self.traffic_rates = self.traffic_meter.update(snap.forward)
+            self._traffic_sample_pending = True
+        if not self.demo:
             self.check_alerts(snap)
         if not self.demo:
             self.poll_backoff.observe(bool(snap.daemon))
         duration_ms = (time.monotonic() - self._poll_started_at) * 1000 if self._poll_started_at else 0
         self.updated.setText("DEMO DATA" if self.demo else
-            (f"Refreshed {datetime.now():%H:%M:%S}  ·  CLI {duration_ms:.0f} ms" if snap.daemon
+            (f"Refreshed {datetime.now():%H:%M:%S}  ·  CLI {duration_ms:.0f} ms" if snap.daemon and not snap.sessions_stale
+             else f"Showing last successful sessions · {snap.error or 'session data is stale'}" if snap.daemon
+             else f"Daemon offline · showing last successful sessions · retrying in {self.poll_backoff.remaining():.0f} s" if snap.sessions_stale
              else f"Daemon offline · retrying in {self.poll_backoff.remaining():.0f} s"))
         self.version_label.setText(snap.version or "Version: unavailable")
         regtexts = {
@@ -2041,77 +2292,38 @@ class MainWindow(QMainWindow):
                             ("Connected to " + snap.binary if available else "Select a Mutagen installation"))
 
     def fill_table(self, table, sessions, kind, dashboard=False):
-        """Reuse existing cells when possible instead of recreating the table.
-
-        Polls may change only a status or byte counter. Replacing every item
-        reallocates objects, causes flicker, and loses scroll position.
-        """
-        selection = ''
-        current_row = table.currentRow()
-        if current_row >= 0 and table.item(current_row, 0):
-            selection = table.item(current_row, 0).data(Qt.ItemDataRole.UserRole) or ''
+        """Reset one compact model while retaining the selected session and scroll."""
+        model = table.model()
+        current = table.currentIndex()
+        selection = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole) if current.isValid() else ""
         old_scroll = table.verticalScrollBar().value()
         table.blockSignals(True)
-        sorted_before = table.isSortingEnabled()
-        table.setSortingEnabled(False)
+        selection_model = table.selectionModel()
+        selection_model.blockSignals(True)
         table.setUpdatesEnabled(False)
         try:
-            table.setRowCount(len(sessions))
-            for row, session in enumerate(sessions):
-                status, description = classify(session, kind)
-                identifier = session.get('identifier', '')
-                name = session.get('name') or identifier[:22] or '(unnamed)'
-                if identifier in self.favorites[kind]:
-                    name = '★ ' + name
-                source = endpoint_text(session.get('alpha' if kind == 'sync' else 'source'), kind)
-                target = endpoint_text(session.get('beta' if kind == 'sync' else 'destination'), kind)
-                extra = (conflict_count(session) + problem_count(session) if kind == 'sync'
-                         else session.get('openConnections', 0))
-                cells = [name, description, source, target] + ([] if dashboard else [str(extra)])
-                for col, content in enumerate(cells):
-                    value = str(content)
-                    item = table.item(row, col)
-                    created = item is None
-                    if created:
-                        item = QTableWidgetItem(value)
-                        table.setItem(row, col, item)
-                    elif item.text() != value:
-                        item.setText(value)
-                    if created or item.toolTip() != value:
-                        item.setToolTip(value)
-                    if col == 0:
-                        if item.data(Qt.ItemDataRole.UserRole) != identifier:
-                            item.setData(Qt.ItemDataRole.UserRole, identifier)
-                        if created:
-                            font = item.font(); font.setBold(True); item.setFont(font)
-                        color = TEXT
-                    elif col == 1:
-                        color = {'active': TEAL, 'busy': BLUE, 'error': RED,
-                                 'paused': AMBER}.get(status, MUTED)
-                    else:
-                        color = MUTED
-                    if created or item.foreground().color() != QColor(color):
-                        item.setForeground(QColor(color))
+            model.set_sessions(sessions, self.favorites[kind])
             if selection:
-                for row in range(table.rowCount()):
-                    item = table.item(row, 0)
-                    if item and item.data(Qt.ItemDataRole.UserRole) == selection:
-                        table.selectRow(row)
-                        break
+                row = model.row_for_identifier(selection)
+                if row >= 0:
+                    table.selectRow(row)
                 else:
                     table.clearSelection()
             else:
                 table.clearSelection()
-            table.setSortingEnabled(sorted_before)
             table.verticalScrollBar().setValue(old_scroll)
         finally:
             table.setUpdatesEnabled(True)
+            selection_model.blockSignals(False)
             table.blockSignals(False)
+        if table.currentIndex().isValid():
+            self.on_select(kind)
         self.fit_table_to_rows(table)
 
     @staticmethod
     def fit_table_to_rows(table):
-        visible_rows = [row for row in range(table.rowCount()) if not table.isRowHidden(row)]
+        row_count = table.model().rowCount() if isinstance(table, QTableView) else table.rowCount()
+        visible_rows = [row for row in range(row_count) if not table.isRowHidden(row)]
         rows_height = sum(table.rowHeight(row) for row in visible_rows)
         header_height = max(table.horizontalHeader().height(), table.horizontalHeader().sizeHint().height())
         height = max(160, header_height + rows_height + 2 * table.frameWidth() + 4)
@@ -2127,10 +2339,10 @@ class MainWindow(QMainWindow):
         only_favorites = (self.sync_favorites_only if kind == "sync" else self.forward_favorites_only).isChecked()
         server_key = self.sync_server_filter.currentData() if kind == "sync" else "__all__"
         by_id = {s.get("identifier"): s for s in (self.snapshot.sync if kind == "sync" else self.snapshot.forward)}
-        for row in range(table.rowCount()):
-            haystack = " ".join(table.item(row, col).text() for col in range(table.columnCount())
-                                if table.item(row, col)).casefold()
-            identifier = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        model = table.model()
+        for row in range(model.rowCount()):
+            haystack = " ".join(str(model.index(row, col).data() or "") for col in range(model.columnCount())).casefold()
+            identifier = model.index(row, 0).data(Qt.ItemDataRole.UserRole)
             current = by_id.get(identifier)
             current_state = classify(current, kind)[0] if current is not None else None
             if isinstance(code, set):
@@ -2144,31 +2356,31 @@ class MainWindow(QMainWindow):
         self.fit_table_to_rows(table)
 
     def dashboard_select(self, row, col):
-        item = self.dashboard_table.item(row, 0)
-        if item:
-            self.current_id = item.data(Qt.ItemDataRole.UserRole) or ""
+        index = self.dashboard_table.model().index(row, 0)
+        if index.isValid():
+            self.current_id = index.data(Qt.ItemDataRole.UserRole) or ""
             self.current_kind = "sync"
             self.set_page(1)
-            for r in range(self.sync_table.rowCount()):
-                x = self.sync_table.item(r, 0)
-                if x and x.data(Qt.ItemDataRole.UserRole) == self.current_id:
-                    self.sync_table.selectRow(r); break
+            model = self.sync_table.model()
+            match = model.row_for_identifier(self.current_id)
+            if match >= 0:
+                self.sync_table.selectRow(match)
 
     def on_select(self, kind):
         table = self.sync_table if kind == "sync" else self.forward_table
-        row = table.currentRow()
-        if row < 0 or not table.item(row, 0):
+        current = table.currentIndex()
+        if not current.isValid():
             if self.current_kind == kind: self.current_id = ""
         else:
             self.current_kind = kind
-            self.current_id = table.item(row, 0).data(Qt.ItemDataRole.UserRole) or ""
+            self.current_id = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole) or ""
         self.refresh_detail(kind)
 
     def selected_session(self, kind):
         table = self.sync_table if kind == "sync" else self.forward_table
-        row = table.currentRow()
-        if row < 0 or not table.item(row, 0): return None
-        identifier = table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        current = table.currentIndex()
+        if not current.isValid(): return None
+        identifier = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole)
         sessions = self.snapshot.sync if kind == "sync" else self.snapshot.forward
         return next((s for s in sessions if s.get("identifier") == identifier), None)
 
@@ -2733,9 +2945,7 @@ class MainWindow(QMainWindow):
     def bulk_action(self, kind: str, action: str, scope: str = "all"):
         if self.demo or self.pending_action: return
         candidates = self.server_targets(kind, scope)
-        if action == "flush":
-            candidates = [s for s in candidates if not s.get("paused")]
-        elif action == "pause":
+        if action == "flush" or action == "pause":
             candidates = [s for s in candidates if not s.get("paused")]
         elif action == "resume":
             candidates = [s for s in candidates if s.get("paused") or classify(s, kind)[0] in ("error", "idle")]
@@ -3004,6 +3214,13 @@ class MainWindow(QMainWindow):
     def export_snapshot(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export diagnostiky", "mutagen-snapshot.json", "JSON (*.json)")
         if not path: return
+        if QMessageBox.question(
+                self, "Sensitive Snapshot",
+                "This full snapshot can contain local paths, SSH hosts, usernames, and session names. "
+                "Only save or share it with people you trust. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
         data = {"timestamp": datetime.now().isoformat(timespec="seconds"),
                 "daemon": self.snapshot.daemon, "version": self.snapshot.version,
                 "binary": self.snapshot.binary, "error": self.snapshot.error,
@@ -3131,10 +3348,7 @@ class MainWindow(QMainWindow):
                 self.timer.stop()
             if self.recorder is not None:
                 self.recorder.close(timeout=8)
-            try:
-                self.history.close()
-            except sqlite3.Error:
-                pass
+            with suppress(sqlite3.Error): self.history.close()
             event.accept()
             QApplication.instance().quit()
 
@@ -3157,9 +3371,9 @@ def main():
     app.setOrganizationName("MutagenControl")
     app.setQuitOnLastWindowClosed(False)
     if self_test:
-        from pathlib import Path
         import tempfile
         import traceback
+        from pathlib import Path
         result_path = Path(tempfile.gettempdir()) / "mutagen-control-self-test.log"
         window = None
         try:
@@ -3179,16 +3393,22 @@ def main():
                 window.server_selector.setCurrentIndex(index)
                 assert window.server_sync_table.rowCount() == len(window.server_targets("sync", "server"))
                 assert window.server_forward_table.rowCount() == len(window.server_targets("forward", "server"))
-            result_path.write_text("OK: UI pages and server groups rendered.\n", encoding="utf-8")
             exit_code = 0
         except Exception:
             result_path.write_text(traceback.format_exc(), encoding="utf-8")
             exit_code = 1
         finally:
             if window is not None:
+                # A demo page may enqueue an action callback while Qt events
+                # are pumped; self-test has no operator to answer its dialog.
+                window.pending_action = False
                 window._allow_exit = True
                 window.close()
-        sys.exit(exit_code)
+        if exit_code == 0:
+            result_path.write_text("OK: UI pages and server groups rendered.\n", encoding="utf-8")
+        # The windowed PyInstaller bootloader can retain worker threads after
+        # the test window closes; explicit process status is the CI contract.
+        os._exit(exit_code)
     window = MainWindow(demo="--demo" in sys.argv)
     window.show()
     sys.exit(app.exec())
