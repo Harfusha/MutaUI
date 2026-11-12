@@ -2,7 +2,7 @@
   "default_target_ref": "refs/heads/master",
   "description": "Specifikace: docs/superpowers/specs/2026-11-12-mutagenapp-quality-gates.md. Přidat měřitelné statické kontroly a testy napříč aplikací, zachovat lokální změny.",
   "id": "plan_af94bba41219",
-  "lifecycle": "draft",
+  "lifecycle": "completed",
   "schema_version": 1,
   "spec_refs": [],
   "tasks": {
@@ -18,7 +18,7 @@
       "kind": "code",
       "next_action": "",
       "title": "Doplnění testů",
-      "work_status": "planned"
+      "work_status": "completed"
     },
     "task_full_validation": {
       "acceptance_criteria": [
@@ -32,7 +32,7 @@
       "kind": "code",
       "next_action": "",
       "title": "Kompletní ověření",
-      "work_status": "planned"
+      "work_status": "completed"
     },
     "task_inventory": {
       "acceptance_criteria": [
@@ -46,7 +46,7 @@
       "kind": "code",
       "next_action": "",
       "title": "Výchozí mapa a pokrytí",
-      "work_status": "ready"
+      "work_status": "completed"
     },
     "task_quality_gate": {
       "acceptance_criteria": [
@@ -60,7 +60,7 @@
       "kind": "code",
       "next_action": "",
       "title": "Statické kontroly a CI",
-      "work_status": "planned"
+      "work_status": "completed"
     }
   },
   "title": "Rozšíření statických kontrol a testového pokrytí"

@@ -90,8 +90,9 @@ QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {{ background: #101829; color: {T
                            border: 1px solid {BORDER}; border-radius: 9px; padding: 7px 11px;
                            min-height: 22px; selection-background-color: #385F6A; }}
 QComboBox {{ padding-right: 27px; }}
-QComboBox::drop-down {{ width: 23px; border: 0; }}
-QComboBox::down-arrow {{ image: none; border: 2px solid {MUTED}; width: 6px; height: 6px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right;
+                        width: 28px; border-left: 1px solid {BORDER}; }}
+QComboBox::down-arrow {{ width: 7px; height: 7px; }}
 QSpinBox {{ padding-right: 20px; }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {TEAL}; }}
 QListWidget:focus, QTableWidget:focus {{ border: 1px solid {BLUE}; }}
@@ -863,7 +864,7 @@ class MainWindow(QMainWindow):
         for title, glyph in [("Overview", "◈"), ("Sync", "⇄"), ("Forwarding", "↗"),
                              ("Action History", "≡"), ("Daemon", "◉"), ("Settings", "⚙"),
                              ("Monitoring", "▥"), ("Diagnostics", "⚕"), ("Alerts", "♢"),
-                             ("Endpoints", "⇄"), ("Servers", "▣")]:
+                             ("Endpoints", "◎"), ("Servers", "▣")]:
             i = len(self.nav)
             sections = {0:"WORKSPACE", 1:"SESSIONS", 3:"TOOLS & DIAGNOSTICS", 9:"ENDPOINT STATUS", 10:"SERVER GROUPS"}
             if i in sections:

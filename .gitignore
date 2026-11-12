@@ -9,6 +9,8 @@ __pycache__/
 
 # Test cache
 .pytest_cache/
+.coverage
+htmlcov/
 
 # Build outputs (PyInstaller)
 build/

@@ -1,8 +1,49 @@
 """Ensure background writes never require a Qt event loop."""
 import time
 
+import pytest
+
 from async_recorder import AsyncRecorder
 from monitoring import HistoryStore, Sample
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"max_pending": 0},
+    {"batch_size": 0},
+    {"flush_seconds": 0},
+])
+def test_rejects_invalid_queue_configuration(tmp_path, kwargs):
+    with pytest.raises(ValueError, match="Invalid recorder capacity"):
+        AsyncRecorder(tmp_path / "invalid.db", **kwargs)
+
+
+def test_rejects_in_memory_database():
+    with pytest.raises(ValueError, match="file-backed database"):
+        AsyncRecorder(":memory:")
+
+
+def test_reports_database_startup_failure(monkeypatch, tmp_path):
+    import async_recorder
+
+    def fail_open(*args, **kwargs):
+        raise OSError("database unavailable")
+
+    monkeypatch.setattr(async_recorder, "HistoryStore", fail_open)
+    recorder = AsyncRecorder(tmp_path / "unavailable.db")
+    assert recorder.wait_idle(timeout=1)
+    assert recorder.last_error == "database unavailable"
+    assert recorder.close()
+
+
+def test_wait_idle_times_out_while_writer_is_busy(tmp_path):
+    recorder = AsyncRecorder(tmp_path / "busy.db")
+    with recorder._condition:
+        recorder._busy = True
+    assert not recorder.wait_idle(timeout=0.01)
+    with recorder._condition:
+        recorder._busy = False
+        recorder._condition.notify_all()
+    assert recorder.close()
 
 
 def test_writes_metrics_and_events_then_flushes_on_close(tmp_path):
