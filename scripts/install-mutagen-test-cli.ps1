@@ -22,4 +22,6 @@ $binary = Get-ChildItem -LiteralPath $root -Filter mutagen.exe -File -Recurse | 
 if ($null -eq $binary) { throw 'Mutagen executable was missing from the official release archive.' }
 & $binary.FullName version
 if ($LASTEXITCODE -ne 0) { throw "Mutagen version check failed: $LASTEXITCODE" }
-"MUTAGEN_BINARY=$($binary.FullName)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+if ($env:GITHUB_ENV) {
+    "MUTAGEN_BINARY=$($binary.FullName)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+}

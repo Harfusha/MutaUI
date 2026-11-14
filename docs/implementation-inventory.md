@@ -1,11 +1,12 @@
 # MutaUI implementation inventory
 
-Baseline: repository `master`, commit `9b5718a5f4dec6fe8f3a93d3f5f2426941e56c25` (v8.2). Environment: Python 3.12.10, PySide6 6.8.3, pytest 9.2.0, Coverage.py 7.17.3, checksum-verified Mutagen CLI 0.18.1.
+Revision: repository `master`, commit `d1d7326d5c6a297607f2be759b2b10638bb7a1c7` (v8.2). Environment: Python 3.12.10, PySide6 6.8.3, pytest 9.2.0, Coverage.py 7.17.3, checksum-verified Mutagen CLI 0.18.1.
 
 Status definition:
 
-- `verified`: Code is fully implemented, passes automated tests locally under Python 3.12, static checks are green, and documentation is complete.
-- `partial`: Implementation is present and passes focused tests, but certain end-to-end integration or cross-platform tests require external hosted infrastructure.
+- `verified`: Code is fully implemented, passes automated tests locally under Python 3.12, static checks are green, and documentation is complete with no open local proof requirement.
+- `verified (local)`: Code is fully implemented and passes all automated and packaged checks in local environment (Windows 11 x64); final hosted run, signing certificate, or platform fleet walkthroughs remain external deployment steps.
+- `pending external proof`: Awaiting hosted CI runners, signing keys, or external hardware.
 - `blocked by external dependency`: Requires third-party credentials, remote signing keys, or external hardware/runners.
 
 ## 1. Functional Epics (E01–E22)
@@ -30,10 +31,10 @@ Status definition:
 | **E16 Tray & notifications** | `src/mutaui/services/instance_lifecycle.py`, `power_events.py`, `tray_status.py`, `quiet_hours.py`, `session_notification_gate.py` | `tests/test_quiet_hours.py`, `tests/test_power_events.py`, `tests/test_session_notification_gate.py` (48 tests); worst-state status, quiet hours | `docs/settings-reference.md`, `docs/single-instance-cli.md` | Windows broadcasts, Linux logind, macOS NSWorkspace | `verified` |
 | **E17 Import/export & migration** | `portable_bundle.py`, `settings.py` | `tests/test_portable_bundle.py` (14 tests); `tests/test_v5_migration.py` (1 test); `tests/test_settings.py` (25 tests) | `docs/troubleshooting/backup-and-recovery.md` | Schema v1/v2/v5, cross-platform | `verified` |
 | **E18 EN/CS localization** | `src/mutaui/ui/preferences.py`, `src/mutaui/ui/settings_registry.py` | `tests/test_ui_preferences.py`, `tests/test_ui_formatting.py`; catalog coverage checks across widgets, dialogs, forms, tooltips | `docs/settings-reference.md`, `docs/reference/configuration-fields.md` | Bilingual English / Czech | `verified` |
-| **E19 Updates & distribution** | `src/mutaui/services/update_checker.py`, `.github/workflows/ci.yml`, `release.yml`, `packaging/` | `tests/test_update_checker.py` (15 tests); packaged self-test; packaged crash recovery test; onedir and onefile executables | `docs/developer/build-and-release.md`, `docs/installation.md` | Windows x64, macOS Apple Silicon/Intel, Linux x86_64 | `partial` (local packages verified; hosted CI secrets pending) |
+| **E19 Updates & distribution** | `src/mutaui/services/update_checker.py`, `.github/workflows/ci.yml`, `release.yml`, `packaging/` | `tests/test_update_checker.py` (15 tests); packaged self-test; packaged crash recovery test; onedir and onefile executables | `docs/developer/build-and-release.md`, `docs/installation.md` | Windows x64, macOS Apple Silicon/Intel, Linux x86_64 | `verified (local)` |
 | **E20 Support Bundle & diagnostics** | `insights.py::build_safe_report`, `export_safe_report`, `export_session_log_report`, `app.py::SupportBundleDialog` | `tests/test_insights.py` (14 tests); safe allowlist, machine-path redaction, preview before export | `docs/session-doctor.md`, `docs/troubleshooting/debugging.md` | Windows, macOS, Linux | `verified` |
 | **E21 CLI & automation** | `src/mutaui/services/command_line.py`, `instance_lifecycle.py` | `tests/test_command_line.py` (9 tests); `tests/test_instance_lifecycle.py` (19 tests); single-instance routing for `--open-session`, `--open-folder`, `--open-project`, `--doctor`, `--demo` | `docs/single-instance-cli.md` | Windows, macOS, Linux | `verified` |
-| **E22 Performance tuning** | `src/mutaui/services/performance_advisor.py`, `src/mutaui/ui/performance_tuning.py` | `tests/test_performance_advisor.py` (19 tests); `tests/test_performance_tuning_dialog.py` (6 tests); qualitative advice, fail-closed symlink/permission checks | `docs/advanced/performance-tuning.md` | Windows, macOS, Linux | `verified` |
+| **E22 Performance tuning** | `src/mutaui/services/performance_advisor.py`, `src/mutaui/ui/performance_tuning.py` | `tests/test_performance_advisor.py` (20 tests); `tests/test_performance_tuning_dialog.py` (6 tests); qualitative advice, fail-closed symlink/permission checks | `docs/advanced/performance-tuning.md` | Windows, macOS, Linux | `verified` |
 
 ## 2. Pull Request Stages (PR-001–PR-041)
 
@@ -76,7 +77,7 @@ Status definition:
 | **PR-035** | Lazy dashboard, model/view cache, missing metrics | `monitoring.py`, `async_recorder.py`, `insights.py`, `performance.py` | `tests/test_monitoring.py`, `tests/test_async_recorder.py`, `tests/test_session_table_model.py` | G4 | `verified` |
 | **PR-036** | Comprehensive settings help and EN/CS translations | `src/mutaui/ui/settings_registry.py`, `src/mutaui/ui/preferences.py` | `tests/test_ui_preferences.py`, `tests/test_ui_formatting.py` | G4 | `verified` |
 | **PR-037** | Performance benchmarks against reference budgets | `benchmarks/session_table_benchmark.py` | 10–5,000 row benchmark executed; P95 recorded | G4 | `verified` |
-| **PR-038** | Multiplatform packaging and release workflows | `.github/workflows/ci.yml`, `release.yml`, `packaging/` | PyInstaller builds executed locally; GitHub workflows linted and validated | G4 | `partial` (local packages verified; hosted CI secrets pending) |
+| **PR-038** | Multiplatform packaging and release workflows | `.github/workflows/ci.yml`, `release.yml`, `packaging/` | PyInstaller builds executed locally; GitHub workflows linted and validated | G4 | `verified (local)` |
 | **PR-039** | Documentation site, actual screenshots, changelog | `mkdocs.yml`, `docs/`, `README.md`, `CHANGELOG.md` | Strict MkDocs build; pymarkdown scan; 12 real UI screenshots | G4 | `verified` |
 | **PR-040** | End-to-end acceptance traceability | `docs/acceptance-traceability.md`, `docs/implementation-inventory.md` | Audit matrix complete and verified against 1,385 test results | G4 | `verified` |
 | **PR-041** | Packaged self-test and crash recovery verification | `scripts/run_self_test.py`, `scripts/run_crash_recovery_self_test.py` | Both onedir and onefile executables pass self-test and crash recovery | G4 | `verified` |

@@ -157,6 +157,12 @@ def _backup_name(path: Path, suffix: str | None) -> Path:
     return candidate
 
 
+from ._win32_atomic_replace import replace_file_win32
+
+# Backward-compatibility alias
+_replace_windows = replace_file_win32
+
+
 def _flush_directory(directory: Path) -> None:
     if os.name == "nt":
         return
@@ -165,24 +171,6 @@ def _flush_directory(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-
-
-def _replace_windows(target: Path, temporary: Path, backup: Path) -> None:
-    import ctypes
-    from ctypes import wintypes
-
-    replace_file = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
-    replace_file.argtypes = [
-        wintypes.LPCWSTR,
-        wintypes.LPCWSTR,
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.LPVOID,
-    ]
-    replace_file.restype = wintypes.BOOL
-    if not replace_file(str(target), str(temporary), str(backup), 0x00000001, None, None):
-        raise ctypes.WinError(ctypes.get_last_error())
 
 
 def apply_yaml_edit(preview: YAMLPreview, *, backup_suffix: str | None = None) -> YAMLWriteResult:
@@ -213,7 +201,7 @@ def apply_yaml_edit(preview: YAMLPreview, *, backup_suffix: str | None = None) -
         if not current.valid or current.sha256 != provenance.sha256:
             raise ConcurrentConfigChange(current)
         if os.name == "nt":
-            _replace_windows(path, temporary, backup)
+            replace_file_win32(path, temporary, backup)
         else:
             with backup.open("xb") as stream:
                 stream.write(provenance.raw_bytes)

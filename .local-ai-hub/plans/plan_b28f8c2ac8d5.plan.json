@@ -1,0 +1,10 @@
+{
+  "default_target_ref": "refs/heads/master",
+  "description": "Implementace auditu a plánu MutaUI 2026-11-14: P0 opravy (QA-001 až QA-006), P1 verifikace a refaktoring (QA-007 až QA-014, QA-023), P2 vylepšení kvality (QA-015 až QA-020).",
+  "id": "plan_b28f8c2ac8d5",
+  "lifecycle": "active",
+  "schema_version": 1,
+  "spec_refs": [],
+  "tasks": {},
+  "title": "MutaUI navazující audit a implementační plán 2026-11-14"
+}

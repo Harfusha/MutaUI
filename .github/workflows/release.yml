@@ -89,13 +89,7 @@ jobs:
       - name: Verify release tag matches application version
         run: python -c "import os,subprocess,sys,tomllib; expected=os.environ['VERSION'].removeprefix('v'); actual=subprocess.check_output([sys.executable,'app.py','--version'],text=True).strip(); declared=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert actual == declared == expected, f'tag version {expected}, app version {actual}, and pyproject version {declared} must match'"
       - name: Run source gates
-        run: |
-          python -m ruff check .
-          python -m ruff format --check src/mutaui tests/test_app_import.py tests/test_domain_models.py tests/test_write_checksums.py scripts/run_self_test.py scripts/write_checksums.py tests/test_run_self_test.py gui_capture.py scripts/capture_ui_matrix.py tests/test_gui_capture.py tests/test_capture_ui_matrix.py benchmarks/session_table_benchmark.py tests/test_session_table_benchmark.py tests/test_ui_preferences.py tests/test_mainwindow_flows.py tests/test_update_checker.py
-          python -m mypy src/mutaui
-          python -m pymarkdown -d MD013,MD029 scan README.md docs
-          python -m mkdocs build --strict
-          python verify_source.py
+        run: python scripts/ci/run_static_checks.py
       - name: Run synthetic session model performance canary
         run: python benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json
       - name: Upload release performance canary
@@ -108,11 +102,7 @@ jobs:
       - name: Run isolated test suite
         env:
           MUTAGEN_DATA_DIRECTORY: ${{ runner.temp }}/mutagen-control-release-test-data
-        run: |
-          python -c "from pathlib import Path; Path('test-results').mkdir(exist_ok=True)"
-          python -m pytest -q tests --tb=short --junitxml=test-results/pytest.xml --cov --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml
-          python -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results/pytest.xml'); skipped=sum(int(s.get('skipped',0)) for s in root.iter('testsuite')); print(f'Skipped tests: {skipped}'); assert skipped == 0, 'Release may not skip required tests'"
-          python -c "import xml.etree.ElementTree as ET; root=ET.parse('coverage.xml').getroot(); covered=int(root.get('branches-covered','0')); total=int(root.get('branches-valid','0')); rate=covered/total; print(f'Branch coverage: {covered}/{total} = {rate:.2%}'); assert rate >= 0.95, 'Release requires at least 95% branch coverage'"
+        run: python scripts/ci/run_tests.py
       - name: Build Windows portable folder
         if: runner.os == 'Windows'
         run: >-

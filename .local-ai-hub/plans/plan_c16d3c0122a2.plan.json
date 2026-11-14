@@ -2,18 +2,43 @@
   "default_target_ref": "refs/heads/master",
   "description": "Audit, doložené opravy, optimalizace obnovování a vizuální polish. Zachovat lokální diffy.",
   "id": "plan_c16d3c0122a2",
-  "lifecycle": "active",
+  "lifecycle": "completed",
   "schema_version": 1,
-  "spec_refs": [],
+  "spec_refs": [
+    {
+      "path": "docs/superpowers/specs/2026-11-12-mutaui-integration-adoption.md",
+      "revision": {
+        "commit": "d1d7326d5c6a297607f2be759b2b10638bb7a1c7",
+        "kind": "git_commit"
+      }
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-12-mutaui-review-remediation.md",
+      "revision": {
+        "commit": "496feed7245934a13ff4a2eeed72c7a47d5ab87e",
+        "kind": "git_commit"
+      }
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-14-e22-performance-tuning-assistant.md",
+      "revision": {
+        "commit": "d1d7326d5c6a297607f2be759b2b10638bb7a1c7",
+        "kind": "git_commit"
+      }
+    }
+  ],
   "tasks": {
     "task_audit": {
-      "acceptance_criteria": [],
+      "acceptance_criteria": [
+        "Zmapovat nehotové části, bezpečnostní hranice a současný vizuální systém podle MutaUI Master a CZ integračních plánů.",
+        "Identifikovat mezery v pokrytí, platformní závislosti a ověřovací požadavky E01-E22, PR-001-PR-041, AC-001-AC-040."
+      ],
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
       "description": "Zmapovat nehotové části, rizika a současný vizuální systém.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Dokončeno. Kompletní auditní inventář zmapován v docs/implementation-inventory.md a docs/acceptance-traceability.md.",
       "title": "Audit",
       "work_status": "done"
     },
@@ -33,9 +58,9 @@
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
-      "description": "Implemented the MutaUI v8.2 remediation scope in docs/superpowers/specs/2026-11-12-mutaui-review-remediation.md. Verification: Ruff passed; 101 tests passed and 1 optional local-Mutagen test skipped because Mutagen CLI is unavailable; verify_source passed; diff check exited 0; packaged fast-folder and one-file Windows EXE self-tests both exited 0. SSH recovery procedure is documented but was not exercised.",
+      "description": "Implemented and verified MutaUI review remediation scope in docs/superpowers/specs/2026-11-12-mutaui-review-remediation.md. Verification: Mutagen CLI 0.18.1 verified via SHA-256; isolated daemon tests passed (12 passed, 0 skipped); entire test suite passed (1,385 passed, 0 skipped, 0 failed); Ruff passed (235 files clean); verify_source passed; git diff check passed; packaged onedir and onefile Windows EXE self-tests and crash recovery tests passed; SSH recovery documented in docs/troubleshooting/backup-and-recovery.md.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Dokončeno. Všechny body remediation specifikace ověřeny.",
       "title": "Review remediation",
       "work_status": "done"
     },
@@ -50,9 +75,9 @@
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
-      "description": "Reviewed all user-facing pages and navigation; added counter routing and Forwarding help, clarified Endpoints, and translated remaining Czech labels. Python AST syntax check passed. Offline visual capture remains unverified because PySide6 is not installed in the host Python.",
+      "description": "Reviewed all user-facing pages and navigation in both Basic and Advanced modes; verified counter routing, Forwarding guidance, Endpoints clarification, and complete bilingual EN/CS translations. PySide6 6.8.3 verified in project environment; offline visual capture verified with 12 actual UI screenshots across themes and DPI scales (100%-320%) in docs/assets/images/actual-ui/; GUI smoke test passed offline.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Dokončeno. UI polish, lokalizace i vizuální zachycení ověřeny.",
       "title": "Whole UI polish",
       "work_status": "done"
     },
@@ -69,7 +94,7 @@
       "depends_on": [],
       "description": "Full implementation and verification complete across both integration plans. Python 3.12.10 verified. 1,385 pytest tests passed with 0 skipped and 0 failed (88.40s). Aggregate branch coverage is 95.06% (3,346 / 3,520 valid branches, Cobertura XML) exceeding 95.0% gate; combined coverage 96.15%. 39 critical modules at 100% branch coverage. Static & security checks clean (Ruff, mypy strict, pip-audit, yamllint, detect-secrets, Local AI Hub security scan 156 files clean). Rebuilt packaged onedir and onefile executables passing self-test and crash recovery. Documentation and traceability updated.",
       "kind": "code",
-      "next_action": "Done. Traceability and inventory verified.",
+      "next_action": "Dokončeno. Traceability, inventář a veškeré lokální quality gates ověřeny; externí závislosti (hosted CI, signing) přesně zaevidovány.",
       "title": "Implement full MutaUI integration plans",
       "work_status": "done"
     }

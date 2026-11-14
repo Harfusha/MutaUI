@@ -7,16 +7,16 @@ This report records all local verification evidence, rebuilt distribution artifa
 ## Candidate identity
 
 - Repository: `C:\Ostatní\MutagenApp`, branch `master`.
-- Base commit: `9b5718a5f4dec6fe8f3a93d3f5f2426941e56c25` (v8.2).
+- Base commit: `d1d7326d5c6a297607f2be759b2b10638bb7a1c7` (v8.2).
 - Local environment: Windows 11 x64, Python 3.12.10, pytest 9.2.0, Coverage.py 7.17.3, PySide6 6.8.3, Paramiko 5.1.0, Ruff 0.17.5, and checksum-verified Mutagen CLI 0.18.1 in isolated data directories.
 
 ## Verified local evidence
 
 1. **Full test suite (Python 3.12.10):**
-   - **1,372 passed, 0 skipped, 0 failed in 102.85 s (exit code 0)**.
-   - Aggregate branch coverage: **3,520 branches, 95.93% coverage** (exceeds the 95.0% gate).
-   - Line coverage: **11,849 statements, 96.25% coverage**.
-   - Pure domain, services, and adapters maintain **100% branch coverage** across 39 modules.
+   - **1,385 passed, 0 skipped, 0 failed in 116.25 s (exit code 0)**.
+   - Aggregate branch coverage: **95.06%** (3,346 covered / 3,520 valid branches, Cobertura XML metric, Coverage.py combined 96.15%), exceeding the mandatory 95.0% gate.
+   - Statements: **11,849 statements, 11,432 executed (96.48%)**.
+   - Pure domain, services, and adapters maintain **100% branch coverage** across 39 critical modules.
 2. **Static and security checks:**
    - `ruff check .`: 235 files checked, clean (exit code 0).
    - `ruff format --check .`: 235 files formatted (exit code 0).
@@ -58,7 +58,7 @@ This report records all local verification evidence, rebuilt distribution artifa
 | **G1 — UX and configuration** | Verified locally | Basic/Advanced shell, theming, settings registry, lossless YAML round-trip with comment preservation, global config editor, sync and forward configuration editors, exact command preview wizards. | Interactive accessibility testing with external assistive tools; multi-user usability trials. |
 | **G2 — Profiles, projects, Doctor** | Verified locally | Versioned connection profiles, read-only SSH manager (`ssh -G`), safe import/export with redaction, ignore preset center, native project lifecycle and hook consent, deterministic Session Doctor rules, health tracker and Auto-safe circuit breaker. | Hosted Linux CI OpenSSH server acceptance; live remote SSH network flapping. |
 | **G3 — Conflicts and reconfiguration** | Verified locally | Read-only Conflict Inspector, ActionPlanner R0–R3 risk tiers, exact target locking, reconfiguration planner, controlled replacement, read-only remote inspection, temporary diff integration, manual per-file resolver with backup/restore rollback. | Remote SFTP multi-endpoint latency trials; destructive live tests remain disabled by default. |
-| **G4 — Production quality** | Ready for release | 1,372 tests passing with zero skips, 95.93% branch coverage, clean security/dependency/secret audits, rebuilt onedir and onefile binaries passing self-test and crash recovery, 12 actual UI screenshots, complete documentation site. | Hosted tag release pipeline trigger; Apple Developer ID notarization and Windows authenticode signing secrets; final product license selection by owner. |
+| **G4 — Production quality** | Ready for release | 1,385 tests passing with zero skips, 95.06% branch coverage (96.15% combined), clean security/dependency/secret audits, rebuilt onedir and onefile binaries passing self-test and crash recovery, 12 actual UI screenshots, complete documentation site. | Hosted tag release pipeline trigger; Apple Developer ID notarization and Windows authenticode signing secrets; final product license selection by owner. |
 
 ## Outstanding external gates
 

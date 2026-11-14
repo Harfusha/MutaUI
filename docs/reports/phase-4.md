@@ -17,9 +17,9 @@ Date: 2026-11-14. Baseline: repository `master`, commit `9b5718a5f4dec6fe8f3a93d
 
 ## Verification evidence
 
-- **Full test suite (Python 3.12.10):** **1,372 passed, 0 skipped, 0 failed** in 102.85 s (exit code 0).
-- **Aggregate branch coverage:** **95.93%** (3,520 branches, 132 missed/partial), meeting the plan's 95% gate.
-- **Pure domain, services, and adapters coverage:** **100% branch coverage** across critical components.
+- **Full test suite (Python 3.12.10):** **1,385 passed, 0 skipped, 0 failed** in 116.25 s (exit code 0).
+- **Aggregate branch coverage:** **95.06%** (3,346 covered / 3,520 valid branches, Cobertura XML metric, Coverage.py combined 96.15%), exceeding the mandatory 95.0% gate.
+- **Pure domain, services, and adapters coverage:** **100% branch coverage** across 39 critical components.
 - **Static checks:**
   - `ruff check .`: 235 files checked, zero issues.
   - `ruff format --check .`: 235 files formatted.

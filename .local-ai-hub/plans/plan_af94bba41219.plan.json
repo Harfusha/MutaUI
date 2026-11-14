@@ -4,7 +4,15 @@
   "id": "plan_af94bba41219",
   "lifecycle": "completed",
   "schema_version": 1,
-  "spec_refs": [],
+  "spec_refs": [
+    {
+      "path": "docs/superpowers/specs/2026-11-12-mutagenapp-quality-gates.md",
+      "revision": {
+        "commit": "00af9a96445e7bb8593f9eec9eb40d0abd3bc139",
+        "kind": "git_commit"
+      }
+    }
+  ],
   "tasks": {
     "task_coverage_tests": {
       "acceptance_criteria": [
@@ -16,9 +24,9 @@
       "depends_on": [],
       "description": "Přidat izolované regresní a GUI testy podle baseline.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Done.",
       "title": "Doplnění testů",
-      "work_status": "completed"
+      "work_status": "done"
     },
     "task_full_validation": {
       "acceptance_criteria": [
@@ -30,9 +38,9 @@
       "depends_on": [],
       "description": "Spustit quality gates v projektovém venv; zaznamenat omezení.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Done. All quality gates, lints, source guards, 1385 unit/integration tests, and GUI smoke passed.",
       "title": "Kompletní ověření",
-      "work_status": "completed"
+      "work_status": "done"
     },
     "task_inventory": {
       "acceptance_criteria": [
@@ -44,9 +52,9 @@
       "depends_on": [],
       "description": "Změřit současné testy/pokrytí, namapovat aplikační moduly na testy, zaznamenat mezery.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Done.",
       "title": "Výchozí mapa a pokrytí",
-      "work_status": "completed"
+      "work_status": "done"
     },
     "task_quality_gate": {
       "acceptance_criteria": [
@@ -58,9 +66,9 @@
       "depends_on": [],
       "description": "Přidat Ruff, coverage a přísné CI kroky před buildem.",
       "kind": "code",
-      "next_action": "",
+      "next_action": "Done.",
       "title": "Statické kontroly a CI",
-      "work_status": "completed"
+      "work_status": "done"
     }
   },
   "title": "Rozšíření statických kontrol a testového pokrytí"

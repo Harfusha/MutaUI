@@ -52,6 +52,8 @@ extend-select = [
 "scripts/run_self_test.py" = ["S603"]
 # This export checker invokes fixed uv commands with repo-owned group and filename values.
 "scripts/check_dependency_exports.py" = ["S603"]
+"scripts/ci/*" = ["S603"]
+"tests/*" = ["S603"]
 
 [tool.coverage.run]
 branch = true
@@ -85,3 +87,7 @@ python_version = "3.12"
 strict = true
 files = ["src/mutaui"]
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["AppKit", "Foundation"]
+ignore_missing_imports = true
