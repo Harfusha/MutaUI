@@ -3,6 +3,7 @@
 Separating these from the UI makes performance constraints testable. None of
 these helpers generate or interpolate fake measurements.
 """
+
 from __future__ import annotations
 
 import bisect
@@ -35,10 +36,13 @@ def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tu
         chunk = usable[start:stop]
         if not chunk:
             continue
-        selected = {0, len(chunk)-1}
+        selected = {0, len(chunk) - 1}
         for j in range(1, columns + 1):
-            valid = [(idx, row[j]) for idx, row in enumerate(chunk)
-                     if isinstance(row[j], (int, float)) and math.isfinite(row[j])]
+            valid = [
+                (idx, row[j])
+                for idx, row in enumerate(chunk)
+                if isinstance(row[j], (int, float)) and math.isfinite(row[j])
+            ]
             if valid:
                 selected.add(min(valid, key=lambda pair: pair[1])[0])
                 selected.add(max(valid, key=lambda pair: pair[1])[0])
@@ -65,6 +69,7 @@ def nearest_time_index(timestamps: list[float], target: float) -> int:
 
 class RefreshGate:
     """Coalesce UI refreshes; forcing bypasses limit, but updates the clock."""
+
     def __init__(self, min_seconds: float, clock=time.monotonic):
         if min_seconds < 0:
             raise ValueError("Interval must be non-negative")
@@ -93,7 +98,7 @@ class PollBackoff:
 
     def __init__(self, base: float = 4.0, maximum: float = 60.0, clock=time.monotonic):
         if base <= 0 or maximum < base:
-            raise ValueError('Invalid polling backoff interval')
+            raise ValueError("Invalid polling backoff interval")
         self.base = base
         self.maximum = maximum
         self.clock = clock
@@ -106,7 +111,9 @@ class PollBackoff:
             self.retry_at = 0.0
         else:
             self.failures += 1
-            self.retry_at = self.clock() + min(self.maximum, self.base * (2 ** min(20, self.failures - 1)))
+            self.retry_at = self.clock() + min(
+                self.maximum, self.base * (2 ** min(20, self.failures - 1))
+            )
 
     def can_retry(self, force: bool = False) -> bool:
         return force or self.clock() >= self.retry_at

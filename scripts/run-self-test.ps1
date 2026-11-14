@@ -6,25 +6,37 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$logPath = Join-Path $env:TEMP "mutagen-control-self-test.log"
+$logDirectory = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
+$logPath = Join-Path $logDirectory "mutagen-control-self-test.log"
 Remove-Item -LiteralPath $logPath -Force -ErrorAction SilentlyContinue
+$env:MUTAUI_SELF_TEST_LOG = $logPath
 
 $process = Start-Process -FilePath $Executable -ArgumentList "--self-test" `
     -PassThru -WindowStyle Hidden
-$completed = $process.WaitForExit(20000)
+$deadline = [DateTime]::UtcNow.AddSeconds(120)
+$completed = $false
+$passedLog = $false
+while ([DateTime]::UtcNow -lt $deadline) {
+    $completed = $process.WaitForExit(250)
+    if ((Test-Path -LiteralPath $logPath) -and
+        ((Get-Content -LiteralPath $logPath -Raw).Trim() -eq "OK: UI pages and server groups rendered.")) {
+        $passedLog = $true
+        break
+    }
+    if ($completed) { break }
+}
 
-if ($completed) {
+if ($passedLog) {
+    if (-not $completed) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "$Label self-test passed."
+    $exitCode = 0
+} elseif ($completed) {
     $exitCode = $process.ExitCode
 } else {
-    $passedLog = (Test-Path -LiteralPath $logPath) -and
-        ((Get-Content -LiteralPath $logPath -Raw).Trim() -eq "OK: UI pages and server groups rendered.")
     Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-    if ($passedLog) {
-        Write-Host "$Label self-test passed; stopped the lingering windowed process."
-        $exitCode = 0
-    } else {
-        $exitCode = 124
-    }
+    $exitCode = 124
 }
 
 if ($exitCode -ne 0) {

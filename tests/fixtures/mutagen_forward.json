@@ -1,0 +1,13 @@
+{
+  "identifier": "forward-exact-id",
+  "name": "Forward",
+  "source": {
+    "protocol": 0,
+    "endpoint": "/local"
+  },
+  "destination": {
+    "protocol": 1,
+    "host": "host.test",
+    "endpoint": "tcp:9000"
+  }
+}

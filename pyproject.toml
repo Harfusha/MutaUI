@@ -1,3 +1,33 @@
+[project]
+name = "mutagen-control"
+version = "8.2.0"
+description = "Desktop management for Mutagen synchronization and forwarding sessions"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "PySide6-Essentials==6.8.3",
+    "psutil>=5.9,<8",
+    "ruamel.yaml==0.18.16",
+    "paramiko>=5.0,<6",
+    "pyobjc-framework-Cocoa>=12.2.2,<13; sys_platform == 'darwin'",
+]
+
+[dependency-groups]
+build = ["pyinstaller>=6.12,<8"]
+test = ["pytest>=8,<10", "pytest-cov>=6,<8"]
+quality = [
+    "detect-secrets==1.5.0",
+    "mypy>=1.15,<2",
+    "mkdocs-material>=9.5,<10",
+    "pip-audit==2.10.1",
+    "pymarkdownlnt>=0.9.41,<1",
+    "ruff>=0.11,<1",
+    "yamllint==1.38.0",
+]
+
+[tool.uv]
+package = false
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -5,6 +35,23 @@ exclude = [".venv", "build", "build-*", "dist", "dist-*", "dist-fast"]
 
 [tool.ruff.lint]
 select = ["E9", "F", "B", "I", "UP", "SIM"]
+extend-select = [
+    "S105", "S106", "S107", "S301", "S307", "S311", "S324", "S501", "S506",
+    "S602", "S603", "S604", "S605", "S606", "S607", "S608", "S609",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# SQL identifiers here come only from the fixed METRIC_COLUMNS/REMOTE_COLUMNS tuples.
+"async_recorder.py" = ["S608"]
+"monitoring.py" = ["S608"]
+# MutagenClient uses an allowlisted executable and verb, explicit IDs, list arguments,
+# shell=False, timeouts, and no shell expansion. S603 cannot infer this contract.
+"mutagen_client.py" = ["S603"]
+# This explicit helper launches the caller-selected packaged binary as a single
+# argv element with only the fixed --self-test switch and shell=False.
+"scripts/run_self_test.py" = ["S603"]
+# This export checker invokes fixed uv commands with repo-owned group and filename values.
+"scripts/check_dependency_exports.py" = ["S603"]
 
 [tool.coverage.run]
 branch = true
@@ -22,9 +69,19 @@ source = [
     "server_groups",
     "settings",
     "sync_profiles",
+    "mutaui",
 ]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 75
+fail_under = 95
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/mutaui"]
+follow_imports = "skip"

@@ -1,4 +1,5 @@
 """Performance constraints verified without a GUI or a live daemon."""
+
 from performance import RefreshGate, envelope_downsample, nearest_time_index
 
 
@@ -49,7 +50,8 @@ def test_gate_coalesces_even_under_repeated_calls():
 
 def test_background_statistics_uses_independent_readonly_sqlite(tmp_path):
     from monitoring import HistoryStore, Sample, statistics_from_file
-    dbpath = tmp_path / 'metrics.sqlite3'
+
+    dbpath = tmp_path / "metrics.sqlite3"
     store = HistoryStore(dbpath)
     store.add(Sample(ts=100, cpu=1, memory=50))
     store.add(Sample(ts=101, cpu=99, memory=150))
@@ -57,12 +59,13 @@ def test_background_statistics_uses_independent_readonly_sqlite(tmp_path):
     actual = statistics_from_file(dbpath, hours=1, now=102)
     assert actual == expected
     store.add(Sample(ts=103, cpu=25, memory=120))
-    assert statistics_from_file(dbpath, hours=1, now=104)['samples'] == 3
+    assert statistics_from_file(dbpath, hours=1, now=104)["samples"] == 3
     store.close()
 
 
 def test_poll_backoff_jitterless_and_manual_override():
     from performance import PollBackoff
+
     t = [100.0]
     policy = PollBackoff(base=2, maximum=10, clock=lambda: t[0])
     assert policy.can_retry()
@@ -79,3 +82,30 @@ def test_poll_backoff_jitterless_and_manual_override():
     assert policy.remaining() == 10
     policy.observe(True)
     assert policy.can_retry() and policy.remaining() == 0
+
+
+def test_performance_helpers_reject_invalid_intervals_and_preserve_sparse_peaks():
+    import pytest
+
+    from performance import PollBackoff
+
+    with pytest.raises(ValueError, match="non-negative"):
+        RefreshGate(-0.1)
+    with pytest.raises(ValueError, match="Invalid polling backoff"):
+        PollBackoff(base=0)
+    with pytest.raises(ValueError, match="Invalid polling backoff"):
+        PollBackoff(base=5, maximum=4)
+
+    assert nearest_time_index([0.0, 2.0], 1.0) == 0
+    sparse = [(float(index), float("nan") if index % 2 else "unknown") for index in range(100)]
+    sampled = envelope_downsample(sparse, 8)
+    assert sampled[0] == sparse[0]
+    assert sampled[-1] == sparse[-1]
+    assert len(sampled) <= 8
+
+
+def test_downsample_empty_chunk():
+    # usable has length 2, but bucket_count is 4 -> empty chunks hit line 37
+    rows = [(float(i), float(i % 3)) for i in range(4)]
+    res = envelope_downsample(rows, max_points=10)
+    assert len(res) <= 10

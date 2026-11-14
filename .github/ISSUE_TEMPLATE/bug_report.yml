@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible defect in Mutagen Control
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include credentials, private keys, personal data, or production files. Report suspected vulnerabilities through SECURITY.md."
+  - type: input
+    id: app_version
+    attributes:
+      label: Mutagen Control version
+      placeholder: Release version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS and architecture
+      placeholder: Windows 11 x64, macOS arm64, Ubuntu x86-64
+    validations:
+      required: true
+  - type: input
+    id: mutagen_version
+    attributes:
+      label: Mutagen CLI version
+      placeholder: Output of mutagen version, or not installed
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use disposable data for sync, forwarding, replacement, or recovery issues.
+    validations:
+      required: true
+  - type: textarea
+    id: expected_actual
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Remove tokens, private paths, hostnames, account names, and personal data.
+    validations:
+      required: false

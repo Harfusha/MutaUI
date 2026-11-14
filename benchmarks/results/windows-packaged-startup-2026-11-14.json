@@ -1,0 +1,186 @@
+{
+  "executable": "C:\\Users\\Adam\\AppData\\Local\\Temp\\mutaui-packaged-startup-2026-11-14\\run-01\\dist\\MutagenControl\\MutagenControl.exe",
+  "executable_sha256": "70bffb97b78b2be31d052d0b42ac409a974dc3b403cac3a635ff04a10fd2d203",
+  "scenario": "fresh onedir executable, --demo, isolated APPDATA/LOCALAPPDATA/MUTAGEN_DATA_DIRECTORY; launch until visible nonzero-size top-level GUI window",
+  "repetitions": 30,
+  "p50_ms": 652.63,
+  "p95_ms": 1035.0,
+  "max_ms": 1094.883,
+  "machine": {
+    "os": "Windows-11-10.0.26300-SP0",
+    "processor": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+    "logical_cpus": 16
+  },
+  "python_harness": "3.12.10",
+  "samples": [
+    {
+      "run": 1,
+      "launch_to_visible_window_ms": 952.819,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 2,
+      "launch_to_visible_window_ms": 800.162,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 3,
+      "launch_to_visible_window_ms": 623.241,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 4,
+      "launch_to_visible_window_ms": 651.414,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 5,
+      "launch_to_visible_window_ms": 677.905,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 6,
+      "launch_to_visible_window_ms": 649.354,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 7,
+      "launch_to_visible_window_ms": 652.63,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 8,
+      "launch_to_visible_window_ms": 651.55,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 9,
+      "launch_to_visible_window_ms": 677.567,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 10,
+      "launch_to_visible_window_ms": 680.803,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 11,
+      "launch_to_visible_window_ms": 650.435,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 12,
+      "launch_to_visible_window_ms": 729.094,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 13,
+      "launch_to_visible_window_ms": 677.846,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 14,
+      "launch_to_visible_window_ms": 650.9,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 15,
+      "launch_to_visible_window_ms": 626.625,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 16,
+      "launch_to_visible_window_ms": 650.483,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 17,
+      "launch_to_visible_window_ms": 624.882,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 18,
+      "launch_to_visible_window_ms": 649.88,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 19,
+      "launch_to_visible_window_ms": 651.673,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 20,
+      "launch_to_visible_window_ms": 625.842,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 21,
+      "launch_to_visible_window_ms": 624.951,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 22,
+      "launch_to_visible_window_ms": 649.895,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 23,
+      "launch_to_visible_window_ms": 686.685,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 24,
+      "launch_to_visible_window_ms": 912.278,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 25,
+      "launch_to_visible_window_ms": 654.662,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 26,
+      "launch_to_visible_window_ms": 1094.883,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 27,
+      "launch_to_visible_window_ms": 683.513,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 28,
+      "launch_to_visible_window_ms": 1035.0,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 29,
+      "launch_to_visible_window_ms": 704.433,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    },
+    {
+      "run": 30,
+      "launch_to_visible_window_ms": 678.663,
+      "title": "Mutagen Control 8.2 \u00b7 Server Manager"
+    }
+  ],
+  "source_tree": {
+    "root": "C:\\Ostatn\u00ed\\MutagenApp",
+    "head": "9b5718a5f4dec6fe8f3a93d3f5f2426941e56c25",
+    "dirty": true,
+    "local_ai_repo_state_fingerprint": "b6399d57a588c6e72b91f406efbbcb293b9544682932eff1c8453478605897c1"
+  },
+  "build": {
+    "python": "3.12.10",
+    "qt": "PySide6 6.8.3",
+    "pyinstaller": "6.22.3",
+    "format": "onedir",
+    "self_test": "passed",
+    "source_tree": "working tree at recorded HEAD and fingerprint"
+  },
+  "acceptance": {
+    "budget": "P95 <= 3 s on reference SSD machine",
+    "local_result": "P95 is below budget on this Windows 11 development machine; it is not reference-machine acceptance",
+    "ssd_type": "not measured"
+  }
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Mutagen Control
+Comment=Desktop control center for the Mutagen CLI
+Exec=mutagen-control
+Icon=mutagen-control
+Terminal=false
+Categories=Utility;Network;FileTransfer;
+StartupNotify=true

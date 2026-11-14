@@ -1,0 +1,391 @@
+name: Verified cross-platform release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    name: Release source security checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install security and quality tools
+        run: python -m pip install uv==0.13.8 -r requirements-quality.txt
+      - name: Verify pinned pip exports
+        run: python scripts/check_dependency_exports.py
+      - name: Audit locked dependency sets
+        run: python -m pip_audit -r requirements.txt -r requirements-build.txt -r requirements-quality.txt
+      - name: Check YAML syntax and style
+        run: python -m yamllint -s .github/workflows .yamllint
+      - name: Check GitHub Actions workflows
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          (cd "$RUNNER_TEMP" && echo '8aca8db96f1b94770e6d0c23ca2f540b67519ec68db098ddfcfa96059e61f723  actionlint.tar.gz' | sha256sum --check)
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint" -color .github/workflows/*.yml
+      - name: Scan tracked files for new secrets
+        run: git ls-files -z -- ':!.secrets.baseline' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+  build:
+    needs: security
+    name: Build and verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-latest]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ github.ref_name }}
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libfontconfig1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0
+      - name: Install build and quality dependencies
+        run: python -m pip install uv==0.13.8
+      - name: Sync locked release environment (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          uv sync --locked --group build --group test --group quality
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:GITHUB_WORKSPACE '.venv\Scripts')
+      - name: Sync locked release environment (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          uv sync --locked --group build --group test --group quality
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install pinned Mutagen test CLI (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MUTAGEN_TEST_VERSION: 0.18.1
+        shell: pwsh
+        run: ./scripts/install-mutagen-test-cli.ps1
+      - name: Install pinned Mutagen test CLI (macOS/Linux)
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        env:
+          MUTAGEN_TEST_VERSION: 0.18.1
+        run: bash scripts/install-mutagen-test-cli.sh
+      - name: Verify release tag matches application version
+        run: python -c "import os,subprocess,sys,tomllib; expected=os.environ['VERSION'].removeprefix('v'); actual=subprocess.check_output([sys.executable,'app.py','--version'],text=True).strip(); declared=tomllib.load(open('pyproject.toml','rb'))['project']['version']; assert actual == declared == expected, f'tag version {expected}, app version {actual}, and pyproject version {declared} must match'"
+      - name: Run source gates
+        run: |
+          python -m ruff check .
+          python -m ruff format --check src/mutaui tests/test_app_import.py tests/test_domain_models.py tests/test_write_checksums.py scripts/run_self_test.py scripts/write_checksums.py tests/test_run_self_test.py gui_capture.py scripts/capture_ui_matrix.py tests/test_gui_capture.py tests/test_capture_ui_matrix.py benchmarks/session_table_benchmark.py tests/test_session_table_benchmark.py tests/test_ui_preferences.py tests/test_mainwindow_flows.py tests/test_update_checker.py
+          python -m mypy src/mutaui
+          python -m pymarkdown -d MD013,MD029 scan README.md docs
+          python -m mkdocs build --strict
+          python verify_source.py
+      - name: Run synthetic session model performance canary
+        run: python benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json
+      - name: Upload release performance canary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-benchmark-${{ matrix.os }}
+          path: benchmark-results/session-table.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Run isolated test suite
+        env:
+          MUTAGEN_DATA_DIRECTORY: ${{ runner.temp }}/mutagen-control-release-test-data
+        run: |
+          python -c "from pathlib import Path; Path('test-results').mkdir(exist_ok=True)"
+          python -m pytest -q tests --tb=short --junitxml=test-results/pytest.xml --cov --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results/pytest.xml'); skipped=sum(int(s.get('skipped',0)) for s in root.iter('testsuite')); print(f'Skipped tests: {skipped}'); assert skipped == 0, 'Release may not skip required tests'"
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('coverage.xml').getroot(); covered=int(root.get('branches-covered','0')); total=int(root.get('branches-valid','0')); rate=covered/total; print(f'Branch coverage: {covered}/{total} = {rate:.2%}'); assert rate >= 0.95, 'Release requires at least 95% branch coverage'"
+      - name: Build Windows portable folder
+        if: runner.os == 'Windows'
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --collect-all paramiko
+          --paths src --name MutagenControl --icon assets/mutagencontrol.ico
+          --version-file assets/version_info.txt --distpath dist-fast --workpath build-fast app.py
+      - name: Build Windows single-file executable
+        if: runner.os == 'Windows'
+        run: >-
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --collect-all paramiko
+          --paths src --name MutagenControl --icon assets/mutagencontrol.ico
+          --version-file assets/version_info.txt --distpath dist --workpath build app.py
+      - name: Verify packaged crash recovery
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python scripts/run_crash_recovery_self_test.py --executable "./dist-fast/MutagenControl/MutagenControl.exe"
+          python scripts/run_crash_recovery_self_test.py --executable "./dist/MutagenControl.exe"
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --yes
+          $compiler = Join-Path $env:ProgramFilesX86 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
+          $version = $env:VERSION.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Release tag must be a stable semantic version: $version" }
+          $parts = $version.Split('.') | ForEach-Object { [int]$_ }
+          if ($parts.Count -ne 3) { throw "Release tag must contain a semantic version: $version" }
+          if ($parts[2] -gt 0) { $parts[2]-- }
+          elseif ($parts[1] -gt 0) { $parts[1]--; $parts[2] = 99 }
+          else { $parts[0]--; $parts[1] = 99; $parts[2] = 99 }
+          $baselineVersion = ($parts -join '.')
+          & $compiler "/DMyAppVersion=$baselineVersion" packaging/windows/MutagenControl.iss
+          if ($LASTEXITCODE -ne 0) { throw "Baseline upgrade installer failed: $LASTEXITCODE" }
+          & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
+          "BASELINE_INSTALLER_VERSION=$baselineVersion" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+      - name: Sign Windows release binaries
+        if: runner.os == 'Windows'
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
+            throw 'Releases require WINDOWS_SIGNING_CERT_BASE64 and WINDOWS_SIGNING_CERT_PASSWORD repository secrets.'
+          }
+          $version = $env:VERSION.TrimStart('v')
+          $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $kits = Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'Windows Kits\10\bin'
+          $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
+          try {
+            $binaries = @(
+              'dist-fast/MutagenControl/MutagenControl.exe',
+              'dist/MutagenControl.exe',
+              "dist/MutagenControl-$version-windows-x64-setup.exe"
+            )
+            foreach ($binary in $binaries) {
+              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary (exit $LASTEXITCODE)." }
+              & $signtool.FullName verify /pa /all $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary (exit $LASTEXITCODE)." }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+      - name: Build macOS application bundle
+        if: runner.os == 'macOS'
+        run: python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
+      - name: Sign and notarize macOS release bundle
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_NOTARY_KEY_BASE64 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then echo "Missing required macOS signing/notarization secret: $name" >&2; exit 1; fi
+          done
+          keychain="$RUNNER_TEMP/mutaui-signing.keychain-db"
+          keychain_unlock_material="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/mutaui-signing.p12"
+          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          archive="$RUNNER_TEMP/MutagenControl-notary.zip"
+          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$certificate" "$notary_file" "$archive"' EXIT
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
+          security create-keychain -p "$keychain_unlock_material" "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_unlock_material" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_unlock_material" "$keychain"
+          while IFS= read -r -d '' binary; do
+            if file -b "$binary" | grep -q 'Mach-O'; then
+              codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+            fi
+          done < <(find dist-platform/MutagenControl.app -type f -print0)
+          while IFS= read -r -d '' bundle; do
+            codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$bundle"
+          done < <(find dist-platform/MutagenControl.app -depth -type d \( -name '*.framework' -o -name '*.bundle' \) -print0)
+          codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" dist-platform/MutagenControl.app
+          codesign --verify --deep --strict --verbose=2 dist-platform/MutagenControl.app
+          ditto -c -k --keepParent dist-platform/MutagenControl.app "$archive"
+          xcrun notarytool submit "$archive" --key "$api_key" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple dist-platform/MutagenControl.app
+          xcrun stapler validate dist-platform/MutagenControl.app
+      - name: Build macOS DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          version="${VERSION#v}"
+          arch="$(uname -m)"
+          mkdir -p dist/dmg-root
+          ditto dist-platform/MutagenControl.app dist/dmg-root/MutagenControl.app
+          ln -s /Applications dist/dmg-root/Applications
+          hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-${version}-macos-${arch}.dmg"
+          rm -rf dist/dmg-root
+      - name: Notarize macOS DMG
+        if: runner.os == 'macOS'
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
+          trap 'rm -f "$notary_file"' EXIT
+          image="dist/MutagenControl-${version}-macos-$(uname -m).dmg"
+          xcrun notarytool submit "$image" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple "$image"
+          xcrun stapler validate "$image"
+      - name: Verify mounted macOS DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          release_version="${VERSION#v}"
+          arch="$(uname -m)"
+          mount="$RUNNER_TEMP/mutaui-dmg"
+          mkdir -p "$mount"
+          hdiutil attach "dist/MutagenControl-${release_version}-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$mount"
+          spctl --assess --type execute --verbose=2 "$mount/MutagenControl.app"
+          python scripts/run_self_test.py "$mount/MutagenControl.app/Contents/MacOS/MutagenControl"
+          hdiutil detach "$mount"
+      - name: Build Linux AppImage and deb packages
+        if: runner.os == 'Linux'
+        env:
+          MUTAUI_VERSION: ${{ github.ref_name }}
+        run: |
+          release_version="${VERSION#v}"
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
+          bash packaging/linux/build-packages.sh dist-platform/MutagenControl dist
+          APPIMAGE_EXTRACT_AND_RUN=1 "dist/MutagenControl-${release_version}-linux-x86_64.AppImage" --self-test
+          sudo dpkg -i "dist/MutagenControl-${release_version}-linux-amd64.deb"
+          python scripts/run_self_test.py /usr/bin/mutagen-control
+      - name: Verify Windows packages
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./scripts/run-self-test.ps1 -Executable "./dist-fast/MutagenControl/MutagenControl.exe" -Label "Fast"
+          ./scripts/run-self-test.ps1 -Executable "./dist/MutagenControl.exe" -Label "Single"
+      - name: Verify Windows install and upgrade data preservation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:VERSION.TrimStart('v')
+          $setup = "dist/MutagenControl-$version-windows-x64-setup.exe"
+          $baselineSetup = "dist/MutagenControl-$env:BASELINE_INSTALLER_VERSION-windows-x64-setup.exe"
+          $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Mutagen Control'
+          $profileDir = Join-Path $env:APPDATA 'MutagenControl'
+          $marker = Join-Path $profileDir 'upgrade-preservation-smoke.marker'
+          New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
+          Set-Content -LiteralPath $marker -Value 'keep user data across install, upgrade, and uninstall'
+          & $baselineSetup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Baseline installer run failed: $LASTEXITCODE" }
+          ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed"
+          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Version upgrade run failed: $LASTEXITCODE" }
+          if (-not (Test-Path -LiteralPath $marker)) { throw 'In-place upgrade removed user data.' }
+          ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Upgraded"
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller failed: $LASTEXITCODE" }
+          if (-not (Test-Path -LiteralPath $marker)) { throw 'Uninstall removed user data.' }
+          Remove-Item -LiteralPath $baselineSetup -Force
+      - name: Package Windows release files
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = $env:VERSION.TrimStart('v')
+          Compress-Archive -Path './dist-fast/MutagenControl' -DestinationPath "dist/MutagenControl-$env:VERSION-windows-x64-portable.zip"
+          Copy-Item './dist/MutagenControl.exe' "dist/MutagenControl-$env:VERSION-windows-x64.exe"
+      - name: Generate Windows package SBOM
+        if: runner.os == 'Windows'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist-fast/MutagenControl
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-${{ github.ref_name }}-windows-x64.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate macOS package SBOM
+        if: runner.os == 'macOS'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist-platform/MutagenControl.app
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-${{ github.ref_name }}-macos-${{ runner.arch }}.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate Linux package SBOM
+        if: runner.os == 'Linux'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-${{ github.ref_name }}-linux-amd64.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Attest platform packages and SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-release-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish verified release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutaui-release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Create release checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/write_checksums.py release-assets
+      - name: Verify package provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for asset in release-assets/*; do
+            if [[ "$(basename "$asset")" == 'SHA256SUMS.txt' ]]; then continue; fi
+            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+          done
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --verify-tag --title "$RELEASE_TAG" --generate-notes

@@ -4,6 +4,7 @@ The UI never waits for SQLite commits: inserts are coalesced and performed by
 one dedicated thread. A separate connection is used for GUI reads; SQLite WAL
 provides consistent committed snapshots. Queue is bounded to cap memory usage.
 """
+
 from __future__ import annotations
 
 import sqlite3
@@ -24,12 +25,19 @@ class AsyncRecorder:
     records discarded because the producer outran the database.
     """
 
-    def __init__(self, path: str | Path, *, max_pending: int = 4096,
-                 batch_size: int = 64, flush_seconds: float = 0.4, retention_hours: int = 48):
-        if str(path) == ':memory:':
-            raise ValueError('Use a file-backed database for the background recorder')
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        max_pending: int = 4096,
+        batch_size: int = 64,
+        flush_seconds: float = 0.4,
+        retention_hours: int = 48,
+    ):
+        if str(path) == ":memory:":
+            raise ValueError("Use a file-backed database for the background recorder")
         if max_pending < 1 or batch_size < 1 or flush_seconds <= 0:
-            raise ValueError('Invalid recorder capacity or flush interval')
+            raise ValueError("Invalid recorder capacity or flush interval")
         self.path = str(path)
         self.retention_hours = retention_hours
         self.max_pending = max_pending
@@ -41,8 +49,8 @@ class AsyncRecorder:
         self._busy = False
         self.dropped = 0
         self.failed = 0
-        self.last_error = ''
-        self._thread = threading.Thread(target=self._run, daemon=True, name='MutagenHistoryWriter')
+        self.last_error = ""
+        self._thread = threading.Thread(target=self._run, daemon=True, name="MutagenHistoryWriter")
         self._thread.start()
 
     def _submit(self, kind: str, value: Any) -> bool:
@@ -52,7 +60,9 @@ class AsyncRecorder:
             if len(self._queue) >= self.max_pending:
                 # Prefer dropping an old raw sample over losing a recent
                 # operator event. Never let SQLite backpressure freeze Qt.
-                victim = next((i for i, (k, _) in enumerate(self._queue) if k in ('metric', 'remote')), 0)
+                victim = next(
+                    (i for i, (k, _) in enumerate(self._queue) if k in ("metric", "remote")), 0
+                )
                 del self._queue[victim]
                 self.dropped += 1
             self._queue.append((kind, value))
@@ -60,16 +70,16 @@ class AsyncRecorder:
             return True
 
     def add(self, sample: Sample) -> bool:
-        return self._submit('metric', sample)
+        return self._submit("metric", sample)
 
-    def add_event(self, message: str, severity: str = 'info', now: float | None = None) -> bool:
-        return self._submit('event', (time.time() if now is None else now, severity, message))
+    def add_event(self, message: str, severity: str = "info", now: float | None = None) -> bool:
+        return self._submit("event", (time.time() if now is None else now, severity, message))
 
     def add_remote(self, host: str, ts: float, data: dict) -> bool:
-        return self._submit('remote', (host, float(ts), dict(data)))
+        return self._submit("remote", (host, float(ts), dict(data)))
 
     def clear_events(self) -> bool:
-        return self._submit('clear_events', None)
+        return self._submit("clear_events", None)
 
     def wait_idle(self, timeout: float = 5.0) -> bool:
         """Testing/shutdown aid, not called during normal GUI rendering."""
@@ -110,26 +120,44 @@ class AsyncRecorder:
                         if left <= 0:
                             break
                         self._condition.wait(left)
-                    batch = [self._queue.popleft() for _ in range(min(self.batch_size, len(self._queue)))]
+                    batch = [
+                        self._queue.popleft() for _ in range(min(self.batch_size, len(self._queue)))
+                    ]
                     self._busy = True
                 try:
                     with store.db:
                         for kind, value in batch:
-                            if kind == 'metric':
-                                fields = (value.ts,) + tuple(getattr(value, col) for col in METRIC_COLUMNS)
-                                store.db.execute('INSERT OR REPLACE INTO metrics VALUES (' +
-                                                 ','.join('?' for _ in fields) + ')', fields)
-                            elif kind == 'remote':
+                            if kind == "metric":
+                                fields = (value.ts,) + tuple(
+                                    getattr(value, col) for col in METRIC_COLUMNS
+                                )
+                                store.db.execute(
+                                    "INSERT OR REPLACE INTO metrics VALUES ("
+                                    + ",".join("?" for _ in fields)
+                                    + ")",
+                                    fields,
+                                )
+                            elif kind == "remote":
                                 host, ts, data = value
                                 fields = (host, ts) + tuple(data.get(col) for col in REMOTE_COLUMNS)
-                                columns = ('host', 'ts') + REMOTE_COLUMNS
-                                store.db.execute('INSERT OR REPLACE INTO remote_metrics (' +
-                                                 ','.join(columns) + ') VALUES (' +
-                                                 ','.join('?' for _ in fields) + ')', fields)
-                            elif kind == 'event':
-                                store.db.execute('INSERT INTO events(ts, severity, message) VALUES (?,?,?)', value)
-                            elif kind == 'clear_events':
-                                store.db.execute('DELETE FROM events')
+                                columns = ("host", "ts") + REMOTE_COLUMNS
+                                store.db.execute(
+                                    "INSERT OR REPLACE INTO remote_metrics ("
+                                    + ",".join(columns)
+                                    + ") VALUES ("
+                                    + ",".join("?" for _ in fields)
+                                    + ")",
+                                    fields,
+                                )
+                            elif kind == "event":
+                                store.db.execute(
+                                    "INSERT INTO events(ts, severity, message) VALUES (?,?,?)",
+                                    value,
+                                )
+                            elif kind == "clear_events":
+                                store.db.execute("DELETE FROM events")
+                            else:
+                                raise ValueError(f"Unknown async recorder record kind: {kind!r}")
                     if time.monotonic() - last_prune >= 600:
                         store.prune()
                         last_prune = time.monotonic()

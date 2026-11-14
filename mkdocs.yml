@@ -1,0 +1,118 @@
+site_name: Mutagen Control
+site_description: Desktop management for Mutagen sync and forwarding sessions.
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Overview: index.md
+  - Screenshots: screenshots.md
+  - Getting started:
+      - Install and upgrade: installation.md
+      - Windows: getting-started/windows.md
+      - macOS: getting-started/macos.md
+      - Linux: getting-started/linux.md
+      - First sync: getting-started/first-sync.md
+      - Basic and Advanced: getting-started/basic-vs-advanced.md
+  - Settings: settings-reference.md
+  - SSH profiles: ssh-profiles.md
+  - User guide:
+      - Overview: user/index.md
+      - Dashboard: user/dashboard.md
+      - Connections: user/connections.md
+      - Sync wizard: user/sync-wizard.md
+      - Forwarding: user/forwarding.md
+      - Native projects: user/projects.md
+      - Session Doctor: user/session-doctor.md
+      - Conflicts: user/conflicts.md
+      - SSH: user/ssh.md
+  - Advanced configuration:
+      - Overview: advanced/index.md
+      - Global Mutagen config: advanced/mutagen-global-config.md
+      - Sync config: advanced/sync-configuration.md
+      - Forward config: advanced/forward-configuration.md
+      - Projects and hooks: advanced/projects-and-hooks.md
+      - Ignore patterns: advanced/ignore-patterns.md
+      - Session reconfiguration: advanced/session-reconfiguration.md
+      - Recovery policies: advanced/recovery-policies.md
+      - Performance tuning: advanced/performance-tuning.md
+  - Reference:
+      - Overview: reference/index.md
+      - Configuration fields: reference/configuration-fields.md
+      - CLI and capabilities: reference/cli-and-capabilities.md
+      - App settings schema: reference/app-settings-schema.md
+      - Profile export schema: reference/profile-export-schema.md
+      - Compatibility matrix: reference/compatibility-matrix.md
+  - Troubleshooting:
+      - Common errors: troubleshooting/common-errors.md
+      - Debugging: troubleshooting/debugging.md
+      - Backup and recovery: troubleshooting/backup-and-recovery.md
+  - Developer:
+      - Overview: developer/index.md
+      - Architecture flow: architecture.md
+      - Architecture: developer/architecture.md
+      - Architecture decisions: developer/architecture-decisions.md
+      - ADRs:
+          - Retain PySide6: adr/0001-retain-pyside6.md
+          - Mutagen CLI source of truth: adr/0002-mutagen-cli-source-of-truth.md
+          - Shared Basic and Advanced semantics: adr/0003-basic-advanced-shared-semantics.md
+          - Previewed ActionPlanner: adr/0004-previewed-action-planner.md
+          - Platform capability adapter: adr/0005-platform-capability-adapter.md
+      - Testing: developer/testing.md
+      - Runtime and integration testing: TESTING.md
+      - Acceptance traceability: acceptance-traceability.md
+      - Coverage audit (2026-11-14): reports/coverage-2026-11-14.md
+      - Coverage audit (2026-11-13 baseline): reports/coverage-2026-11-13.md
+      - Build and release: developer/build-and-release.md
+      - Build and release alias: developer/build-release.md
+      - Performance: developer/performance.md
+      - UI visual QA: ui-visual-qa.md
+      - Action planner: action-planner.md
+      - Reconfiguration preview: reconfiguration-preview.md
+      - Single instance and CLI: single-instance-cli.md
+      - Implementation status: implementation-inventory.md
+      - Roadmap: roadmap.md
+      - Phase 0 baseline: reports/phase-0.md
+      - Phase 1 UX & configuration: reports/phase-1.md
+      - Phase 2 profiles & projects: reports/phase-2.md
+      - Phase 3 conflicts & reconfiguration: reports/phase-3.md
+      - Phase 4 platform & release: reports/phase-4.md
+      - Release candidate audit: reports/release-candidate.md
+  - Capabilities: capability-matrix.md
+  - Profiles and projects:
+      - Native projects: project-yaml-editing.md
+      - Remote inspection summary: remote-inspection.md
+      - Remote inspection: security/remote-inspection.md
+  - Conflicts and recovery:
+      - Conflict inspector: conflict-inspector.md
+      - Compare copies: conflict-diff.md
+      - Recommendations: conflict-recommendations.md
+      - Manual resolution: manual-conflict-resolution.md
+      - Replacement: controlled-replacement.md
+  - Diagnostics:
+      - Session Doctor: session-doctor.md
+      - Session health: session-health.md
+      - Troubleshooting: troubleshooting.md
+  - Security:
+      - Threat model: security/threat-model.md
+      - Static analysis: security/static-analysis.md
+      - Remote inspection: security/remote-inspection.md
+
+exclude_docs: |
+  superpowers/**
+

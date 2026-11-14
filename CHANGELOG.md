@@ -1,5 +1,33 @@
 # Mutagen Control v8.2 — Windows GUI fixes and watch profiles
 
+## Integration work
+
+- Added an opt-in startup/manual release check using public GitHub metadata only; update checks default off and never download or install binaries.
+- Added per-user Windows installer, Intel/Apple Silicon macOS DMGs, Linux AppImage/deb packages, and install/upgrade guidance; signing, notarization, CI secrets, and platform acceptance remain release gates.
+- Added Paramiko collection to PyInstaller builds so the optional SSH/SFTP inspector is available in packaged apps.
+- Added one gated tagged-release pipeline that runs platform checks, emits SBOMs and provenance, verifies hashes, and publishes only when all platform jobs pass.
+- Pinned CI integration to official Mutagen v0.18.1 artifacts and verify each downloaded archive against the release SHA-256 manifest before testing.
+- Added a strict MkDocs Material build to CI and release checks, with a retained documentation-site artifact for review.
+- Added dependency vulnerability audits, GitHub Actions linting, YAML linting, and baseline-backed secret detection to CI and tagged releases; raised the Paramiko minimum to the audited fixed major line.
+- Added the required bilingual build/release and remote-inspection security guides, with compatibility links from the earlier documentation paths.
+- Added a deterministic 12-case pairwise visual-QA capture matrix across locale, theme, Basic/Advanced mode, and DPI; captures remain diagnostic until localized UI and manual review are complete.
+- Added a cross-platform session-model performance canary for 0–5,000 rows with latency percentiles and machine/RSS metadata; it explicitly excludes GUI paint and native CLI time.
+- Expanded Czech localization for page navigation, overview, settings sections, session status, and shared labels/buttons; a catalog test catches untranslated literal calls through the common UI helpers.
+- Localized live Mutagen sync/forward status, endpoint connection state, and endpoint empty-state messages without changing native status data.
+- Added Windows native suspend/resume broadcasts to the sleep/network grace tracker; polling-gap wake detection remains a fallback, and macOS/Linux event coverage is unverified.
+- Classified OpenSSH's unknown-key and changed-key diagnostics distinctly while keeping strict host-key checking; isolated live-host acceptance remains open.
+- Expanded conflict-resolver fault coverage: stale post-preview file content blocks before writes, and rollback retains both original backups; the resolver remains disabled pending full acceptance gates.
+- Added Advanced forward source/destination Unix socket fields, safe `leave` defaults, local platform checks, installed-CLI flag checks, and R3 typed confirmation for overwrite; live Mutagen/platform and remote path preflight acceptance remain open.
+- Expanded the safe diagnostics JSON allowlist with runtime versions, observation freshness, sanitized problem codes, numeric CI run ID, and event counts; raw event text and endpoint details stay excluded.
+
+- Added a consent-gated, exact-ID replacement coordinator with a fresh snapshot check, native post-verification, and best-effort restore. It uses an injected backend; no live Mutagen backend is connected and no live session was changed.
+- Added a project YAML edit flow with exact diff, validation, stale-write guard, backup and audit. Project sessions remain owned by their native project file; editing does not recreate them or run hooks.
+- Added opt-in SSH/SFTP conflict copy inspection with known-host verification, bounded reads, temporary copy cleanup and redacted audit.
+- Added local/remote conflict comparison using read-only temporary copies and an explicitly selected diff application. Two-remote comparisons remain unavailable.
+- Added a tested local/local single-file manual resolution service with backups and rollback reporting. Its feature flag stays off until cross-platform and live Mutagen fault acceptance passes.
+- Added bounded exact-path conflict recommendations; the default-off rules never select or apply a resolution automatically.
+- Added single-instance request forwarding and exact session/folder/project/Doctor launch routes; overlapping folder roots are reported instead of guessed.
+
 ## Fixes
 
 - Fixed a GUI smoke test assumption: the first server may have forwarding sessions only. The test now checks the actual contents of each group, including empty states.

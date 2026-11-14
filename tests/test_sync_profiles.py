@@ -8,15 +8,21 @@ from sync_profiles import PROFILES, AdaptivePolling, native_config_text, profile
 def test_profiles_use_supported_cli_create_flags_only():
     for key in PROFILES:
         flags = profile_flags(key)
-        assert all(f.startswith(("--watch-mode=", "--watch-polling-interval=", "--scan-mode=")) for f in flags)
+        assert all(
+            f.startswith(("--watch-mode=", "--watch-polling-interval=", "--scan-mode="))
+            for f in flags
+        )
     assert profile_flags("eco_poll") == ["--watch-mode=force-poll", "--watch-polling-interval=60"]
-    with pytest.raises(ValueError): profile_flags("nonexistent")
+    with pytest.raises(ValueError):
+        profile_flags("nonexistent")
 
 
 def test_adaptive_polling_settles_to_idle_and_wakes_after_change():
     ticks = [100.0]
     policy = AdaptivePolling(fast=2, idle=30, quiet_after=90, clock=lambda: ticks[0])
-    snap = SimpleNamespace(sync=[{"identifier": "s1", "paused": False, "status": 6, "successfulCycles": 1}], forward=[])
+    snap = SimpleNamespace(
+        sync=[{"identifier": "s1", "paused": False, "status": 6, "successfulCycles": 1}], forward=[]
+    )
     policy.observe(snap)
     assert policy.interval(enabled=True, normal=5) == 2
     ticks[0] = 195

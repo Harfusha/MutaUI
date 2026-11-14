@@ -2,6 +2,7 @@
 
 It never starts the real daemon or runs destructive CLI commands.
 """
+
 import os
 
 import pytest
@@ -16,6 +17,7 @@ from sync_profiles import PROFILES
 
 def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
     import app
+
     monkeypatch.setattr(app, "settings_path", lambda: tmp_path / "settings.json")
     qapp = QApplication.instance() or QApplication([])
     window = MainWindow(demo=True)
@@ -28,6 +30,7 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         import gc
 
         import shiboken6
+
         gc.collect()
         # Regression for the real Windows crash: Graph's owning QFrame must live.
         assert shiboken6.isValid(window.cpu_chart)
@@ -67,9 +70,9 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         assert window.endpoint_combo.count() >= 1
         window.endpoint_combo.setCurrentIndex(0)
         window.update_endpoint_details()
-        assert 'web-project' in window.endpoint_status.text()
-        assert 'Connected' in window.endpoint_cards['right']['conn'].text()
-        assert '12 486' in window.endpoint_cards['left']['stats'].text()
+        assert "web-project" in window.endpoint_status.text()
+        assert "Connected" in window.endpoint_cards["right"]["conn"].text()
+        assert "12 486" in window.endpoint_cards["left"]["stats"].text()
         window.set_page(10)
         assert window.server_selector.count() >= 4
         assert window.server_overview.rowCount() >= 3
@@ -78,10 +81,18 @@ def test_demo_ui_can_render_all_pages_and_charts(tmp_path, monkeypatch):
         # The first server can legitimately have only port forwarding sessions.
         for index in range(1, window.server_selector.count()):
             window.server_selector.setCurrentIndex(index)
-            assert window.server_sync_table.rowCount() == len(window.server_targets("sync", "server"))
-            assert window.server_forward_table.rowCount() == len(window.server_targets("forward", "server"))
-            assert window.server_sync_empty.isVisible() == (window.server_sync_table.rowCount() == 0)
-        assert any(group.forward_ids and not group.sync_ids for group in window._server_groups.values())
+            assert window.server_sync_table.rowCount() == len(
+                window.server_targets("sync", "server")
+            )
+            assert window.server_forward_table.rowCount() == len(
+                window.server_targets("forward", "server")
+            )
+            assert window.server_sync_empty.isVisible() == (
+                window.server_sync_table.rowCount() == 0
+            )
+        assert any(
+            group.forward_ids and not group.sync_ids for group in window._server_groups.values()
+        )
         window.set_page(1)
         assert window.sync_server_filter.count() == window.server_selector.count()
         assert "sign-in" in window.sync_autostart_button.text()

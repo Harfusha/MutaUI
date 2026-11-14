@@ -6,10 +6,13 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 jobs:
-  checks:
-    runs-on: windows-latest
+  security:
+    name: Dependency, workflow, YAML, and secret checks
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -17,13 +20,296 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
+      - name: Install security and quality tools
+        run: python -m pip install uv==0.13.8 -r requirements-quality.txt
+      - name: Verify pinned pip exports
+        run: python scripts/check_dependency_exports.py
+      - name: Audit locked dependency sets
+        run: python -m pip_audit -r requirements.txt -r requirements-build.txt -r requirements-quality.txt
+      - name: Check YAML syntax and style
+        run: python -m yamllint -s .github/workflows .yamllint
+      - name: Check GitHub Actions workflows
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          (cd "$RUNNER_TEMP" && echo '8aca8db96f1b94770e6d0c23ca2f540b67519ec68db098ddfcfa96059e61f723  actionlint.tar.gz' | sha256sum --check)
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          "$RUNNER_TEMP/actionlint/actionlint" -color .github/workflows/*.yml
+      - name: Scan tracked files for new secrets
+        run: git ls-files -z -- ':!.secrets.baseline' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+  checks:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Linux Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libfontconfig1 libxkbcommon-x11-0 libxcb-cursor0 openssh-server && sudo mkdir -p /run/sshd
       - name: Install test dependencies
-        run: python -m pip install -r requirements.txt ruff pytest
+        run: python -m pip install uv==0.13.8
+      - name: Sync locked test environment (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          uv sync --locked --group build --group test --group quality
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:GITHUB_WORKSPACE '.venv\Scripts')
+      - name: Sync locked test environment (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          uv sync --locked --group build --group test --group quality
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install pinned Mutagen test CLI (Windows)
+        if: runner.os == 'Windows'
+        env:
+          MUTAGEN_TEST_VERSION: 0.18.1
+        shell: pwsh
+        run: ./scripts/install-mutagen-test-cli.ps1
+      - name: Install pinned Mutagen test CLI (macOS/Linux)
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        env:
+          MUTAGEN_TEST_VERSION: 0.18.1
+        run: bash scripts/install-mutagen-test-cli.sh
       - name: Run static checks
         run: |
           python -m ruff check .
+          python -m ruff format --check src/mutaui tests/test_app_import.py tests/test_domain_models.py tests/test_write_checksums.py scripts/run_self_test.py scripts/write_checksums.py tests/test_run_self_test.py gui_capture.py scripts/capture_ui_matrix.py tests/test_gui_capture.py tests/test_capture_ui_matrix.py benchmarks/session_table_benchmark.py tests/test_session_table_benchmark.py tests/test_ui_preferences.py tests/test_mainwindow_flows.py tests/test_update_checker.py
+          python -m mypy src/mutaui
+          python scripts/generate_settings_reference.py --check
+          python scripts/generate_settings_reference.py --check --output docs/reference/configuration-fields.md
+          python -m pymarkdown -d MD013,MD029 scan README.md docs
+          python -m mkdocs build --strict
           python verify_source.py
+      - name: Run synthetic session model performance canary
+        run: python benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json
+      - name: Upload documentation site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-documentation-site-${{ matrix.os }}
+          path: site/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload performance canary
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-performance-${{ matrix.os }}
+          path: benchmark-results/session-table.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Run logic and integration tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests --ignore=tests/test_gui_smoke.py --tb=short
+          MUTAGEN_DATA_DIRECTORY: ${{ runner.temp }}/mutagen-control-test-data
+        run: |
+          python -c "from pathlib import Path; Path('test-results').mkdir(exist_ok=True)"
+          python -m pytest -q tests --tb=short --junitxml=test-results/pytest.xml --cov --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results/pytest.xml'); skipped=sum(int(s.get('skipped',0)) for s in root.iter('testsuite')); print(f'Skipped tests: {skipped}'); assert skipped == 0, 'CI may not skip required tests'"
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('coverage.xml').getroot(); covered=int(root.get('branches-covered','0')); total=int(root.get('branches-valid','0')); rate=covered/total; print(f'Branch coverage: {covered}/{total} = {rate:.2%}'); assert rate >= 0.95, 'CI requires at least 95% branch coverage'"
+      - name: Run real OpenSSH host-key acceptance
+        if: runner.os == 'Linux'
+        run: python -m pytest -q integration/ssh --tb=short
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-test-report-${{ matrix.os }}
+          path: |
+            test-results/pytest.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Build packaged demo
+        run: python -m PyInstaller --noconfirm --clean --onedir --windowed --paths src --collect-all paramiko --name MutagenControl --distpath dist-platform app.py
+      - name: Prepare package metadata directory
+        run: python -c "from pathlib import Path; Path('dist').mkdir(exist_ok=True)"
+      - name: Generate Windows package SBOM
+        if: runner.os == 'Windows'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist-platform/MutagenControl
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Generate macOS package SBOM
+        if: runner.os == 'macOS'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist-platform/MutagenControl.app
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-8.2.0-macos-${{ runner.arch }}.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Sign and notarize macOS release bundle
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_NOTARY_KEY_BASE64 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then echo "Missing required macOS release secret: $name" >&2; exit 1; fi
+          done
+          keychain="$RUNNER_TEMP/mutaui-signing.keychain-db"
+          keychain_unlock_material="$(openssl rand -hex 24)"
+          certificate="$RUNNER_TEMP/mutaui-signing.p12"
+          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          archive="$RUNNER_TEMP/MutagenControl-notary.zip"
+          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$certificate" "$notary_file" "$archive"' EXIT
+          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
+          security create-keychain -p "$keychain_unlock_material" "$keychain"
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_unlock_material" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_unlock_material" "$keychain"
+          while IFS= read -r -d '' binary; do
+            if file -b "$binary" | grep -q 'Mach-O'; then
+              codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$binary"
+            fi
+          done < <(find dist-platform/MutagenControl.app -type f -print0)
+          while IFS= read -r -d '' bundle; do
+            codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$bundle"
+          done < <(find dist-platform/MutagenControl.app -depth -type d \( -name '*.framework' -o -name '*.bundle' \) -print0)
+          codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" dist-platform/MutagenControl.app
+          codesign --verify --deep --strict --verbose=2 dist-platform/MutagenControl.app
+          ditto -c -k --keepParent dist-platform/MutagenControl.app "$archive"
+          xcrun notarytool submit "$archive" --key "$api_key" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple dist-platform/MutagenControl.app
+          xcrun stapler validate dist-platform/MutagenControl.app
+      - name: Verify packaged demo on Windows
+        if: runner.os == 'Windows'
+        run: python scripts/run_self_test.py dist-platform/MutagenControl/MutagenControl.exe
+      - name: Verify packaged demo on macOS
+        if: runner.os == 'macOS'
+        run: python scripts/run_self_test.py dist-platform/MutagenControl.app/Contents/MacOS/MutagenControl
+      - name: Verify packaged demo on Linux
+        if: runner.os == 'Linux'
+        run: python scripts/run_self_test.py dist-platform/MutagenControl/MutagenControl
+      - name: Build Linux AppImage and deb packages
+        if: runner.os == 'Linux'
+        env:
+          MUTAUI_VERSION: 8.2.0
+        run: bash packaging/linux/build-packages.sh dist-platform/MutagenControl dist
+      - name: Generate Linux package SBOM
+        if: runner.os == 'Linux'
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-8.2.0-linux-amd64.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Verify Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/MutagenControl-8.2.0-linux-x86_64.AppImage --self-test
+          sudo dpkg -i dist/MutagenControl-8.2.0-linux-amd64.deb
+          python scripts/run_self_test.py /usr/bin/mutagen-control
+      - name: Package macOS disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          arch="$(uname -m)"
+          mkdir -p dist/dmg-root
+          ditto dist-platform/MutagenControl.app dist/dmg-root/MutagenControl.app
+          ln -s /Applications dist/dmg-root/Applications
+          hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-8.2.0-macos-${arch}.dmg"
+          rm -rf dist/dmg-root
+      - name: Verify macOS disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          arch="$(uname -m)"
+          mkdir -p "$RUNNER_TEMP/mutaui-dmg"
+          hdiutil attach "dist/MutagenControl-8.2.0-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$RUNNER_TEMP/mutaui-dmg"
+          python scripts/run_self_test.py "$RUNNER_TEMP/mutaui-dmg/MutagenControl.app/Contents/MacOS/MutagenControl"
+          hdiutil detach "$RUNNER_TEMP/mutaui-dmg"
+      - name: Notarize and staple macOS disk image
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
+          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
+          trap 'rm -f "$notary_file"' EXIT
+          image="dist/MutagenControl-8.2.0-macos-$(uname -m).dmg"
+          xcrun notarytool submit "$image" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun stapler staple "$image"
+          xcrun stapler validate "$image"
+      - name: Write package checksums
+        if: runner.os == 'macOS' || runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.AppImage dist/*.deb)
+          if ((${#files[@]} == 0)); then echo 'No platform packages found for checksumming.' >&2; exit 1; fi
+          shasum -a 256 "${files[@]}" > dist/SHA256SUMS.txt
+      - name: Attest macOS packages
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+      - name: Attest Linux packages
+        if: runner.os == 'Linux' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
+      - name: Upload packaged self-test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-self-test-${{ matrix.os }}
+          path: ${{ runner.temp }}/mutagen-control-self-test.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload Windows SBOM
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-windows-sbom
+          path: dist/*.sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Linux packages
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-linux-packages
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.sbom.cdx.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload macOS disk image
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-macos-dmg-${{ matrix.os }}
+          path: |
+            dist/MutagenControl-8.2.0-macos-*.dmg
+            dist/*.sbom.cdx.json
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

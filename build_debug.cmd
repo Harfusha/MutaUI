@@ -20,7 +20,7 @@ set "QT_QPA_PLATFORM=offscreen"
 ".venv\Scripts\python.exe" -m pytest -q tests\test_gui_smoke.py
 if errorlevel 1 goto :error
 set "QT_QPA_PLATFORM="
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --console --noupx --name MutagenControl-Debug --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist-debug" --workpath "build-debug" app.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --console --noupx --collect-all paramiko --name MutagenControl-Debug --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist-debug" --workpath "build-debug" app.py
 if errorlevel 1 goto :error
 echo.
 set "QT_QPA_PLATFORM=offscreen"

@@ -1,0 +1,73 @@
+{
+  "measurement": "SessionTableModel set_sessions plus DisplayRole reads",
+  "limits": [
+    "synthetic local model only",
+    "excludes GUI event-to-paint, filtering, process startup, and native CLI wall time",
+    "does not establish reference-hardware acceptance"
+  ],
+  "machine": {
+    "os": "Windows-11-10.0.26300-SP0",
+    "architecture": "AMD64",
+    "cpu_model": "AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD",
+    "cpu_logical": 16,
+    "cpu_physical": 8,
+    "memory_total_bytes": 33998716928,
+    "python": "3.12.10",
+    "pyside6": "6.8.3",
+    "storage_type": "not detected by this benchmark",
+    "process_rss_before_bytes": 48832512,
+    "process_rss_after_bytes": 52252672,
+    "process_uss_after_bytes": 31195136
+  },
+  "results": {
+    "0": {
+      "rows": 0,
+      "repetitions": 30,
+      "p50_ms": 0.001,
+      "p95_ms": 0.003,
+      "max_ms": 0.02
+    },
+    "1": {
+      "rows": 1,
+      "repetitions": 30,
+      "p50_ms": 0.039,
+      "p95_ms": 0.065,
+      "max_ms": 0.105
+    },
+    "10": {
+      "rows": 10,
+      "repetitions": 30,
+      "p50_ms": 0.368,
+      "p95_ms": 0.622,
+      "max_ms": 0.646
+    },
+    "100": {
+      "rows": 100,
+      "repetitions": 30,
+      "p50_ms": 4.39,
+      "p95_ms": 6.397,
+      "max_ms": 6.998
+    },
+    "500": {
+      "rows": 500,
+      "repetitions": 30,
+      "p50_ms": 22.17,
+      "p95_ms": 28.815,
+      "max_ms": 30.793
+    },
+    "1000": {
+      "rows": 1000,
+      "repetitions": 30,
+      "p50_ms": 38.962,
+      "p95_ms": 52.191,
+      "max_ms": 60.649
+    },
+    "5000": {
+      "rows": 5000,
+      "repetitions": 30,
+      "p50_ms": 296.083,
+      "p95_ms": 316.637,
+      "max_ms": 327.431
+    }
+  }
+}

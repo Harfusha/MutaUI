@@ -11,15 +11,14 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
+test-results/
 
 # Build outputs (PyInstaller)
 build/
-build-fast/
-build-debug/
+build-*/
 dist/
-dist-fast/
-dist-debug/
-dist-folder/
+dist-*/
 build-folder/
 *.spec
 
@@ -42,3 +41,5 @@ desktop.ini
 
 # Integrity manifest (generated artifact)
 MANIFEST.sha256
+site/
+benchmark-results/

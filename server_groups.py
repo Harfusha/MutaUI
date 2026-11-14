@@ -3,6 +3,7 @@
 Host matching is deliberately conservative: DNS aliases and different hostnames
 may point at the same machine, but we never guess or make network requests.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -33,8 +34,12 @@ def _remote_key(endpoint: dict) -> tuple[str, str] | None:
 
 def session_servers(session: dict, kind: str) -> set[str]:
     names = ("alpha", "beta") if kind == "sync" else ("source", "destination")
-    return {key for item in names if (ident := _remote_key(session.get(item) or {}))
-            for key in (ident[0],)}
+    return {
+        key
+        for item in names
+        if (ident := _remote_key(session.get(item) or {}))
+        for key in (ident[0],)
+    }
 
 
 @dataclass
@@ -54,6 +59,7 @@ class ServerGroup:
 def group_servers(sync: Iterable[dict], forward: Iterable[dict]) -> list[ServerGroup]:
     """Each session can be listed under two servers, but never twice under one."""
     from mutagen_client import classify
+
     groups: dict[str, ServerGroup] = {}
     for kind, sessions in (("sync", sync), ("forward", forward)):
         for sess in sessions:

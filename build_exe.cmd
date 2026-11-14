@@ -49,7 +49,7 @@ if errorlevel 1 goto :error
 set "QT_QPA_PLATFORM="
 
 echo [5/5] Building EXE (the first launch will unpack Qt)...
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name MutagenControl --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist" --workpath "build" app.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --collect-all paramiko --name MutagenControl --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist" --workpath "build" app.py
 if errorlevel 1 goto :error
 if not exist "dist\MutagenControl.exe" goto :error
 echo [SELF-TEST] Checking the packaged EXE without connecting to Mutagen...

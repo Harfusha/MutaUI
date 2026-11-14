@@ -1,4 +1,5 @@
 """Bounded, read-only incremental tailer for explicitly chosen log files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,8 +42,9 @@ class TrackedLogLines:
 
     def __init__(self, maxlen: int = 1200):
         from collections import deque
+
         if maxlen <= 0:
-            raise ValueError('maxlen must be positive')
+            raise ValueError("maxlen must be positive")
         self.lines = deque(maxlen=maxlen)
         self.total = 0
         self.epoch = 0
@@ -69,4 +71,4 @@ class TrackedLogLines:
     def since(self, count: int) -> list[str]:
         if count >= self.total:
             return []
-        return list(self.lines)[-min(self.total - count, len(self.lines)):]
+        return list(self.lines)[-min(self.total - count, len(self.lines)) :]

@@ -3,6 +3,7 @@
 Existing Mutagen sessions cannot be reconfigured in place using the standard
 Mutagen sync CLI. Profiles here are ONLY applied at session creation.
 """
+
 from __future__ import annotations
 
 import time
@@ -10,9 +11,18 @@ from dataclasses import dataclass
 
 PROFILES = {
     "default": ("Default Mutagen configuration", ()),
-    "events": ("File change events (portable watch)", ("--watch-mode=portable", "--scan-mode=accelerated")),
-    "fast_poll": ("Poll every 5 s (higher load)", ("--watch-mode=force-poll", "--watch-polling-interval=5")),
-    "balanced_poll": ("Poll every 20 s", ("--watch-mode=force-poll", "--watch-polling-interval=20")),
+    "events": (
+        "File change events (portable watch)",
+        ("--watch-mode=portable", "--scan-mode=accelerated"),
+    ),
+    "fast_poll": (
+        "Poll every 5 s (higher load)",
+        ("--watch-mode=force-poll", "--watch-polling-interval=5"),
+    ),
+    "balanced_poll": (
+        "Poll every 20 s",
+        ("--watch-mode=force-poll", "--watch-polling-interval=20"),
+    ),
     "eco_poll": ("Eco poll every 60 s", ("--watch-mode=force-poll", "--watch-polling-interval=60")),
     "manual": ("No file watching (Sync now manually)", ("--watch-mode=no-watch",)),
 }
@@ -38,6 +48,7 @@ def native_config_text(session: dict) -> str:
 @dataclass
 class AdaptivePolling:
     """Throttle GUI's local CLI reads, never alter Mutagen daemon's sync timing."""
+
     fast: int = 2
     idle: int = 20
     quiet_after: int = 90
@@ -51,14 +62,22 @@ class AdaptivePolling:
         signature_items = []
         self.busy = False
         for kind, group in (("sync", snapshot.sync), ("forward", snapshot.forward)):
-            busy_statuses = {"4", "5", "7", "9", "10", "11", "12", "13"} if kind == "sync" else {"1", "2"}
+            busy_statuses = (
+                {"4", "5", "7", "9", "10", "11", "12", "13"} if kind == "sync" else {"1", "2"}
+            )
             for s in group:
-                signature_items.append((
-                    kind, str(s.get("identifier") or ""), bool(s.get("paused")),
-                    str(s.get("status")), int(s.get("successfulCycles") or 0),
-                    len(s.get("conflicts") or []), str(s.get("lastError") or ""),
-                    int(s.get("totalConnections") or 0),
-                ))
+                signature_items.append(
+                    (
+                        kind,
+                        str(s.get("identifier") or ""),
+                        bool(s.get("paused")),
+                        str(s.get("status")),
+                        int(s.get("successfulCycles") or 0),
+                        len(s.get("conflicts") or []),
+                        str(s.get("lastError") or ""),
+                        int(s.get("totalConnections") or 0),
+                    )
+                )
                 if not s.get("paused") and str(s.get("status")) in busy_statuses:
                     self.busy = True
         signature = tuple(sorted(signature_items))

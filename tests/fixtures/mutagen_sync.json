@@ -1,0 +1,12 @@
+{
+  "identifier": "sync-golden-001",
+  "name": "duplicate names are allowed",
+  "labels": {"team": "desktop"},
+  "status": 6,
+  "paused": false,
+  "alpha": {"protocol": 0, "path": "C:\\workspace\\app"},
+  "beta": {"protocol": 1, "user": "dev", "host": "example.test", "port": 2202, "path": "/srv/app"},
+  "files": 42,
+  "conflicts": [],
+  "alphaFutureField": {"preserve": true}
+}

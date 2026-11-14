@@ -3,6 +3,7 @@
 Run: python benchmark.py
 This is NOT a Windows GUI benchmark nor a claim about runtime CPU/RAM.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,23 +28,27 @@ def timed(func, repetitions=3):
 
 def run_benchmark():
     session = example_snapshot().sync[0]
-    decode_ms = timed(lambda: [summary(session, 'sync') for _ in range(10_000)])
+    decode_ms = timed(lambda: [summary(session, "sync") for _ in range(10_000)])
     with tempfile.TemporaryDirectory() as directory:
-        db = HistoryStore(Path(directory) / 'metrics.sqlite3')
+        db = HistoryStore(Path(directory) / "metrics.sqlite3")
         try:
             now = time.time()
+
             def fill():
                 for i in range(2000):
                     db.add(Sample(ts=now - 4000 + i * 2, cpu=i % 50, memory=100_000_000 + i))
+
             fill_ms = timed(fill, 1)
             read_ms = timed(lambda: db.query(hours=2, max_points=320))
         finally:
             db.close()
-    return {'endpoint_decoding_10k_ms': decode_ms,
-            'sqlite_write_2k_ms': fill_ms,
-            'sqlite_aggregate_2k_ms': read_ms,
-            'note': 'Isolated microbenchmarks; not a Windows GUI or SSH test'}
+    return {
+        "endpoint_decoding_10k_ms": decode_ms,
+        "sqlite_write_2k_ms": fill_ms,
+        "sqlite_aggregate_2k_ms": read_ms,
+        "note": "Isolated microbenchmarks; not a Windows GUI or SSH test",
+    }
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(json.dumps(run_benchmark(), ensure_ascii=False, indent=2))

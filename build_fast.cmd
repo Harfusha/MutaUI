@@ -35,7 +35,7 @@ set "QT_QPA_PLATFORM=offscreen"
 ".venv\Scripts\python.exe" -m pytest -q tests\test_gui_smoke.py
 if errorlevel 1 goto :error
 set "QT_QPA_PLATFORM="
-".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --name MutagenControl --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist-fast" --workpath "build-fast" app.py
+".venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --collect-all paramiko --name MutagenControl --icon "assets\mutagencontrol.ico" --version-file "assets\version_info.txt" --distpath "dist-fast" --workpath "build-fast" app.py
 if errorlevel 1 goto :error
 if not exist "dist-fast\MutagenControl\MutagenControl.exe" goto :error
 echo [SELF-TEST] Checking the packaged EXE without connecting to Mutagen...

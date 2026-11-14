@@ -1,13 +1,12 @@
 name: Build Mutagen Control for Windows
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -20,7 +19,13 @@ jobs:
           python-version: '3.12'
           cache: pip
       - name: Install dependencies
-        run: python -m pip install -r requirements.txt -r requirements-build.txt
+        run: python -m pip install uv==0.13.8
+      - name: Sync locked Windows build environment
+        shell: pwsh
+        run: |
+          uv sync --locked --group build --group test --group quality
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:GITHUB_WORKSPACE '.venv\Scripts')
       - name: Run static checks
         run: |
           python -m ruff check .
@@ -28,17 +33,31 @@ jobs:
       - name: Run full test suite with branch coverage
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests --tb=short --cov --cov-branch --cov-report=term-missing:skip-covered
+        run: |
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          python -m pytest -q tests --tb=short --junitxml=test-results/pytest.xml --cov --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('test-results/pytest.xml'); skipped=sum(int(s.get('skipped',0)) for s in root.iter('testsuite')); print(f'Skipped tests: {skipped}'); assert skipped == 0, 'Windows build may not skip required tests'"
+          python -c "import xml.etree.ElementTree as ET; root=ET.parse('coverage.xml').getroot(); covered=int(root.get('branches-covered','0')); total=int(root.get('branches-valid','0')); rate=covered/total; print(f'Branch coverage: {covered}/{total} = {rate:.2%}'); assert rate >= 0.95, 'Windows build requires at least 95% branch coverage'"
+      - name: Upload test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-test-coverage-report
+          path: |
+            test-results/pytest.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 7
       - name: Build fast-start portable folder
         run: >-
-          python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx
-          --name MutagenControl --icon assets/mutagencontrol.ico
+          python -m PyInstaller --noconfirm --clean --onedir --windowed --noupx --collect-all paramiko
+          --paths src --name MutagenControl --icon assets/mutagencontrol.ico
           --version-file assets/version_info.txt --distpath dist-fast
           --workpath build-fast app.py
       - name: Build single-file executable
         run: >-
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx
-          --name MutagenControl --icon assets/mutagencontrol.ico
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --collect-all paramiko
+          --paths src --name MutagenControl --icon assets/mutagencontrol.ico
           --version-file assets/version_info.txt --distpath dist
           --workpath build app.py
       - name: Verify actual packaged Windows EXEs
@@ -47,6 +66,56 @@ jobs:
         run: |
           ./scripts/run-self-test.ps1 -Executable "./dist-fast/MutagenControl/MutagenControl.exe" -Label "Fast"
           ./scripts/run-self-test.ps1 -Executable "./dist/MutagenControl.exe" -Label "Single"
+          python scripts/run_crash_recovery_self_test.py --executable "./dist-fast/MutagenControl/MutagenControl.exe"
+          python scripts/run_crash_recovery_self_test.py --executable "./dist/MutagenControl.exe"
+      - name: Build user-scoped installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress --yes
+          $compiler = Join-Path $env:ProgramFilesX86 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
+          & $compiler packaging/windows/MutagenControl.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
+      - name: Generate Windows package SBOM
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          path: dist-fast/MutagenControl
+          format: cyclonedx-json
+          output-file: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Sign Windows release binaries
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
+            throw 'Tagged releases require WINDOWS_SIGNING_CERT_BASE64 and WINDOWS_SIGNING_CERT_PASSWORD repository secrets.'
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $kits = Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'Windows Kits\10\bin'
+          $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
+          try {
+            $binaries = @(
+              'dist-fast/MutagenControl/MutagenControl.exe',
+              'dist/MutagenControl.exe',
+              'dist/MutagenControl-8.2.0-windows-x64-setup.exe'
+            )
+            foreach ($binary in $binaries) {
+              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary (exit $LASTEXITCODE)." }
+              & $signtool.FullName verify /pa /all $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary (exit $LASTEXITCODE)." }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
       - name: Upload self-test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,15 +138,46 @@ jobs:
           path: dist/MutagenControl.exe
           if-no-files-found: error
           retention-days: 14
-      - name: Publish GitHub Release
+      - name: Upload user-scoped installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: MutagenControl-v8.2-installer
+          path: dist/MutagenControl-8.2.0-windows-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Windows package SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: MutagenControl-v8.2-sbom
+          path: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Attest Windows package SBOM
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.sbom.cdx.json
+      - name: Prepare and checksum Windows release assets
         if: startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         shell: pwsh
         run: |
           $portableZip = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64-portable.zip"
           $singleExe = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64.exe"
+          $installer = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64-setup.exe"
           Compress-Archive -Path "./dist-fast/MutagenControl" -DestinationPath $portableZip
           Copy-Item "./dist/MutagenControl.exe" $singleExe
-          gh release create "$env:RELEASE_TAG" $singleExe $portableZip --verify-tag --title "$env:RELEASE_TAG" --generate-notes
+          Copy-Item "./dist/MutagenControl-8.2.0-windows-x64-setup.exe" $installer
+          $sbom = "dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json"
+          $assets = @($singleExe, $portableZip, $installer, $sbom)
+          $hashes = $assets | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash.ToLowerInvariant()
+            "$hash  $([IO.Path]::GetFileName($_))"
+          }
+          [IO.File]::WriteAllLines((Join-Path (Get-Location) 'dist/SHA256SUMS.txt'), $hashes)
+      - name: Attest Windows release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/attest@v4
+        with:
+          subject-path: 'dist/*-windows-*'
