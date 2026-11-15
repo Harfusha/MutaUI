@@ -108,6 +108,7 @@ jobs:
           name: mutaui-test-report-${{ matrix.os }}
           path: |
             test-results/pytest.xml
+            test-results/daemon-diagnostics/*.json
             coverage.xml
           if-no-files-found: warn
           retention-days: 7
@@ -173,7 +174,7 @@ jobs:
           codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" dist-platform/MutagenControl.app
           codesign --verify --deep --strict --verbose=2 dist-platform/MutagenControl.app
           ditto -c -k --keepParent dist-platform/MutagenControl.app "$archive"
-          xcrun notarytool submit "$archive" --key "$api_key" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun notarytool submit "$archive" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
           xcrun stapler staple dist-platform/MutagenControl.app
           xcrun stapler validate dist-platform/MutagenControl.app
       - name: Verify packaged demo on Windows

@@ -1003,11 +1003,20 @@ def test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit(tmp_
                 time.sleep(0.2)
             assert socket_accepts_connection(), overwrite_session
         else:
-            try:
-                preserved_contents = socket_path.read_text(encoding="utf-8")
-            except OSError:
-                preserved_contents = None
-            assert preserved_contents != "preserve until overwrite is selected"
+            # Python may omit AF_UNIX on Windows even when Mutagen supports
+            # socket forwarding. Endpoint setup is asynchronous, so wait for
+            # the existing regular file to be replaced instead of racing it.
+            deadline = time.monotonic() + 15
+            preserved_contents = "preserve until overwrite is selected"
+            while time.monotonic() < deadline:
+                try:
+                    preserved_contents = socket_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    preserved_contents = None
+                if preserved_contents != "preserve until overwrite is selected":
+                    break
+                time.sleep(0.2)
+            assert preserved_contents != "preserve until overwrite is selected", overwrite_session
         assert overwrite_session["status"] == "forwarding"
         assert overwrite_session["source"]["connected"] is True
         assert overwrite_session["source"]["socket"]["overwriteMode"] == "overwrite"

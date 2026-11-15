@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import tempfile
+from contextlib import ExitStack
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -80,11 +82,24 @@ def run_tests(
             ]
         )
 
-    if pytest_args:
-        cmd.extend(pytest_args)
+    # Mutagen's Unix-domain daemon socket has a strict path-length limit.
+    # macOS CI's default pytest temporary tree exceeds this on long test names.
+    # Scope each run to a unique short path; never touch the user's daemon.
+    with ExitStack() as cleanup:
+        custom_basetemp = any(
+            arg == "--basetemp" or arg.startswith("--basetemp=") for arg in (pytest_args or [])
+        )
+        if sys.platform in {"darwin", "linux"} and not custom_basetemp:
+            temp_base = cleanup.enter_context(
+                tempfile.TemporaryDirectory(prefix="mu-", dir="/tmp")
+            )
+            cmd.append(f"--basetemp={temp_base}")
 
-    print(f"[run_tests] Executing: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+        if pytest_args:
+            cmd.extend(pytest_args)
+
+        print(f"[run_tests] Executing: {' '.join(cmd)}")
+        result = subprocess.run(cmd)
 
     if result.returncode != 0:
         print(f"[run_tests] Pytest failed with exit code {result.returncode}", file=sys.stderr)
