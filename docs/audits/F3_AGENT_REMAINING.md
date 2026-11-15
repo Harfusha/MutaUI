@@ -31,6 +31,27 @@ MutaUI is a control GUI for the **native Mutagen CLI**. Preserve exact session I
 
 **Status rule:** "Implemented" means code exists in the review branch; it does not imply hosted CI, visual QA, or release verification.
 
+## Further remediation applied after the initial F3 handoff
+
+The following source changes are **committed but await hosted CI evidence**:
+
+| Area | Implementation | Remaining evidence |
+| --- | --- | --- |
+| Windows upgrade | `scripts/ci/select_upgrade_baseline.py` now chooses a genuine prior stable GitHub Release installer by semantic version. The release workflow checks download origin, declared SHA-256, Windows Authenticode and the publisher identity before running an in-place upgrade. It fails instead of silently using a clean-install test for later versions | Unit tests and a native signed prior-to-current upgrade with preserved user settings |
+| Windows upgrade API | Full authenticated, bounded-pagination GitHub Release query with explicit failure on API error, missing historical asset, downgrade, untrusted URL and malformed hash | Actual history and signed artifacts required |
+| Qt sorting | `SessionTableModel.sort()` remaps persistent QModelIndex objects by original row position, including non-first columns and duplicate IDs, while reusing presentation cache | Qt regression tests and resource profiling |
+| CI history | PR workflow cancels its own superseded runs instead of accumulating unbounded runner jobs; release workflow is independent | Final-sha five-job matrix, not earlier canceled runs |
+| Security baseline | Public SHA/commit false positives point to actual source lines; orphaned build-script digest entry dropped; an automated check detects future stale hash positions | `detect-secrets-hook` must succeed and synthetic credential must still be rejected |
+| Evidence | JUnit parser handles leaf suites, mixed nested suites and parent-direct cases exactly once; rejects impossible counters | Full suite/coverage evidence from tested commit |
+| Release policy | `scripts/ci/check_release_license.py` halts release if owner has not selected a license and retained third-party notice | **Owner decision is still outstanding**; passing this file check is not legal certification |
+| Daemon cleanup | Polls for acknowledged, completed shutdown before removing disposable test data; retains diagnostic state if stop is ambiguous | Real CLI repeat-cycle tests on four OS targets |
+
+### Important CI state at handoff
+
+As of the latest source inspection, GitHub Actions had not completed checks for the newest branch commit. GitHub may cancel older PR runs by design. **Do not merge, tag or publish until the exact final head SHA has all five jobs green.** A canceled, queued or stale run is never PASS.
+
+The remaining F3 task table below is an acceptance worklist. Several tasks now have code written; they still require real-OS/signing verification and therefore remain open.
+
 ## Blocker P0 — finish before merging
 
 1. Open current PR check suite and identify the **latest** head SHA, not a superseded queued run.
@@ -46,7 +67,7 @@ MutaUI is a control GUI for the **native Mutagen CLI**. Preserve exact session I
 
 | ID | Priority | Required implementation and tests |
 | --- | --- | --- |
-| F3-008 | P1 | Real Windows upgrade from a **released old installer**; current v8.2.0 may lack one. Log `UNVERIFIED`, never simulate a genuine historical upgrade using an installer built from the same source |
+| F3-008 | P1 | **Code added.** Validate a truly signed old-to-new Windows upgrade with the real selected release asset and verify user data, migrations, rollback and no untrusted signed publisher |
 | F3-009 | P1 | macOS signed app + DMG notarization and Gatekeeper launch, Intel and ARM; test on real runner with owner-supplied certificates |
 | F3-010 | P1 | Clean Linux AppImage/deb GUI install, run, uninstall, retained user files, file-manager integration; include supported Ubuntu and target Fedora |
 | F3-011 | P1 | Windows Authenticode installer, verified signature, fresh install and upgrade profile retention with owner-supplied certificate |
@@ -57,13 +78,13 @@ MutaUI is a control GUI for the **native Mutagen CLI**. Preserve exact session I
 | F3-016 | P1 | Split monitoring, health, alerts, doctor, tray and background status into focused controllers; verify no cross-thread QObject mutations |
 | F3-017 | P1 | Fault-inject action planner/replacement/backup/YAML/conflict paths: stale IDs, fsync/rename errors, disk full, cancelled prompts, daemon crash, SSH flap, rollback failure. Preserve fail-closed behavior |
 | F3-018 | P1 | Native SSH acceptance with isolated host-key fixtures, rotation rejection, IPv6, Unicode, symlinks, latency and native project hook consent |
-| F3-019 | P1 | Extend Qt table incremental mutation to inserts/removes/reorders where justified and add measured p95 render/scroll/selection performance at 1k and 5k rows |
+| F3-019 | P1 | **Partial implementation.** Stable-row updates and persistent-index-safe sorting are coded; still benchmark 1k/5k rows, inserts/removes and accessibility/scroll selection |
 | F3-020 | P2 | Beginner Basic wizard: initial setup, safe local sync, understandable defaults/errors, help text, no accidental destructive action |
 | F3-021 | P2 | Critical-path Czech/English translation audit, dynamic message interpolation, live language switching and correct keyboard mnemonics |
 | F3-022 | P2 | Real visual/a11y QA on each OS across DPI 100/125/150/200, themes, language modes, screen readers and keyboard-only navigation |
 | F3-023 | P2 | Clean reproducible CPU/RSS, startup p50/p95/p99, CLI spawn-count, tray idle and 8-hour soak measurements, explicitly separated from the Mutagen daemon |
 | F3-024 | P2 | Platform-specific documentation, clean-install screenshots, privacy inventory, redacted support bundle and honest capability matrix |
-| F3-025 | Owner | Decide and authorize the MutaUI project license and redistributable dependency compliance, especially Qt LGPL; do not invent a license |
+| F3-025 | Owner | **Release gate added.** Owner still must select/authorize LICENSE and verify redistribution terms, especially Qt LGPL; no license was invented |
 | F3-026 | P1 | Final single-SHA signed release acceptance with current security evidence, all platform test matrices, installer acceptance and maintained version/tag |
 
 ## Release prerequisites that an agent cannot legitimately invent
