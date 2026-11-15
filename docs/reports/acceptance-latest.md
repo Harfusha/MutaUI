@@ -3,7 +3,7 @@
 **Generated:** 2026-11-15 07:48:09 UTC  
 **Commit:** `592cf7d5fbd3f015ef5354b9e8300da020d58b22` (master)  
 **Working tree dirty:** true  
-**Status:** **PASSED**
+**Status:** **LOCAL TESTS ONLY — HOSTED CI FAIL (2026-11-15)**
 
 ## Environment Evidence
 
@@ -12,7 +12,7 @@
 | Platform / OS | `Windows-11-10.0.26300-SP0` (`AMD64`) |
 | Python Runtime | `3.12.10` |
 | Mutagen CLI | `0.18.1` |
-| Runner Host | `AdamPC` |
+| Runner Host | `redacted local Windows reference machine` |
 | CI Run ID | `local-run` |
 
 ## Test Suite Execution Summary
@@ -34,3 +34,7 @@
 - **P2 Polish (QA-015 - QA-020):** Validated on synthetic performance baselines and platform compatibility matrix.
 
 > Report generated automatically by `scripts/ci/generate_acceptance_report.py`.
+
+## Current-commit verification (not fulfilled)
+
+This committed report was produced from an earlier local **dirty** worktree at `592cf7d5`. It does not validate the current branch. Hosted GitHub Actions run [#43710608113](https://github.com/Harfusha/MutaUI/actions/runs/43710608113) failed security and all four platforms. It must not be used as release authorization.

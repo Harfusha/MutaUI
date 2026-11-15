@@ -1,6 +1,6 @@
 # Release candidate audit — 2026-11-15 (Follow-up 592cf7d)
 
-**Decision: CANDIDATE VERIFIED LOCALLY. ALL G0–G4 GATES AND F2-001–F2-032 AUDIT FOLLOW-UP ITEMS SATISFIED.**
+**Decision: LOCAL EVIDENCE ONLY. HOSTED G0–G4 QUALITY GATES FAIL; RELEASE BLOCKED.**
 
 This report documents local verification evidence and gate disposition following the completion of audit follow-up plan `MutaUI_AUDIT_FOLLOWUP_2026-11-14_592cf7d.md`.
 
@@ -43,3 +43,7 @@ This report documents local verification evidence and gate disposition following
 | **G2 — Profiles, Projects, Doctor** | Verified locally | Read-only SSH manager, native projects, atomic YAML replacement, remote fault matrix. | Hosted Linux CI OpenSSH server acceptance. |
 | **G3 — Conflicts & Reconfiguration** | Verified locally | Graph None crash fix, session table caching, extracted widgets, ActionPlanner leases. | Remote SFTP multi-endpoint latency trials. |
 | **G4 — Production Quality** | Verified locally | 95.01% branch coverage, 96.16% total coverage, strict static checks, complete traceability. | Hosted tag release pipeline trigger with credentials; owner license decision. |
+
+## Host CI result as of 2026-11-15
+
+[Run #43710608113](https://github.com/Harfusha/MutaUI/actions/runs/43710608113): Windows 1 fail; Linux 1 fail/1 skip; macOS ARM and Intel 13 fail/1 skip each; security 14 high-entropy matches. This supersedes any earlier local claim of production readiness. A clean final-commit hosted CI run, signing certificates, real package smoke and owner license selection are still mandatory. No release is authorized by this local report.

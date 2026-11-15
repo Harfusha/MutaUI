@@ -54,3 +54,54 @@ def test_generate_report_produces_valid_markdown(tmp_path: Path):
     assert out_file.is_file()
     assert "Acceptance and Verification Evidence Report" in text
     assert "PASSED" in text
+
+def test_dirty_tree_does_not_claim_release_pass(tmp_path: Path, monkeypatch):
+    """Even passing XML cannot certify a dirty checkout."""
+    from scripts.ci import generate_acceptance_report as report_module
+
+    monkeypatch.setattr(
+        report_module,
+        "get_git_info",
+        lambda: {
+            "commit": "abc",
+            "short_commit": "abc",
+            "branch": "audit",
+            "dirty": "true",
+        },
+    )
+    junit = tmp_path / "pytest.xml"
+    junit.write_text(
+        '<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="x"/></testsuite>',
+        encoding="utf-8",
+    )
+    coverage = tmp_path / "coverage.xml"
+    coverage.write_text('<coverage branches-covered="96" branches-valid="100" line-rate="0.97"/>')
+    result = generate_report(junit, coverage, tmp_path / "report.md")
+    assert "**Status:** **FAILED / GATES UNMET**" in result
+    assert "Runner Host | `redacted`" in result
+
+
+def test_ci_sha_mismatch_does_not_claim_pass(tmp_path: Path, monkeypatch):
+    from scripts.ci import generate_acceptance_report as report_module
+
+    monkeypatch.setattr(
+        report_module,
+        "get_git_info",
+        lambda: {
+            "commit": "old",
+            "short_commit": "old",
+            "branch": "master",
+            "dirty": "false",
+        },
+    )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", "new")
+    junit = tmp_path / "pytest.xml"
+    junit.write_text(
+        '<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="x"/></testsuite>',
+        encoding="utf-8",
+    )
+    coverage = tmp_path / "coverage.xml"
+    coverage.write_text('<coverage branches-covered="96" branches-valid="100" line-rate="0.97"/>')
+    result = generate_report(junit, coverage, tmp_path / "report.md")
+    assert "**Status:** **FAILED / GATES UNMET**" in result
