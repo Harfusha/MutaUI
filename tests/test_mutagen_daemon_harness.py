@@ -82,6 +82,7 @@ def test_isolated_daemon_timeout_records_diagnostics(
     recent_diags = list(diag_dir.glob("daemon_fail_*.json"))
     assert len(recent_diags) > 0
 
+
 def test_scoped_harness_never_changes_process_global_environment(tmp_path: Path):
     """Constructor and cleanup must not retarget the user's daemon or HOME."""
     binary = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")

@@ -122,6 +122,7 @@ def test_session_model_invalid_indexes_unknown_colors_and_sort_guards(qapp):
     forward.sort(4)
     assert [session["identifier"] for session in forward.sessions] == ["invalid", "valid"]
 
+
 def test_unchanged_snapshot_does_not_reset_model_and_preserves_index(qapp):
     from PySide6.QtTest import QSignalSpy
 
@@ -148,7 +149,6 @@ def test_unchanged_snapshot_does_not_reset_model_and_preserves_index(qapp):
     assert index.data() == "Beta (changed)"
 
 
-
 def test_changed_row_order_uses_safe_structural_reset(qapp):
     from PySide6.QtTest import QSignalSpy
 
@@ -168,7 +168,6 @@ def test_changed_row_order_uses_safe_structural_reset(qapp):
     )
     assert reset.count() == 1
     assert model.row_for_identifier("a") == 1
-
 
 
 def test_sorted_stable_snapshot_keeps_selection_and_no_reset(qapp):
