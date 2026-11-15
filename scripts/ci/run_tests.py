@@ -65,6 +65,7 @@ def run_tests(
         "pytest",
         "-q",
         "--tb=short",
+        "-rs",
         f"--junitxml={junit_xml}",
     ]
 
