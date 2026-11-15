@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -327,8 +328,18 @@ def read_registration(binary: str) -> tuple[str, str]:
 
 
 class MutagenClient:
-    def __init__(self, binary: str = "", *, action_planner: ActionPlanner | None = None):
+    def __init__(
+        self,
+        binary: str = "",
+        *,
+        action_planner: ActionPlanner | None = None,
+        process_environment: Mapping[str, str] | None = None,
+    ):
         self.binary = clean_executable(binary)
+        # A disposable daemon must never require process-wide environment changes.
+        self._process_environment = (
+            dict(process_environment) if process_environment is not None else None
+        )
         self.action_planner = action_planner or ActionPlanner(now=time.monotonic)
         self.last_created_session: tuple[str, str, tuple[str, ...]] | None = None
 
@@ -672,7 +683,11 @@ class MutagenClient:
         # PATH lookup may have been reconfigured; never use a shell command string.
         if not os.path.isfile(self.binary) and not shutil.which(self.binary):
             raise MutagenError(f"Mutagen executable not found: {self.binary}")
-        env = os.environ.copy()
+        env = (
+            dict(self._process_environment)
+            if self._process_environment is not None
+            else os.environ.copy()
+        )
         if readonly:
             env["MUTAGEN_DISABLE_AUTOSTART"] = "1"
         if env_overrides:

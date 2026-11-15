@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import tempfile
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -46,16 +48,29 @@ class IsolatedMutagenDaemon:
     ) -> None:
         self.binary = str(binary)
         self.base_dir = Path(base_dir)
-        self.data_dir = self.base_dir / "daemon-data"
-        self.home_dir = self.base_dir / "isolated-home"
+        # The native Unix socket has a tight path limit on macOS/Linux.
+        short_root = "/tmp" if os.name != "nt" else tempfile.gettempdir()
+        self._owned_root = Path(tempfile.mkdtemp(prefix="mu-", dir=short_root))
+        self.data_dir = self._owned_root / "data"
+        self.home_dir = self._owned_root / "home"
         self.readiness_timeout = readiness_timeout
         self.stop_timeout = stop_timeout
         self.env_overrides = env_overrides or {}
-
+        if any(k in self.env_overrides for k in ("MUTAGEN_DATA_DIRECTORY", "HOME", "USERPROFILE")):
+            raise ValueError("Disposable daemon data and home cannot be overridden")
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "MUTAGEN_DATA_DIRECTORY": str(self.data_dir),
+                "MUTAGEN_DISABLE_AUTOSTART": "0",
+                "HOME": str(self.home_dir),
+                "USERPROFILE": str(self.home_dir),
+            }
+        )
+        environment.update(self.env_overrides)
         self.phase = "unstarted"
         self.diagnostics = DaemonDiagnostics()
-        self.client = MutagenClient(self.binary)
-        self._prev_env: dict[str, str | None] = {}
+        self.client = MutagenClient(self.binary, process_environment=environment)
         self._started = False
 
     def __enter__(self) -> IsolatedMutagenDaemon:
@@ -75,18 +90,6 @@ class IsolatedMutagenDaemon:
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.home_dir.mkdir(parents=True, exist_ok=True)
-
-        env_keys = ["MUTAGEN_DATA_DIRECTORY", "MUTAGEN_DISABLE_AUTOSTART", "HOME", "USERPROFILE"]
-        for key in env_keys:
-            self._prev_env[key] = os.environ.get(key)
-
-        os.environ["MUTAGEN_DATA_DIRECTORY"] = str(self.data_dir)
-        os.environ["MUTAGEN_DISABLE_AUTOSTART"] = "0"
-        os.environ["HOME"] = str(self.home_dir)
-        os.environ["USERPROFILE"] = str(self.home_dir)
-        for k, v in self.env_overrides.items():
-            self._prev_env[k] = os.environ.get(k)
-            os.environ[k] = v
 
         try:
             # Launch daemon start
@@ -143,17 +146,17 @@ class IsolatedMutagenDaemon:
         if self._started:
             with suppress(Exception):
                 self.client.command(["daemon", "stop"], timeout=self.stop_timeout)
+        self._started = False
 
-        # Restore environment
-        for key, val in self._prev_env.items():
-            if val is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = val
+        # Remove only our own randomly named disposable directory, and only
+        # after the child daemon has been verified to have stopped.
+        daemon_stopped = not self.client._daemon_state()
+        if daemon_stopped and self._owned_root.is_dir():
+            shutil.rmtree(self._owned_root)
 
         if not was_failed:
-            self.phase = "stopped"
-            self.diagnostics.phase = "stopped"
+            self.phase = "stopped" if daemon_stopped else "stop_failed"
+            self.diagnostics.phase = self.phase
 
     def _capture_failure_diagnostics(self, error_msg: str) -> None:
         """Capture redacted diagnostics into artifact when an error occurs."""

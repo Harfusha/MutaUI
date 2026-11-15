@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from mutagen_client import MutagenClient
 from tests.support.mutagen_daemon import IsolatedMutagenDaemon
 
 
@@ -23,18 +22,20 @@ def test_isolated_daemon_lifecycle_phases(tmp_path: Path) -> None:
     binary = _mutagen_binary()
     assert binary is not None
 
+    original_data_dir = os.environ.get("MUTAGEN_DATA_DIRECTORY")
     daemon = IsolatedMutagenDaemon(binary, tmp_path / "lifecycle-test")
+    assert os.environ.get("MUTAGEN_DATA_DIRECTORY") == original_data_dir
     assert daemon.phase == "unstarted"
 
     with daemon:
         assert daemon.phase == "ready"
         assert daemon.diagnostics.ready_time >= daemon.diagnostics.start_time
         # Check active communication
-        client = MutagenClient(binary)
-        sessions = client.list_sessions("sync")
+        sessions = daemon.client.list_sessions("sync")
         assert isinstance(sessions, list)
 
     assert daemon.phase == "stopped"
+    assert os.environ.get("MUTAGEN_DATA_DIRECTORY") == original_data_dir
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
