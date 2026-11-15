@@ -183,9 +183,11 @@ def test_sorted_stable_snapshot_keeps_selection_and_no_reset(qapp):
     )
     model.sort(0)
     reset = QSignalSpy(model.modelReset)
-    model.set_sessions([
-        {"identifier": "b", "name": "Beta"},
-        {"identifier": "a", "name": "Alpha"},
-    ])
+    model.set_sessions(
+        [
+            {"identifier": "b", "name": "Beta"},
+            {"identifier": "a", "name": "Alpha"},
+        ]
+    )
     assert reset.count() == 0
     assert model.row_for_identifier("a") == 0
