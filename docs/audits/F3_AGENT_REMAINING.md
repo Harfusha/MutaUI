@@ -52,6 +52,29 @@ As of the latest source inspection, GitHub Actions had not completed checks for 
 
 The remaining F3 task table below is an acceptance worklist. Several tasks now have code written; they still require real-OS/signing verification and therefore remain open.
 
+## Implementation continuation — CI evidence and performance (2026-11-15)
+
+Since the preceding handoff, **six additional implementation commits** were added to this draft PR. They have not been certified by a full hosted matrix.
+
+| Commit | What changed | Tests and outstanding evidence |
+| --- | --- | --- |
+| `7108eb4c` | Fixed Ruff SIM117 and made pinned actionlint archive downloads atomic, with bounded size and cleanup | Static checks; negative oversized/partial-download tests |
+| `8302401f` | Added `measure_refresh_cases` to session benchmark: no-op snapshot, single-row change, structural insert/remove at 1k/5k rows | Offscreen latency p50/p95/max and Qt model reset/dataChanged signal counts; hardware budgets remain unverified |
+| `0fa2a9d1` | Added `scripts/ci/evidence_manifest.py`; test runner removes stale outputs and writes SHA-256 artifacts bound to `git HEAD`, `GITHUB_SHA`, and `GITHUB_RUN_ID` | CI SHA/run tampering tests and real full-suite evidence |
+| `b58779f7` | Acceptance report supports direct script invocation and returns nonzero for failed gates | CLI negative tests and CI artifact |
+| `6e9a945b` | Release workflow now uploads per-OS JUnit, coverage and their bound evidence manifest | Signed release execution and owner certificates |
+| `673d2406` | Reworked strict JUnit validation to count real testcase elements and verify all nested/aggregate counters | Nested suite, metadata-only forgery and parent/child consistency regression tests |
+
+**Important:** The prior hosted run `43733189106` exposed a Ruff SIM117 error in `scripts/ci/install_actionlint.py`. The fix was committed, but later runs were queued/cancelled under the PR concurrency policy. Do not infer that Ruff or pytest now passes: use the newest SHA-specific run for actual PASS/FAIL.
+
+### Mandatory acceptance evidence
+
+- Five-job GitHub Actions matrix (security + Windows, Ubuntu, macOS Intel, macOS ARM) at **one exact latest commit**.
+- All static analysis, docs, security scanner, synthetic negative secret probe and test suite pass; **zero skips/failures**; branch coverage at least 95% within explicitly declared inventory.
+- Artifact `test-results/evidence.json` SHA-256 values equal the attached JUnit and coverage files; manifest `commit` and `ci_run_id` equal the current run.
+- Measured `benchmark-results/session-table.json` includes `refresh_cases` entries for 1000 and 5000 rows, and no-op refresh produces zero Qt model resets.
+- Actual previous-version Windows installer / macOS notarized packages / Linux installed GUI / Qt a11y remain separately **UNVERIFIED** pending native builds and owner credentials.
+
 ## Blocker P0 — finish before merging
 
 1. Open current PR check suite and identify the **latest** head SHA, not a superseded queued run.
