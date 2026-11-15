@@ -17,6 +17,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6 import __version__ as pyside_version  # noqa: E402
 from PySide6.QtCore import QEvent, QSortFilterProxyModel, Qt  # noqa: E402
+from PySide6.QtTest import QSignalSpy  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTableView  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -64,6 +65,74 @@ def measure(count: int, repetitions: int = REPETITIONS) -> dict[str, float | int
         "p50_ms": percentile(durations, 0.50),
         "p95_ms": percentile(durations, 0.95),
         "max_ms": round(max(durations), 3),
+    }
+
+
+def measure_refresh_cases(count: int, repetitions: int = REPETITIONS) -> dict[str, object]:
+    """Separate no-op, one-row change and structural-change refresh costs.
+
+    Return latency distributions and model signals; do not treat synthetic
+    offscreen timings as installed-GUI or live-Mutagen performance evidence.
+    """
+    if count < 1 or repetitions < 2:
+        raise ValueError("Refresh canary requires at least one row and two repetitions")
+
+    original = session_fixtures(count)
+    model = SessionTableModel(["NAME", "STATUS", "ALPHA", "BETA", "CONFLICTS"], "sync")
+    model.set_sessions(original)
+    resets = QSignalSpy(model.modelReset)
+    changed = QSignalSpy(model.dataChanged)
+    times: dict[str, list[float]] = {
+        "unchanged": [],
+        "one_row_changed": [],
+        "structural_change": [],
+    }
+    target = count // 2
+
+    for i in range(repetitions):
+        # Real applications receive a fresh native JSON snapshot every poll.
+        start = time.perf_counter()
+        model.set_sessions([dict(item) for item in original])
+        times["unchanged"].append((time.perf_counter() - start) * 1000)
+
+    for i in range(repetitions):
+        updated = [dict(item) for item in original]
+        updated[target]["name"] = f"Edited {i:04d}"
+        start = time.perf_counter()
+        model.set_sessions(updated)
+        times["one_row_changed"].append((time.perf_counter() - start) * 1000)
+
+    extra = {
+        "identifier": "temporary-structural-row",
+        "name": "Temporary",
+        "status": 6,
+    }
+    for _ in range(repetitions):
+        start = time.perf_counter()
+        model.set_sessions([*original, extra])
+        model.set_sessions(original)
+        times["structural_change"].append((time.perf_counter() - start) * 1000)
+
+    # No-op snapshots and single-row changes must never reset the Qt model.
+    # Structural snapshots trigger two safe resets per iteration.
+    if resets.count() != repetitions * 2 or changed.count() != repetitions:
+        raise AssertionError(
+            "Unexpected session table signals during refresh benchmark: "
+            f"reset={resets.count()}, changed={changed.count()}"
+        )
+    return {
+        "rows": count,
+        "repetitions": repetitions,
+        "model_resets": resets.count(),
+        "changed_row_signals": changed.count(),
+        "latency_ms": {
+            name: {
+                "p50": percentile(values, 0.50),
+                "p95": percentile(values, 0.95),
+                "max": round(max(values), 3),
+            }
+            for name, values in times.items()
+        },
     }
 
 
@@ -188,6 +257,10 @@ def run_benchmark(repetitions: int = REPETITIONS) -> dict[str, object]:
         }
         for count in SESSION_SIZES
     }
+    refresh_cases = {
+        str(count): measure_refresh_cases(count, repetitions)
+        for count in (1000, 5000)
+    }
     main_window = measure_main_window(1000, repetitions=repetitions)
     memory_after = process.memory_info()
     unique_after = process.memory_full_info().uss
@@ -213,6 +286,7 @@ def run_benchmark(repetitions: int = REPETITIONS) -> dict[str, object]:
             "process_uss_after_bytes": unique_after,
         },
         "results": results,
+        "refresh_cases": refresh_cases,
         "main_window_1000_rows": main_window,
     }
 

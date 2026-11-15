@@ -3,6 +3,7 @@ from benchmarks.session_table_benchmark import (
     measure,
     measure_main_window,
     measure_qt_view,
+    measure_refresh_cases,
     percentile,
     session_fixtures,
 )
@@ -48,3 +49,14 @@ def test_main_window_benchmark_uses_demo_data_and_isolated_settings():
     assert result["viewport_rendered"] is True
     assert 0 <= result["p50_ms"] <= result["p95_ms"] <= result["max_ms"]
     assert 0 <= result["filter_render_p50_ms"] <= result["filter_render_p95_ms"]
+
+
+def test_session_table_refresh_canary_distinguishes_noop_and_changes():
+    result = measure_refresh_cases(10, repetitions=3)
+    assert result["rows"] == 10
+    assert result["repetitions"] == 3
+    assert result["model_resets"] == 6
+    assert result["changed_row_signals"] == 3
+    for case in ("unchanged", "one_row_changed", "structural_change"):
+        timings = result["latency_ms"][case]
+        assert 0 <= timings["p50"] <= timings["p95"] <= timings["max"]
