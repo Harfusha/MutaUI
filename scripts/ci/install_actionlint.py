@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import sys
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
+
+MAX_ACTIONLINT_ARCHIVE_BYTES = 20 * 1024 * 1024
+MAX_ACTIONLINT_BINARY_BYTES = 32 * 1024 * 1024
 
 ACTIONLINT_VERSION = "1.7.12"
 ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
@@ -32,6 +37,45 @@ def verify_sha256(file_path: Path, expected_hash: str) -> bool:
     return True
 
 
+def download_actionlint_archive(destination: Path) -> None:
+    """Bound download size and time before inspecting even a verified artifact."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(ACTIONLINT_URL, timeout=30) as response:
+        with destination.open("wb") as output:
+            total = 0
+            while chunk := response.read(65536):
+                total += len(chunk)
+                if total > MAX_ACTIONLINT_ARCHIVE_BYTES:
+                    raise ValueError("actionlint archive exceeds size limit")
+                output.write(chunk)
+
+
+def extract_verified_actionlint(archive_path: Path, target_dir: Path) -> Path:
+    """Extract only the expected regular ELF file; never follow tar links."""
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        member = archive.getmember("actionlint")
+        if not member.isfile() or member.size <= 0 or member.size > MAX_ACTIONLINT_BINARY_BYTES:
+            raise ValueError("actionlint archive must contain a bounded regular binary")
+        binary = archive.extractfile(member)
+        if binary is None:
+            raise ValueError("Missing actionlint binary payload")
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                prefix=".actionlint-", dir=target_dir, delete=False
+            ) as output:
+                temporary = Path(output.name)
+                shutil.copyfileobj(binary, output, length=65536)
+            temporary.chmod(0o755)
+            destination = target_dir / "actionlint"
+            os.replace(temporary, destination)
+            return destination
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+
 def install_actionlint(target_dir: Path | str | None = None) -> Path:
     if target_dir is None:
         runner_temp = os.environ.get("RUNNER_TEMP") or os.environ.get("TEMP") or "/tmp"
@@ -42,19 +86,10 @@ def install_actionlint(target_dir: Path | str | None = None) -> Path:
     target_dir.mkdir(parents=True, exist_ok=True)
     archive_path = target_dir.parent / "actionlint.tar.gz"
 
-    print(f"Downloading actionlint v{ACTIONLINT_VERSION} from {ACTIONLINT_URL}...")
-    urllib.request.urlretrieve(ACTIONLINT_URL, archive_path)
-
-    print("Verifying SHA-256 digest...")
+    print(f"Downloading pinned actionlint v{ACTIONLINT_VERSION}...")
+    download_actionlint_archive(archive_path)
     verify_sha256(archive_path, ACTIONLINT_SHA256)
-
-    print(f"Extracting actionlint to {target_dir}...")
-    with tarfile.open(archive_path, "r:gz") as tar:
-        tar.extract("actionlint", path=target_dir)
-
-    binary_path = target_dir / "actionlint"
-    if binary_path.exists():
-        binary_path.chmod(0o755)
+    binary_path = extract_verified_actionlint(archive_path, target_dir)
     print(f"actionlint successfully verified and installed at {binary_path}")
     return binary_path
 

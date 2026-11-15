@@ -11,6 +11,7 @@ import pytest
 from scripts.ci.install_actionlint import (
     ACTIONLINT_SHA256,
     ACTIONLINT_VERSION,
+    extract_verified_actionlint,
     verify_sha256,
 )
 from scripts.ci.run_tests import run_tests, validate_branch_coverage
@@ -260,3 +261,38 @@ def test_run_tests_cli_invocation_negative_probe(tmp_path: Path) -> None:
     )
     # Pytest returns exit code 5 when no tests match the filter, which runner must preserve as non-zero failure
     assert res.returncode != 0
+
+
+def test_actionlint_tar_rejects_symlink_member(tmp_path: Path) -> None:
+    import tarfile
+
+    archive = tmp_path / "unsafe.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        member = tarfile.TarInfo("actionlint")
+        member.type = tarfile.SYMTYPE
+        member.linkname = "../../outside"
+        tar.addfile(member)
+
+    with pytest.raises(ValueError, match="regular binary"):
+        extract_verified_actionlint(archive, tmp_path / "extract")
+    assert not (tmp_path / "outside").exists()
+
+
+def test_actionlint_tar_extracts_only_pinned_regular_member(tmp_path: Path) -> None:
+    import io
+    import tarfile
+
+    archive = tmp_path / "safe.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        member = tarfile.TarInfo("actionlint")
+        payload = b"synthetic test ELF content"
+        member.size = len(payload)
+        tar.addfile(member, io.BytesIO(payload))
+
+        irrelevant = tarfile.TarInfo("../unrelated")
+        irrelevant.size = 6
+        tar.addfile(irrelevant, io.BytesIO(b"ignore"))
+
+    destination = extract_verified_actionlint(archive, tmp_path / "extract")
+    assert destination.read_bytes() == b"synthetic test ELF content"
+    assert not (tmp_path / "unrelated").exists()
