@@ -19,12 +19,16 @@ def main() -> int:
     # The file lives in a temporary folder inside the checkout for scanning.
     with tempfile.TemporaryDirectory(prefix=".secret-negative-probe-", dir=Path.cwd()) as folder:
         candidate = Path(folder) / "credentials.py"
+        # Detect-secrets may rewrite the selected baseline. Use an isolated copy:
+        # the negative probe must never mutate the tracked security baseline.
+        isolated_baseline = Path(folder) / "baseline.json"
+        shutil.copyfile(".secrets.baseline", isolated_baseline)
         candidate.write_text(
             "API_TOKEN = " + repr(os.urandom(32).hex()) + "\n",
             encoding="utf-8",
         )
         result = subprocess.run(
-            [scanner, "--baseline", ".secrets.baseline", str(candidate)],
+            [scanner, "--baseline", str(isolated_baseline), str(candidate)],
             capture_output=True,
             text=True,
             timeout=30,
