@@ -227,37 +227,53 @@ class SessionTableModel(QAbstractTableModel):
     def sort(self, column: int, order: Qt.SortOrder = Qt.SortOrder.AscendingOrder) -> None:
         if not 0 <= column < len(self.headers):
             return
+        # Persistent QModelIndex objects exist for *any* column; UserRole
+        # exposes the session identifier on column 0 only. Mapping other
+        # columns by UserRole would silently invalidate their persistent index.
         persistent = self.persistentIndexList()
-        identity = [(index.data(Qt.ItemDataRole.UserRole), index.column()) for index in persistent]
+        positions = [(index.row(), index.column()) for index in persistent]
         self.layoutAboutToBeChanged.emit()
         self.sort_column = column
         self.sort_order = order
-        self._sort_rows()
+        old_rows = self._sort_rows()
+        new_position_by_old = {old: new for new, old in enumerate(old_rows)}
         updated = [
-            self.index(self.row_for_identifier(identifier), col)
-            if self.row_for_identifier(identifier) >= 0
+            self.index(new_position_by_old[old], col)
+            if old in new_position_by_old
             else QModelIndex()
-            for identifier, col in identity
+            for old, col in positions
         ]
         self.changePersistentIndexList(persistent, updated)
         self.layoutChanged.emit()
 
-    def _sort_rows(self) -> None:
+    def _sort_rows(self) -> list[int]:
+        """Sort cached presentations and return the old position of each row.
+
+        The explicit old-row mapping handles repeated/empty native IDs without
+        losing persistent selection and avoids recomputing expensive cell data.
+        """
         reverse = self.sort_order == Qt.SortOrder.DescendingOrder
 
-        def sort_key(item: tuple[int, dict[str, Any]]) -> Any:
-            idx, session = item
-            pres = (
-                self._presentation_cache[idx]
-                if 0 <= idx < len(self._presentation_cache)
-                else self._build_presentation(session)
-            )
-            cells = pres.cells
-            if not self.dashboard and self.sort_column == len(cells) - 1:
-                return int(pres.extra)
-            return cells[self.sort_column].casefold()
+        def sort_key(item: tuple[int, dict[str, Any], SessionRowPresentation]) -> Any:
+            _old, _session, pres = item
+            if not self.dashboard and self.sort_column == len(pres.cells) - 1:
+                return pres.extra
+            return pres.cells[self.sort_column].casefold()
 
-        indexed = list(enumerate(self.sessions))
-        indexed.sort(key=sort_key, reverse=reverse)
-        self.sessions = [session for _, session in indexed]
-        self._rebuild_indices_and_cache()
+        rows = [
+            (
+                old,
+                session,
+                self._presentation_cache[old]
+                if old < len(self._presentation_cache)
+                else self._build_presentation(session),
+            )
+            for old, session in enumerate(self.sessions)
+        ]
+        rows.sort(key=sort_key, reverse=reverse)
+        self.sessions = [session for _old, session, _pres in rows]
+        self._presentation_cache = [pres for _old, _session, pres in rows]
+        self._id_to_row = {
+            pres.identifier: new for new, pres in enumerate(self._presentation_cache)
+        }
+        return [old for old, _session, _pres in rows]

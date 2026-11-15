@@ -5,7 +5,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtWidgets import QApplication, QTableWidget
 
 from app import MainWindow, SessionTableModel
@@ -190,3 +190,37 @@ def test_sorted_stable_snapshot_keeps_selection_and_no_reset(qapp):
     )
     assert reset.count() == 0
     assert model.row_for_identifier("a") == 0
+
+
+def test_sort_preserves_persistent_indexes_in_nonfirst_columns(qapp) -> None:
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions(
+        [
+            {"identifier": "b", "name": "Beta", "status": 6},
+            {"identifier": "a", "name": "Alpha", "status": 6},
+        ]
+    )
+    persistent_status = QPersistentModelIndex(model.index(0, 1))
+    persistent_name = QPersistentModelIndex(model.index(0, 0))
+    model.sort(0)
+    assert persistent_status.isValid()
+    assert persistent_status.row() == 1
+    assert persistent_status.column() == 1
+    assert persistent_name.row() == 1
+    assert persistent_name.data() == "Beta"
+
+
+def test_sort_preserves_persistent_index_for_duplicate_ids(qapp) -> None:
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions(
+        [
+            {"identifier": "dup", "name": "Zed", "status": 6},
+            {"identifier": "dup", "name": "Alpha", "status": 6},
+        ]
+    )
+    persistent = QPersistentModelIndex(model.index(0, 1))
+    model.sort(0)
+    assert persistent.isValid()
+    assert persistent.row() == 1
+    assert persistent.column() == 1
+    assert model.index(1, 0).data() == "Zed"
