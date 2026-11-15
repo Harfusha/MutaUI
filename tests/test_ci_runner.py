@@ -296,3 +296,44 @@ def test_actionlint_tar_extracts_only_pinned_regular_member(tmp_path: Path) -> N
     destination = extract_verified_actionlint(archive, tmp_path / "extract")
     assert destination.read_bytes() == b"synthetic test ELF content"
     assert not (tmp_path / "unrelated").exists()
+
+
+def test_actionlint_download_rejects_oversize_without_replacing_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    from scripts.ci import install_actionlint as installer
+
+    archive = tmp_path / "actionlint.tar.gz"
+    archive.write_bytes(b"already-verified-payload")
+    monkeypatch.setattr(installer, "MAX_ACTIONLINT_ARCHIVE_BYTES", 8)
+    monkeypatch.setattr(
+        installer.urllib.request,
+        "urlopen",
+        lambda _url, timeout: io.BytesIO(b"too many bytes for this archive"),
+    )
+
+    with pytest.raises(ValueError, match="exceeds size limit"):
+        installer.download_actionlint_archive(archive)
+
+    assert archive.read_bytes() == b"already-verified-payload"
+    assert not list(tmp_path.glob(".actionlint-download-*"))
+
+
+def test_actionlint_download_stages_atomically(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import io
+
+    from scripts.ci import install_actionlint as installer
+
+    archive = tmp_path / "actionlint.tar.gz"
+    monkeypatch.setattr(
+        installer.urllib.request,
+        "urlopen",
+        lambda _url, timeout: io.BytesIO(b"test-archive"),
+    )
+    installer.download_actionlint_archive(archive)
+    assert archive.read_bytes() == b"test-archive"
+    assert not list(tmp_path.glob(".actionlint-download-*"))

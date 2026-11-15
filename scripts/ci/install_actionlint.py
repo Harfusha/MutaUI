@@ -40,14 +40,27 @@ def verify_sha256(file_path: Path, expected_hash: str) -> bool:
 def download_actionlint_archive(destination: Path) -> None:
     """Bound download size and time before inspecting even a verified artifact."""
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with urllib.request.urlopen(ACTIONLINT_URL, timeout=30) as response:
-        with destination.open("wb") as output:
+    # Download into a disposable staging file, never into an executable archive
+    # that a later installer invocation could mistake for a verified artifact.
+    staged: Path | None = None
+    try:
+        with (
+            urllib.request.urlopen(ACTIONLINT_URL, timeout=30) as response,
+            tempfile.NamedTemporaryFile(
+                dir=destination.parent, prefix=".actionlint-download-", delete=False
+            ) as output,
+        ):
+            staged = Path(output.name)
             total = 0
             while chunk := response.read(65536):
                 total += len(chunk)
                 if total > MAX_ACTIONLINT_ARCHIVE_BYTES:
                     raise ValueError("actionlint archive exceeds size limit")
                 output.write(chunk)
+        os.replace(staged, destination)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
 
 
 def extract_verified_actionlint(archive_path: Path, target_dir: Path) -> Path:
