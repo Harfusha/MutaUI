@@ -6,7 +6,7 @@ This report records all local verification evidence, rebuilt distribution artifa
 
 ## Candidate identity
 
-- Repository: `C:\Ostatní\MutagenApp`, branch `master`.
+- Repository: `Harfusha/MutaUI` (GitHub checkout), branch `master`.
 - Base commit: `d1d7326d5c6a297607f2be759b2b10638bb7a1c7` (v8.2).
 - Local environment: Windows 11 x64, Python 3.12.10, pytest 9.2.0, Coverage.py 7.17.3, PySide6 6.8.3, Paramiko 5.1.0, Ruff 0.17.5, and checksum-verified Mutagen CLI 0.18.1 in isolated data directories.
 

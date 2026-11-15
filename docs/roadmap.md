@@ -1,6 +1,6 @@
 # MutaUI implementation roadmap
 
-Source contract: `C:/Users/Adam/Downloads/MutaUI_MASTER_INTEGRATION_PLAN.md` and `C:/Users/Adam/Downloads/MutaUI_INTEGRACNI_PLAN_CZ.md` (2026-11-12). These files are specifications, not statements of delivered behavior. The master plan's PR-001…041 order governs; the Czech plan adds the implementation, safety, and acceptance detail. Keep these source documents available while closing the roadmap.
+Source contract: `MutaUI_MASTER_INTEGRATION_PLAN.md` (external specification) and `MutaUI_INTEGRACNI_PLAN_CZ.md` (external specification) (2026-11-12). These files are specifications, not statements of delivered behavior. The master plan's PR-001…041 order governs; the Czech plan adds the implementation, safety, and acceptance detail. Keep these source documents available while closing the roadmap.
 
 AC-001…AC-040 evidence and remaining proof are tracked in [`acceptance-traceability.md`](acceptance-traceability.md). `Partial` does not mean production acceptance; external platform, hardware, SSH, and release evidence stays open until observed.
 

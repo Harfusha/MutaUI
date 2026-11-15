@@ -6,7 +6,7 @@ This report documents local verification evidence and gate disposition following
 
 ## Candidate identity
 
-- **Repository:** `C:\Ostatní\MutagenApp`, branch `master`.
+- **Repository:** `Harfusha/MutaUI` (GitHub checkout), branch `master`.
 - **Audited Commit:** `592cf7d5fbd3f015ef5354b9e8300da020d58b22` with follow-up changes.
 - **Environment:** Windows 11 x64, Python 3.12.10, pytest 9.2.0, Coverage.py 7.1.0, PySide6 6.8.3, Mutagen CLI 0.18.1.
 
