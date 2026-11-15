@@ -13,8 +13,8 @@ import argparse
 import subprocess
 import sys
 import tempfile
-from contextlib import ExitStack
 import xml.etree.ElementTree as ET
+from contextlib import ExitStack
 from pathlib import Path
 
 # Allow importing sibling modules in scripts/ci
