@@ -95,7 +95,9 @@ def test_installed_mutagen_binary_architecture_is_detectable():
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_real_mutagen_safe_report_export_uses_isolated_cli_snapshot(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_real_mutagen_safe_report_export_uses_isolated_cli_snapshot(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     from PySide6.QtCore import QEventLoop, QTimer
     from PySide6.QtWidgets import QApplication
 
@@ -182,7 +184,9 @@ def test_real_mutagen_safe_report_export_uses_isolated_cli_snapshot(tmp_path, mo
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     import psutil
     from PySide6.QtCore import QEventLoop, QTimer
     from PySide6.QtWidgets import QApplication
@@ -311,7 +315,9 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(tmp_path, monk
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_gui_exit_tray_exit_and_restart_leave_isolated_daemon_running(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_gui_exit_tray_exit_and_restart_leave_isolated_daemon_running(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     monkeypatch.setenv("MUTAGEN_DATA_DIRECTORY", str(short_daemon_data_dir))
     monkeypatch.setenv("MUTAGEN_DISABLE_AUTOSTART", "0")
@@ -379,7 +385,9 @@ close_for_cleanup(restarted)
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_gui_reads_existing_isolated_session_without_mutating_it(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_gui_reads_existing_isolated_session_without_mutating_it(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     monkeypatch.setenv("MUTAGEN_DATA_DIRECTORY", str(short_daemon_data_dir))
     monkeypatch.setenv("MUTAGEN_DISABLE_AUTOSTART", "0")
@@ -661,7 +669,9 @@ def test_local_sync_against_isolated_mutagen_daemon(tmp_path, monkeypatch, short
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_mutagen_ignore_order_and_negation_match_live_sync(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_mutagen_ignore_order_and_negation_match_live_sync(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     daemon_data = short_daemon_data_dir
     alpha, beta = tmp_path / "alpha", tmp_path / "beta"
@@ -725,7 +735,9 @@ def test_mutagen_ignore_order_and_negation_match_live_sync(tmp_path, monkeypatch
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_mutagen_global_defaults_are_inherited_and_cli_values_win(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_mutagen_global_defaults_are_inherited_and_cli_values_win(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     daemon_data = short_daemon_data_dir
     user_home = tmp_path / "isolated-home"
@@ -800,7 +812,9 @@ def test_mutagen_global_defaults_are_inherited_and_cli_values_win(tmp_path, monk
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_mutagen_forward_inherits_global_socket_defaults(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_mutagen_forward_inherits_global_socket_defaults(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     daemon_data = short_daemon_data_dir
     user_home = tmp_path / "isolated-home"
@@ -946,7 +960,9 @@ def test_mutagen_forward_reports_source_port_conflict(tmp_path, monkeypatch, sho
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     import sys
 
     if os.name == "nt" and sys.getwindowsversion().build < 17063:
@@ -1042,7 +1058,9 @@ def test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit(tmp_
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
-def test_native_project_start_and_terminate_against_isolated_mutagen(tmp_path, monkeypatch, short_daemon_data_dir):
+def test_native_project_start_and_terminate_against_isolated_mutagen(
+    tmp_path, monkeypatch, short_daemon_data_dir
+):
     binary = _mutagen_binary()
     daemon_data = short_daemon_data_dir
     alpha, beta = tmp_path / "alpha", tmp_path / "beta"

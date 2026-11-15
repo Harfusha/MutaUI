@@ -158,7 +158,11 @@ def generate_report(
     )
 
     if exit_status == "PASSED":
-        exit_status = "LOCAL TESTS PASSED (NOT RELEASE CERTIFIED)" if not in_ci else "CI TESTS PASSED (NOT RELEASE CERTIFIED)"
+        exit_status = (
+            "LOCAL TESTS PASSED (NOT RELEASE CERTIFIED)"
+            if not in_ci
+            else "CI TESTS PASSED (NOT RELEASE CERTIFIED)"
+        )
 
     content = f"""# Acceptance and Verification Evidence Report
 

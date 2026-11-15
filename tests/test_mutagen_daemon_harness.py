@@ -87,8 +87,7 @@ def test_scoped_harness_never_changes_process_global_environment(tmp_path: Path)
     binary = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
     binary.write_text("disposable stub", encoding="utf-8")
     original = {
-        key: os.environ.get(key)
-        for key in ("MUTAGEN_DATA_DIRECTORY", "HOME", "USERPROFILE")
+        key: os.environ.get(key) for key in ("MUTAGEN_DATA_DIRECTORY", "HOME", "USERPROFILE")
     }
     daemon = IsolatedMutagenDaemon(binary, tmp_path / "short")
     assert daemon.client._process_environment["MUTAGEN_DATA_DIRECTORY"] == str(daemon.data_dir)

@@ -200,9 +200,7 @@ class SessionTableModel(QAbstractTableModel):
             self._presentation_cache = presentation
             self._id_to_row = {identifier: index for index, identifier in enumerate(new_ids)}
             if self.columnCount():
-                for index, (before, after) in enumerate(
-                    zip(previous, presentation, strict=True)
-                ):
+                for index, (before, after) in enumerate(zip(previous, presentation, strict=True)):
                     if before != after:
                         self.dataChanged.emit(
                             self.index(index, 0),

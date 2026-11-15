@@ -148,31 +148,39 @@ def test_unchanged_snapshot_does_not_reset_model_and_preserves_index(qapp):
     assert index.data() == "Beta (changed)"
 
 
+
 def test_changed_row_order_uses_safe_structural_reset(qapp):
     from PySide6.QtTest import QSignalSpy
 
     model = SessionTableModel(["NAME", "STATUS"], "sync")
-    model.set_sessions([
-        {"identifier": "a", "name": "A"},
-        {"identifier": "b", "name": "B"},
-    ])
+    model.set_sessions(
+        [
+            {"identifier": "a", "name": "A"},
+            {"identifier": "b", "name": "B"},
+        ]
+    )
     reset = QSignalSpy(model.modelReset)
-    model.set_sessions([
-        {"identifier": "b", "name": "B"},
-        {"identifier": "a", "name": "A"},
-    ])
+    model.set_sessions(
+        [
+            {"identifier": "b", "name": "B"},
+            {"identifier": "a", "name": "A"},
+        ]
+    )
     assert reset.count() == 1
     assert model.row_for_identifier("a") == 1
+
 
 
 def test_sorted_stable_snapshot_keeps_selection_and_no_reset(qapp):
     from PySide6.QtTest import QSignalSpy
 
     model = SessionTableModel(["NAME", "STATUS"], "sync")
-    model.set_sessions([
-        {"identifier": "b", "name": "Beta"},
-        {"identifier": "a", "name": "Alpha"},
-    ])
+    model.set_sessions(
+        [
+            {"identifier": "b", "name": "Beta"},
+            {"identifier": "a", "name": "Alpha"},
+        ]
+    )
     model.sort(0)
     reset = QSignalSpy(model.modelReset)
     model.set_sessions([
