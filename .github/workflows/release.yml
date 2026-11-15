@@ -294,6 +294,16 @@ jobs:
             if ($signed.Status -ne 'Valid') {
               throw "Previous Windows installer has an invalid Authenticode signature: $($signed.Status)"
             }
+            $version = $env:VERSION.TrimStart('v')
+            $currentSetup = "dist/MutagenControl-$version-windows-x64-setup.exe"
+            $currentSigned = Get-AuthenticodeSignature -LiteralPath $currentSetup
+            if ($currentSigned.Status -ne 'Valid') {
+              throw 'Current release installer signature verification failed.'
+            }
+            if (-not $signed.SignerCertificate -or -not $currentSigned.SignerCertificate -or
+                $signed.SignerCertificate.Subject -ne $currentSigned.SignerCertificate.Subject) {
+              throw 'Previous installer publisher identity does not match the current release.'
+            }
             "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
             "BASELINE_RELEASE_TAG=$($selection.tag)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
           } else {

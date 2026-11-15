@@ -17,7 +17,12 @@ def release(tag: str, installer: bool = True, *, digest: str | None = None):
     }
     if digest is not None:
         asset["digest"] = digest
-    return {"tag_name": tag, "assets": [asset] if installer else [], "draft": False, "prerelease": False}
+    return {
+        "tag_name": tag,
+        "assets": [asset] if installer else [],
+        "draft": False,
+        "prerelease": False,
+    }
 
 
 def test_release_baseline_initial_release() -> None:
@@ -73,3 +78,15 @@ def test_release_baseline_ignores_drafts_and_prereleases() -> None:
 def test_release_baseline_rejects_invalid_digest() -> None:
     with pytest.raises(ValueError, match="SHA-256"):
         select_previous_release([release("v8.1.0", digest="sha256:bad")], "v8.2.0", REPO)
+
+
+def test_release_baseline_rejects_repository_name_injection() -> None:
+    with pytest.raises(ValueError, match="repository"):
+        select_previous_release([], "v8.2.0", "../other/repo")
+
+
+def test_release_baseline_rejects_future_older_asset_without_valid_url() -> None:
+    previous = release("v8.1.0")
+    previous["assets"][0]["browser_download_url"] += "?redirect=http://example.org/"
+    with pytest.raises(ValueError, match="official release asset"):
+        select_previous_release([previous], "v8.2.0", REPO)

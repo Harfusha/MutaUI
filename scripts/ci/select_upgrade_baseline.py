@@ -80,7 +80,10 @@ def select_previous_release(
     raw_digest = asset.get("digest")
     digest = ""
     if raw_digest is not None:
-        if not isinstance(raw_digest, str) or re.fullmatch(r"sha256:[0-9a-fA-F]{64}", raw_digest) is None:
+        if (
+            not isinstance(raw_digest, str)
+            or re.fullmatch(r"sha256:[0-9a-fA-F]{64}", raw_digest) is None
+        ):
             raise ValueError("Previous installer has an invalid SHA-256 digest")
         digest = raw_digest.split(":", 1)[1].lower()
 
@@ -119,7 +122,10 @@ def main(argv: list[str] | None = None) -> int:
         releases = fetch_releases(args.repo, token=os.environ.get("GITHUB_TOKEN", ""))
         selection = select_previous_release(releases, args.current_tag, args.repo)
     except (ValueError, OSError, KeyError, TypeError) as exc:
-        print(f"Cannot establish prior release provenance: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(
+            f"Cannot establish prior release provenance: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 1
     print(json.dumps(selection, separators=(",", ":")))
     return 0
