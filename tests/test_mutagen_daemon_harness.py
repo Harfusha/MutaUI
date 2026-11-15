@@ -80,3 +80,11 @@ def test_isolated_daemon_timeout_records_diagnostics(
     assert diag_dir.is_dir()
     recent_diags = list(diag_dir.glob("daemon_fail_*.json"))
     assert len(recent_diags) > 0
+
+
+def test_isolated_daemon_uses_compact_private_paths(tmp_path: Path) -> None:
+    """Unix-domain daemon IPC must not inherit verbose test helper paths."""
+    daemon = IsolatedMutagenDaemon("mutagen", tmp_path / "lifecycle-test")
+    assert daemon.data_dir == tmp_path / "lifecycle-test" / "d"
+    assert daemon.home_dir == tmp_path / "lifecycle-test" / "h"
+    assert daemon.data_dir != Path.home() / ".mutagen"

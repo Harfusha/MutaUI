@@ -46,8 +46,10 @@ class IsolatedMutagenDaemon:
     ) -> None:
         self.binary = str(binary)
         self.base_dir = Path(base_dir)
-        self.data_dir = self.base_dir / "daemon-data"
-        self.home_dir = self.base_dir / "isolated-home"
+        # Keep daemon IPC paths well below the macOS Unix socket length limit.
+        # The test runner also places tmp_path under a short /tmp base.
+        self.data_dir = self.base_dir / "d"
+        self.home_dir = self.base_dir / "h"
         self.readiness_timeout = readiness_timeout
         self.stop_timeout = stop_timeout
         self.env_overrides = env_overrides or {}
