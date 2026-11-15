@@ -37,7 +37,16 @@ def test_parse_coverage_sample(tmp_path: Path):
     assert stats["branch_coverage"] == 0.95
 
 
-def test_generate_report_produces_valid_markdown(tmp_path: Path):
+def test_generate_report_produces_valid_markdown(tmp_path: Path, monkeypatch):
+    """A clean local sample should be reported as locally passing, not release certified."""
+    from scripts.ci import generate_acceptance_report as report_module
+
+    monkeypatch.setattr(
+        report_module,
+        "get_git_info",
+        lambda: {"commit": "stable", "short_commit": "stable", "branch": "main", "dirty": "false"},
+    )
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     junit_file = tmp_path / "junit.xml"
     junit_file.write_text(
         """<testsuites><testsuite name="pytest" tests="5" failures="0" errors="0" skipped="0"/></testsuites>""",
