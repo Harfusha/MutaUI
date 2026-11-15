@@ -103,3 +103,52 @@ def test_scoped_harness_never_changes_process_global_environment(tmp_path: Path)
     daemon.stop()
     assert not daemon._owned_root.exists()
     assert all(os.environ.get(key) == value for key, value in original.items())
+
+
+def test_failure_artifacts_do_not_expose_paths_or_native_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    executable = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
+    executable.write_text("dummy", encoding="utf-8")
+    daemon = IsolatedMutagenDaemon(executable, tmp_path / "case")
+    daemon.data_dir.mkdir(parents=True, exist_ok=True)
+    (daemon.data_dir / "daemon.log").write_text(
+        "private-key-content-and-user-hostname", encoding="utf-8"
+    )
+    daemon._capture_failure_diagnostics(
+        "unable to connect to private-user@example.org /home/private-user"
+    )
+    artifacts = list((tmp_path / "test-results" / "daemon-diagnostics").glob("*.json"))
+    assert len(artifacts) == 1
+    text = artifacts[0].read_text(encoding="utf-8")
+    assert '"error_category": "connection"' in text
+    assert '"daemon_log_present": true' in text
+    assert "private-user" not in text
+    assert "private-key-content" not in text
+    assert str(daemon.data_dir) not in text
+    daemon.client._daemon_state = lambda: False
+    daemon.stop()
+
+
+def test_unacknowledged_stop_keeps_diagnostic_data(tmp_path: Path, monkeypatch) -> None:
+    from mutagen_client import MutagenCommandTimeout
+
+    executable = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
+    executable.write_text("dummy", encoding="utf-8")
+    daemon = IsolatedMutagenDaemon(executable, tmp_path / "case")
+    daemon.data_dir.mkdir(parents=True)
+    daemon._start_attempted = True
+
+    def reject_stop(_arguments, **_kwargs):
+        raise MutagenCommandTimeout("timed out")
+
+    monkeypatch.setattr(daemon.client, "command", reject_stop)
+    monkeypatch.setattr(daemon.client, "_daemon_state", lambda: False)
+    daemon.stop()
+    assert daemon.phase == "stop_failed"
+    assert daemon.data_dir.exists()
+    # Manual removal of test-owned fixture after validating non-destructive stop.
+    import shutil
+
+    shutil.rmtree(daemon._owned_root)

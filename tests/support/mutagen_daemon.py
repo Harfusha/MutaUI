@@ -48,16 +48,17 @@ class IsolatedMutagenDaemon:
     ) -> None:
         self.binary = str(binary)
         self.base_dir = Path(base_dir)
-        # The native Unix socket has a tight path limit on macOS/Linux.
-        short_root = "/tmp" if os.name != "nt" else tempfile.gettempdir()
-        self._owned_root = Path(tempfile.mkdtemp(prefix="mu-", dir=short_root))
-        self.data_dir = self._owned_root / "data"
-        self.home_dir = self._owned_root / "home"
         self.readiness_timeout = readiness_timeout
         self.stop_timeout = stop_timeout
         self.env_overrides = env_overrides or {}
         if any(k in self.env_overrides for k in ("MUTAGEN_DATA_DIRECTORY", "HOME", "USERPROFILE")):
             raise ValueError("Disposable daemon data and home cannot be overridden")
+        # Validate before allocating a temp directory; invalid overrides must not leak one.
+        # The native Unix socket has a tight path limit on macOS/Linux.
+        short_root = "/tmp" if os.name != "nt" else tempfile.gettempdir()
+        self._owned_root = Path(tempfile.mkdtemp(prefix="mu-", dir=short_root))
+        self.data_dir = self._owned_root / "data"
+        self.home_dir = self._owned_root / "home"
         environment = os.environ.copy()
         environment.update(
             {
@@ -72,6 +73,7 @@ class IsolatedMutagenDaemon:
         self.diagnostics = DaemonDiagnostics()
         self.client = MutagenClient(self.binary, process_environment=environment)
         self._started = False
+        self._start_attempted = False
 
     def __enter__(self) -> IsolatedMutagenDaemon:
         self.start()
@@ -92,7 +94,8 @@ class IsolatedMutagenDaemon:
         self.home_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Launch daemon start
+            # A failing launch can still leave a child daemon running.
+            self._start_attempted = True
             self.client.command(["daemon", "start"], timeout=self.stop_timeout)
             self._started = True
             self.wait_until_ready()
@@ -101,6 +104,7 @@ class IsolatedMutagenDaemon:
             self.diagnostics.ready_time = time.monotonic()
         except Exception as exc:
             self.phase = "failed"
+            self.diagnostics.phase = "failed"
             self._capture_failure_diagnostics(str(exc))
             self.stop()
             raise
@@ -136,52 +140,67 @@ class IsolatedMutagenDaemon:
         )
 
     def stop(self) -> None:
-        """Cleanly stop the daemon and reap any orphan processes."""
+        """Stop only this disposable daemon; never delete data on an uncertain stop."""
         was_failed = self.phase == "failed"
         if not was_failed:
             self.phase = "stopping"
             self.diagnostics.phase = "stopping"
         self.diagnostics.stop_time = time.monotonic()
 
-        if self._started:
-            with suppress(Exception):
+        stop_acknowledged = not self._start_attempted
+        if self._start_attempted:
+            try:
                 self.client.command(["daemon", "stop"], timeout=self.stop_timeout)
-        self._started = False
+                stop_acknowledged = True
+            except MutagenError as exc:
+                self._capture_failure_diagnostics("Stop not acknowledged: " + str(exc))
 
-        # Remove only our own randomly named disposable directory, and only
-        # after the child daemon has been verified to have stopped.
-        daemon_stopped = not self.client._daemon_state()
+        # A failed readiness probe alone is not proof that a daemon exited.
+        # Require explicit CLI stop acknowledgement before removing test-owned data.
+        daemon_stopped = stop_acknowledged and not self.client._daemon_state()
         if daemon_stopped and self._owned_root.is_dir():
             shutil.rmtree(self._owned_root)
+        self._started = False
+        self._start_attempted = not daemon_stopped
 
         if not was_failed:
             self.phase = "stopped" if daemon_stopped else "stop_failed"
             self.diagnostics.phase = self.phase
 
     def _capture_failure_diagnostics(self, error_msg: str) -> None:
-        """Capture redacted diagnostics into artifact when an error occurs."""
-        self.diagnostics.error = error_msg
-        log_file = self.data_dir / "daemon.log"
-        if log_file.is_file():
-            with suppress(Exception):
-                self.diagnostics.daemon_logs = log_file.read_text(
-                    encoding="utf-8", errors="replace"
-                )[-4000:]
+        """Write only non-identifying lifecycle metadata to a CI artifact.
 
+        Native daemon logs and error messages can contain local paths, remote hostnames
+        and credentials. Retain those only in process memory, never in uploaded files.
+        """
+        self.diagnostics.error = error_msg
+        logs_available = any(
+            path.is_file()
+            for path in (self.data_dir / "daemon.log", self.data_dir / "daemon" / "daemon.log")
+        )
+        lowered = error_msg.casefold()
+        category = (
+            "timeout"
+            if "timed out" in lowered or "timeout" in lowered
+            else "connection"
+            if "connect" in lowered
+            else "other"
+        )
         diag_dir = Path("test-results") / "daemon-diagnostics"
         diag_dir.mkdir(parents=True, exist_ok=True)
-        diag_path = diag_dir / f"daemon_fail_{int(time.time() * 1000)}.json"
-        with suppress(Exception):
+        diag_path = diag_dir / f"daemon_fail_{time.time_ns()}.json"
+        with suppress(OSError):
             diag_path.write_text(
                 json.dumps(
                     {
-                        "phase": self.diagnostics.phase,
-                        "error": self.diagnostics.error,
-                        "data_dir": str(self.data_dir),
-                        "start_duration": self.diagnostics.ready_time - self.diagnostics.start_time
-                        if self.diagnostics.ready_time > 0
-                        else None,
-                        "daemon_logs_tail": self.diagnostics.daemon_logs,
+                        "phase": self.phase,
+                        "error_category": category,
+                        "daemon_log_present": logs_available,
+                        "start_duration_seconds": (
+                            max(0.0, time.monotonic() - self.diagnostics.start_time)
+                            if self.diagnostics.start_time > 0
+                            else None
+                        ),
                     },
                     indent=2,
                 ),
