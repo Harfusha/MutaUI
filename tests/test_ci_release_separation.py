@@ -24,3 +24,12 @@ def test_release_workflow_owns_signing_and_provenance() -> None:
     assert "notarytool submit" in release
     assert "id-token: write" in release
     assert "actions/attest" in release
+
+
+def test_release_workflow_uploads_sha_bound_test_evidence() -> None:
+    release = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "Run isolated test suite" in release
+    assert "Generate exact-commit release test evidence" in release
+    assert "mutaui-release-test-evidence-${{ matrix.os }}" in release
+    assert "test-results/evidence.json" in release
+    assert "test-results/acceptance.md" in release

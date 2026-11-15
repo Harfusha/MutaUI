@@ -104,6 +104,19 @@ jobs:
         env:
           MUTAGEN_DATA_DIRECTORY: ${{ runner.temp }}/mutagen-control-release-test-data
         run: python scripts/ci/run_tests.py
+      - name: Generate exact-commit release test evidence
+        run: python scripts/ci/generate_acceptance_report.py --output test-results/acceptance.md
+      - name: Upload release test evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-release-test-evidence-${{ matrix.os }}
+          path: |
+            test-results/pytest.xml
+            test-results/evidence.json
+            test-results/acceptance.md
+            coverage.xml
+          if-no-files-found: error
+          retention-days: 90
       - name: Build Windows portable folder
         if: runner.os == 'Windows'
         run: >-
