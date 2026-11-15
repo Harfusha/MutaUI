@@ -81,3 +81,25 @@ def test_isolated_daemon_timeout_records_diagnostics(
     assert diag_dir.is_dir()
     recent_diags = list(diag_dir.glob("daemon_fail_*.json"))
     assert len(recent_diags) > 0
+
+def test_scoped_harness_never_changes_process_global_environment(tmp_path: Path):
+    """Constructor and cleanup must not retarget the user's daemon or HOME."""
+    binary = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
+    binary.write_text("disposable stub", encoding="utf-8")
+    original = {
+        key: os.environ.get(key)
+        for key in ("MUTAGEN_DATA_DIRECTORY", "HOME", "USERPROFILE")
+    }
+    daemon = IsolatedMutagenDaemon(binary, tmp_path / "short")
+    assert daemon.client._process_environment["MUTAGEN_DATA_DIRECTORY"] == str(daemon.data_dir)
+    assert daemon.client._process_environment["HOME"] == str(daemon.home_dir)
+    assert all(os.environ.get(key) == value for key, value in original.items())
+    if os.name != "nt":
+        assert len(str(daemon.data_dir)) < 70
+
+    # The stub never started; the data dir is test-owned and not the user's.
+    daemon._started = False
+    daemon.client._daemon_state = lambda: False
+    daemon.stop()
+    assert not daemon._owned_root.exists()
+    assert all(os.environ.get(key) == value for key, value in original.items())

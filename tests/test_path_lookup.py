@@ -71,8 +71,17 @@ def test_local_path_lookup_resolves_directory_symlinks(tmp_path):
     )
 
 
-@pytest.mark.skipif(os.name != "nt", reason="Windows path lookup is case-insensitive")
 def test_local_path_lookup_accepts_case_folded_windows_paths(tmp_path):
+    # On non-Windows hosts, test the Windows path rules without asserting a
+    # case-insensitive POSIX filesystem. Windows still exercises real path lookup.
+    if os.name != "nt":
+        assert _is_within_path(
+            r"C:\\Sync\\Folder",
+            r"c:\\sync\\folder\\File.txt",
+            commonpath=ntpath.commonpath,
+            normcase=ntpath.normcase,
+        )
+        return
     root = tmp_path / "MixedCase"
     root.mkdir()
     file = root / "Nested" / "File.txt"
