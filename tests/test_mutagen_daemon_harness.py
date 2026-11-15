@@ -180,3 +180,9 @@ def test_still_running_child_prevents_destructive_cleanup(tmp_path: Path, monkey
     assert daemon.phase == "stop_failed"
     assert daemon.data_dir.exists()
     shutil.rmtree(daemon._owned_root)
+def test_isolated_daemon_uses_compact_private_paths(tmp_path: Path) -> None:
+    """Unix-domain daemon IPC must not inherit verbose test helper paths."""
+    daemon = IsolatedMutagenDaemon("mutagen", tmp_path / "lifecycle-test")
+    assert daemon.data_dir == tmp_path / "lifecycle-test" / "d"
+    assert daemon.home_dir == tmp_path / "lifecycle-test" / "h"
+    assert daemon.data_dir != Path.home() / ".mutagen"

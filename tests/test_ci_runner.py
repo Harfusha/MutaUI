@@ -373,3 +373,68 @@ def test_validate_junit_rejects_nested_parent_counter_mismatch(tmp_path: Path) -
     )
     with pytest.raises(ValueError, match="inconsistent summary"):
         parse_and_validate_junit(report)
+def test_run_tests_uses_short_isolated_posix_temp_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Prevent platform-specific pytest temp paths from breaking Mutagen IPC."""
+    import scripts.ci.run_tests as runner
+
+    commands: list[list[str]] = []
+
+    class FailedPytest:
+        returncode = 1
+
+    def capture_command(cmd: list[str]) -> FailedPytest:
+        commands.append(cmd)
+        return FailedPytest()
+
+    original_temporary_directory = runner.tempfile.TemporaryDirectory
+
+    def isolate_temp_dir(*, prefix: str, dir: str):
+        assert dir == "/tmp"
+        return original_temporary_directory(prefix=prefix, dir=tmp_path)
+
+    monkeypatch.setattr(runner.sys, "platform", "darwin")
+    monkeypatch.setattr(runner.tempfile, "TemporaryDirectory", isolate_temp_dir)
+    monkeypatch.setattr(runner.subprocess, "run", capture_command)
+    assert runner.run_tests(
+        junit_xml=tmp_path / "missing-junit.xml",
+        coverage_xml=tmp_path / "missing-coverage.xml",
+        skip_coverage_check=True,
+    ) == 1
+    assert len(commands) == 1
+    basetemp = next(
+        arg.split("=", 1)[1] for arg in commands[0] if arg.startswith("--basetemp=")
+    )
+    assert Path(basetemp).parent == tmp_path
+    assert Path(basetemp).name.startswith("mu-")
+    assert not Path(basetemp).exists(), "Runner must clean the temporary tree after pytest"
+
+
+def test_run_tests_respects_custom_pytest_basetemp(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An explicitly chosen pytest basetemp must not be replaced."""
+    import scripts.ci.run_tests as runner
+
+    commands: list[list[str]] = []
+
+    class FailedPytest:
+        returncode = 1
+
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    monkeypatch.setattr(
+        runner.subprocess,
+        "run",
+        lambda cmd: commands.append(cmd) or FailedPytest(),
+    )
+    selected = tmp_path / "my-temp"
+    assert runner.run_tests(
+        pytest_args=[f"--basetemp={selected}"],
+        junit_xml=tmp_path / "missing-junit.xml",
+        coverage_xml=tmp_path / "missing-coverage.xml",
+        skip_coverage_check=True,
+    ) == 1
+    assert [arg for arg in commands[0] if arg.startswith("--basetemp=")] == [
+        f"--basetemp={selected}"
+    ]
