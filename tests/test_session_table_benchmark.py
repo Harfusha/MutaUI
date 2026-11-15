@@ -55,7 +55,9 @@ def test_session_table_refresh_canary_distinguishes_noop_and_changes():
     result = measure_refresh_cases(10, repetitions=3)
     assert result["rows"] == 10
     assert result["repetitions"] == 3
-    assert result["model_resets"] == 6
+    assert result["model_resets"] == 0
+    assert result["rows_inserted_signals"] == 3
+    assert result["rows_removed_signals"] == 3
     assert result["changed_row_signals"] == 3
     for case in ("unchanged", "one_row_changed", "structural_change"):
         timings = result["latency_ms"][case]

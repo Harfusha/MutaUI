@@ -102,6 +102,12 @@ def measure_refresh_cases(count: int, repetitions: int = REPETITIONS) -> dict[st
         model.set_sessions(updated)
         times["one_row_changed"].append((time.perf_counter() - start) * 1000)
 
+    changed_rows = changed.count()
+    # Restore the original content once before measuring structural changes.
+    # Otherwise the first insertion also includes an unrelated edited-name update.
+    model.set_sessions(original)
+    inserted = QSignalSpy(model.rowsInserted)
+    removed = QSignalSpy(model.rowsRemoved)
     extra = {
         "identifier": "temporary-structural-row",
         "name": "Temporary",
@@ -113,18 +119,26 @@ def measure_refresh_cases(count: int, repetitions: int = REPETITIONS) -> dict[st
         model.set_sessions(original)
         times["structural_change"].append((time.perf_counter() - start) * 1000)
 
-    # No-op snapshots and single-row changes must never reset the Qt model.
-    # Structural snapshots trigger two safe resets per iteration.
-    if resets.count() != repetitions * 2 or changed.count() != repetitions:
+    # No-op and small structural changes preserve persistent view indexes.
+    # Each structural iteration inserts and removes one row without a reset.
+    if (
+        resets.count() != 0
+        or inserted.count() != repetitions
+        or removed.count() != repetitions
+        or changed_rows != repetitions
+    ):
         raise AssertionError(
             "Unexpected session table signals during refresh benchmark: "
-            f"reset={resets.count()}, changed={changed.count()}"
+            f"reset={resets.count()}, inserted={inserted.count()}, "
+            f"removed={removed.count()}, changed={changed_rows}"
         )
     return {
         "rows": count,
         "repetitions": repetitions,
         "model_resets": resets.count(),
-        "changed_row_signals": changed.count(),
+        "rows_inserted_signals": inserted.count(),
+        "rows_removed_signals": removed.count(),
+        "changed_row_signals": changed_rows,
         "latency_ms": {
             name: {
                 "p50": percentile(values, 0.50),
