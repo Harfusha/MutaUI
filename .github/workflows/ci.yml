@@ -5,6 +5,11 @@ on:
     branches: [master]
   pull_request:
 
+# Superseded PR checks should not consume scarce macOS/Windows CI runner slots.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

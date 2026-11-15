@@ -6,6 +6,8 @@ from pathlib import Path
 def test_pull_request_workflow_does_not_request_release_secrets() -> None:
     workflow = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "contents: read" in workflow
+    assert "cancel-in-progress: true" in workflow
+    assert "github.event.pull_request.number || github.ref" in workflow
     assert "id-token: write" not in workflow
     assert "attestations: write" not in workflow
     assert "APPLE_CERTIFICATE_BASE64" not in workflow
