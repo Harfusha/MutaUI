@@ -25,6 +25,8 @@ jobs:
         run: python scripts/check_dependency_exports.py
       - name: Audit locked dependency sets
         run: python -m pip_audit -r requirements.txt -r requirements-build.txt -r requirements-quality.txt
+      - name: Block distribution until owner selects repository license
+        run: python scripts/ci/check_release_license.py
       - name: Check YAML syntax and style
         run: python -m yamllint -s .github/workflows .yamllint
       - name: Check GitHub Actions workflows
