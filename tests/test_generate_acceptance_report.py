@@ -139,6 +139,7 @@ def test_unknown_git_provenance_cannot_pass_qa_gate(tmp_path: Path, monkeypatch)
     report = generate_report(junit, coverage, tmp_path / "out.md")
     assert "**Status:** **FAILED / GATES UNMET**" in report
 
+
 def test_parse_junit_nested_suites_do_not_double_count(tmp_path: Path):
     junit = tmp_path / "nested.xml"
     junit.write_text(

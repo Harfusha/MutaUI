@@ -97,6 +97,7 @@ def parse_junit(junit_path: Path) -> dict[str, int]:
         ),
     }
 
+
 def parse_coverage(coverage_path: Path) -> dict[str, float | int]:
     if not coverage_path.is_file():
         return {
