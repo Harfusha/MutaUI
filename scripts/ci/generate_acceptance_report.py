@@ -38,7 +38,7 @@ def get_git_info() -> dict[str, str]:
         commit = os.environ.get("GITHUB_SHA", "unknown")
         short_commit = commit[:7] if commit != "unknown" else "unknown"
         branch = os.environ.get("GITHUB_REF_NAME", "unknown")
-        is_dirty = False
+        is_dirty = True  # Unknown Git provenance must never produce release PASS.
 
     return {
         "commit": commit,

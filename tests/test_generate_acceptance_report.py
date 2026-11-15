@@ -105,3 +105,25 @@ def test_ci_sha_mismatch_does_not_claim_pass(tmp_path: Path, monkeypatch):
     coverage.write_text('<coverage branches-covered="96" branches-valid="100" line-rate="0.97"/>')
     result = generate_report(junit, coverage, tmp_path / "report.md")
     assert "**Status:** **FAILED / GATES UNMET**" in result
+
+def test_unknown_git_provenance_cannot_pass_qa_gate(tmp_path: Path, monkeypatch):
+    from scripts.ci import generate_acceptance_report as report_module
+
+    monkeypatch.setattr(
+        report_module,
+        "get_git_info",
+        lambda: {
+            "commit": "unknown",
+            "short_commit": "unknown",
+            "branch": "unknown",
+            "dirty": "true",
+        },
+    )
+    junit = tmp_path / "j.xml"
+    junit.write_text(
+        '<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="x"/></testsuite>'
+    )
+    coverage = tmp_path / "c.xml"
+    coverage.write_text('<coverage branches-covered="100" branches-valid="100" line-rate="1"/>')
+    report = generate_report(junit, coverage, tmp_path / "out.md")
+    assert "**Status:** **FAILED / GATES UNMET**" in report

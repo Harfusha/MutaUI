@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,10 @@ from pathlib import Path
 
 
 def main() -> int:
+    scanner = shutil.which("detect-secrets-hook")
+    if scanner is None:
+        print("detect-secrets-hook is not installed", file=sys.stderr)
+        return 1
     # The test token is random, disposable and never checked in or printed.
     # The file lives in a temporary folder inside the checkout for scanning.
     with tempfile.TemporaryDirectory(prefix=".secret-negative-probe-", dir=Path.cwd()) as folder:
@@ -19,7 +24,7 @@ def main() -> int:
             encoding="utf-8",
         )
         result = subprocess.run(
-            ["detect-secrets-hook", "--baseline", ".secrets.baseline", str(candidate)],
+            [scanner, "--baseline", ".secrets.baseline", str(candidate)],
             capture_output=True,
             text=True,
             timeout=30,
