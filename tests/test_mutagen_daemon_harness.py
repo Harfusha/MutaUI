@@ -152,3 +152,31 @@ def test_unacknowledged_stop_keeps_diagnostic_data(tmp_path: Path, monkeypatch) 
     import shutil
 
     shutil.rmtree(daemon._owned_root)
+
+
+def test_delayed_child_shutdown_keeps_cleanup_safe(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
+    executable.write_text("stub", encoding="utf-8")
+    daemon = IsolatedMutagenDaemon(executable, tmp_path / "case", stop_timeout=1.0)
+    daemon.data_dir.mkdir(parents=True)
+    daemon._start_attempted = True
+    polls = iter((True, True, False))
+    monkeypatch.setattr(daemon.client, "command", lambda _args, **_kwargs: "")
+    monkeypatch.setattr(daemon.client, "_daemon_state", lambda: next(polls))
+    daemon.stop()
+    assert daemon.phase == "stopped"
+    assert not daemon.data_dir.exists()
+
+
+def test_still_running_child_prevents_destructive_cleanup(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / ("mutagen.exe" if os.name == "nt" else "mutagen")
+    executable.write_text("stub", encoding="utf-8")
+    daemon = IsolatedMutagenDaemon(executable, tmp_path / "case", stop_timeout=0.01)
+    daemon.data_dir.mkdir(parents=True)
+    daemon._start_attempted = True
+    monkeypatch.setattr(daemon.client, "command", lambda _args, **_kwargs: "")
+    monkeypatch.setattr(daemon.client, "_daemon_state", lambda: True)
+    daemon.stop()
+    assert daemon.phase == "stop_failed"
+    assert daemon.data_dir.exists()
+    shutil.rmtree(daemon._owned_root)

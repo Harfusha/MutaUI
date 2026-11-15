@@ -156,8 +156,18 @@ class IsolatedMutagenDaemon:
                 self._capture_failure_diagnostics("Stop not acknowledged: " + str(exc))
 
         # A failed readiness probe alone is not proof that a daemon exited.
-        # Require explicit CLI stop acknowledgement before removing test-owned data.
-        daemon_stopped = stop_acknowledged and not self.client._daemon_state()
+        # Require an acknowledged stop and poll until the child daemon actually
+        # disconnects. A single immediate probe can race a legitimate stop.
+        daemon_stopped = False
+        if stop_acknowledged:
+            deadline = time.monotonic() + self.stop_timeout
+            while True:
+                if not self.client._daemon_state():
+                    daemon_stopped = True
+                    break
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.2)
         if daemon_stopped and self._owned_root.is_dir():
             shutil.rmtree(self._owned_root)
         self._started = False
