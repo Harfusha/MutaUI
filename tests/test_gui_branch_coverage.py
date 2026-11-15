@@ -73,6 +73,7 @@ def test_onboarding_cli_and_local_smoke_refuse_missing_binary(
         onboarding_cli_status=status,
         onboarding_test_status=test_status,
         submit=lambda func, callback, **kwargs: queued.append((func, callback, kwargs)),
+        show_onboarding_cli_result=lambda _result: None,
     )
     monkeypatch.setattr(app_module, "set_localized_text", lambda target, text: target.setText(text))
 
@@ -222,7 +223,7 @@ def test_log_tail_export_cancel_success_and_io_error(
     path = tmp_path / "tail.txt"
     destination[0] = str(path)
     app_module.MainWindow.export_tail_file(dialog)
-    assert path.read_text(encoding="utf-8") == "local diagnostic data\\n"
+    assert path.read_text(encoding="utf-8") == "local diagnostic data\n"
 
     destination[0] = str(tmp_path)
     app_module.MainWindow.export_tail_file(dialog)
