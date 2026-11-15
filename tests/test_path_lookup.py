@@ -76,8 +76,8 @@ def test_local_path_lookup_accepts_case_folded_windows_paths(tmp_path):
     # case-insensitive POSIX filesystem. Windows still exercises real path lookup.
     if os.name != "nt":
         assert _is_within_path(
-            r"C:\\Sync\\Folder",
-            r"c:\\sync\\folder\\File.txt",
+            r"C:\Sync\Folder",
+            r"c:\sync\folder\File.txt",
             commonpath=ntpath.commonpath,
             normcase=ntpath.normcase,
         )
