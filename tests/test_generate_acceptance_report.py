@@ -177,3 +177,23 @@ def test_parse_coverage_rejects_impossible_counters(tmp_path: Path):
 
     with pytest.raises(ValueError, match="invalid counters"):
         parse_coverage(coverage)
+
+
+def test_parse_junit_counts_direct_parent_cases_with_nested_children(tmp_path: Path) -> None:
+    junit = tmp_path / "nested-with-direct.xml"
+    junit.write_text(
+        '<testsuites><testsuite tests="3" failures="1" errors="0" skipped="0">'
+        '<testcase name="parent-direct"/>'
+        '<testsuite tests="2" failures="1" errors="0" skipped="0">'
+        '<testcase name="child-a"/>'
+        '<testcase name="child-b"><failure message="oops"/></testcase>'
+        '</testsuite></testsuite></testsuites>',
+        encoding="utf-8",
+    )
+    assert parse_junit(junit) == {
+        "tests": 3,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 2,
+    }

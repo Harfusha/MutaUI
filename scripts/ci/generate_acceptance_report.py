@@ -59,32 +59,32 @@ def parse_junit(junit_path: Path) -> dict[str, int]:
         return empty
 
     root = ET.parse(junit_path).getroot()
-    leaf_suites = [
-        suite
-        for suite in root.iter("testsuite")
-        if not any(child.tag == "testsuite" for child in suite)
-    ]
+    all_suites = list(root.iter("testsuite"))
     totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
 
-    if leaf_suites:
-        for suite in leaf_suites:
-            cases = list(suite.findall("testcase"))
-            fallback = {
-                "tests": len(cases),
-                "failures": sum(c.find("failure") is not None for c in cases),
-                "errors": sum(c.find("error") is not None for c in cases),
-                "skipped": sum(c.find("skipped") is not None for c in cases),
-            }
+    def case_totals(cases: list[ET.Element]) -> dict[str, int]:
+        return {
+            "tests": len(cases),
+            "failures": sum(c.find("failure") is not None for c in cases),
+            "errors": sum(c.find("error") is not None for c in cases),
+            "skipped": sum(c.find("skipped") is not None for c in cases),
+        }
+
+    if all_suites:
+        for suite in all_suites:
+            direct_cases = suite.findall("testcase")
+            # A parent suite's metadata already includes nested child suites.
+            # Its *direct* test cases still need to be accounted for separately.
+            fallback = case_totals(direct_cases)
+            has_nested_suite = bool(suite.findall("testsuite"))
             for key in totals:
-                totals[key] += int(suite.get(key, fallback[key]))
+                totals[key] += (
+                    fallback[key]
+                    if has_nested_suite
+                    else int(suite.get(key, fallback[key]))
+                )
     else:
-        cases = list(root.iter("testcase"))
-        totals.update(
-            tests=len(cases),
-            failures=sum(c.find("failure") is not None for c in cases),
-            errors=sum(c.find("error") is not None for c in cases),
-            skipped=sum(c.find("skipped") is not None for c in cases),
-        )
+        totals.update(case_totals(list(root.iter("testcase"))))
 
     if any(value < 0 for value in totals.values()):
         raise ValueError("JUnit counters may not be negative")
