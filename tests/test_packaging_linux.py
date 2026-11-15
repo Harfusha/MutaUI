@@ -44,3 +44,35 @@ def test_appimagetool_checksum_rejects_tampered_bytes(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Checksum mismatch for appimagetool"):
         verify_appimagetool(fake_tool, expected_hash)
+
+
+def test_appimage_manifest_is_only_source_of_download_metadata() -> None:
+    from scripts.ci.appimage_manifest import load_pinned_tool
+
+    version, digest, url = load_pinned_tool(Path("packaging/linux/supply-chain.json"))
+    assert version == "1.9.1"
+    assert len(digest) == 64
+    assert url.startswith("https://github.com/AppImage/appimagetool/releases/download/")
+    script = Path("packaging/linux/build-packages.sh").read_text(encoding="utf-8")
+    assert "appimage_manifest.py" in script
+    assert 'sha256sum --check' in script
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("architecture", "aarch64"),
+        ("sha256", "deadbeef"),
+        ("url", "http://invalid.example/appimagetool.AppImage"),
+        ("version", "../../outside"),
+    ],
+)
+def test_appimage_manifest_fails_closed(tmp_path: Path, field: str, value: str) -> None:
+    from scripts.ci.appimage_manifest import load_pinned_tool
+
+    manifest = json.loads(Path("packaging/linux/supply-chain.json").read_text(encoding="utf-8"))
+    manifest["appimagetool"][field] = value
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_pinned_tool(path)
