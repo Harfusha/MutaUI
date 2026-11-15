@@ -121,3 +121,63 @@ def test_session_model_invalid_indexes_unknown_colors_and_sort_guards(qapp):
     )
     forward.sort(4)
     assert [session["identifier"] for session in forward.sessions] == ["invalid", "valid"]
+
+def test_unchanged_snapshot_does_not_reset_model_and_preserves_index(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    sessions = [
+        {"identifier": "stable-a", "name": "Alpha", "status": 6},
+        {"identifier": "stable-b", "name": "Beta", "status": 6},
+    ]
+    model.set_sessions(sessions)
+    reset = QSignalSpy(model.modelReset)
+    changed = QSignalSpy(model.dataChanged)
+    index = model.index(1, 0)
+    model.set_sessions([dict(x) for x in sessions])
+    assert reset.count() == 0
+    assert changed.count() == 0
+    assert index.isValid()
+    assert index.data(Qt.ItemDataRole.UserRole) == "stable-b"
+
+    modified = [dict(x) for x in sessions]
+    modified[1]["name"] = "Beta (changed)"
+    model.set_sessions(modified)
+    assert reset.count() == 0
+    assert changed.count() == 1
+    assert index.data() == "Beta (changed)"
+
+
+def test_changed_row_order_uses_safe_structural_reset(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions([
+        {"identifier": "a", "name": "A"},
+        {"identifier": "b", "name": "B"},
+    ])
+    reset = QSignalSpy(model.modelReset)
+    model.set_sessions([
+        {"identifier": "b", "name": "B"},
+        {"identifier": "a", "name": "A"},
+    ])
+    assert reset.count() == 1
+    assert model.row_for_identifier("a") == 1
+
+
+def test_sorted_stable_snapshot_keeps_selection_and_no_reset(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions([
+        {"identifier": "b", "name": "Beta"},
+        {"identifier": "a", "name": "Alpha"},
+    ])
+    model.sort(0)
+    reset = QSignalSpy(model.modelReset)
+    model.set_sessions([
+        {"identifier": "b", "name": "Beta"},
+        {"identifier": "a", "name": "Alpha"},
+    ])
+    assert reset.count() == 0
+    assert model.row_for_identifier("a") == 0

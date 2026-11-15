@@ -160,12 +160,61 @@ class SessionTableModel(QAbstractTableModel):
         sessions: Sequence[dict[str, Any]],
         favorites: Sequence[str] = (),
     ) -> None:
-        self.beginResetModel()
-        self.sessions = list(sessions)
+        """Update changed rows without discarding selection on stable ID snapshots.
+
+        Structural changes and duplicate/blank identifiers intentionally take the
+        conservative full-reset path. No native session state is modified.
+        """
+        incoming = list(sessions)
+        previous = self._presentation_cache
         self.favorites = set(favorites)
-        self._rebuild_indices_and_cache()
+        presentation = [self._build_presentation(session) for session in incoming]
         if self.sort_column >= 0:
-            self._sort_rows()
+            column = self.sort_column
+            last = len(self.headers) - 1
+
+            def sort_key(item: tuple[dict[str, Any], SessionRowPresentation]) -> Any:
+                pres = item[1]
+                if not self.dashboard and column == last:
+                    return pres.extra
+                return pres.cells[column].casefold()
+
+            pairs = sorted(
+                zip(incoming, presentation, strict=True),
+                key=sort_key,
+                reverse=self.sort_order == Qt.SortOrder.DescendingOrder,
+            )
+            incoming = [session for session, _presentation in pairs]
+            presentation = [pres for _session, pres in pairs]
+
+        old_ids = tuple(item.identifier for item in previous)
+        new_ids = tuple(item.identifier for item in presentation)
+        stable_rows = (
+            old_ids == new_ids
+            and len(previous) == len(presentation)
+            and all(new_ids)
+            and len(set(new_ids)) == len(new_ids)
+        )
+        if stable_rows:
+            self.sessions = incoming
+            self._presentation_cache = presentation
+            self._id_to_row = {identifier: index for index, identifier in enumerate(new_ids)}
+            if self.columnCount():
+                for index, (before, after) in enumerate(
+                    zip(previous, presentation, strict=True)
+                ):
+                    if before != after:
+                        self.dataChanged.emit(
+                            self.index(index, 0),
+                            self.index(index, self.columnCount() - 1),
+                            [],
+                        )
+            return
+
+        self.beginResetModel()
+        self.sessions = incoming
+        self._presentation_cache = presentation
+        self._id_to_row = {identifier: index for index, identifier in enumerate(new_ids)}
         self.endResetModel()
 
     def _rebuild_indices_and_cache(self) -> None:
