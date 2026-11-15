@@ -36,80 +36,50 @@ def parse_and_validate_junit(xml_path: str | Path, allow_skipped: bool = False) 
             f"Invalid JUnit XML structure at {path}: root tag must be <testsuites> or <testsuite>, got <{getattr(root, 'tag', None)}>"
         )
 
-    # Prevent double-counting by avoiding recursive iter("testsuite") on nested containers
+    # Derive actual counts solely from leaf testcase elements. Nested testsuite
+    # summary attributes are aggregate metadata and must not be double-counted.
+    cases = list(root.iter("testcase"))
+    total_tests = len(cases)
+    failures = sum(case.find("failure") is not None for case in cases)
+    errors = sum(case.find("error") is not None for case in cases)
+    skipped = sum(case.find("skipped") is not None for case in cases)
+
+    # Verify all available suite metadata *against all descendant cases*. This
+    # also rejects forged "10 passed" XML containing only one real test case.
+    for suite in root.iter("testsuite"):
+        descendants = list(suite.iter("testcase"))
+        actual = {
+            "tests": len(descendants),
+            "failures": sum(case.find("failure") is not None for case in descendants),
+            "errors": sum(case.find("error") is not None for case in descendants),
+            "skipped": sum(case.find("skipped") is not None for case in descendants),
+        }
+        for field, observed in actual.items():
+            declared = suite.get(field)
+            if declared is None:
+                continue
+            try:
+                reported = int(declared)
+            except ValueError as exc:
+                raise ValueError(f"Invalid JUnit {field} counter") from exc
+            if reported != observed:
+                raise ValueError(
+                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
+                    f"declared {field}={reported} but found {observed} actual test entries."
+                )
+
+    # Some generators also place aggregate counters on the testsuites root.
     if root.tag == "testsuites":
-        suites = root.findall("testsuite")
-        if not suites:
-            # Fallback if testsuites has no direct child testsuite but has testcases
-            suites = [root]
-    else:
-        suites = [root]
-
-    total_tests = 0
-    failures = 0
-    errors = 0
-    skipped = 0
-
-    for suite in suites:
-        cases = suite.findall("testcase")
-        has_cases = len(cases) > 0
-
-        suite_tests_attr = suite.get("tests")
-        suite_failures_attr = suite.get("failures")
-        suite_errors_attr = suite.get("errors")
-        suite_skipped_attr = suite.get("skipped")
-
-        suite_tests = int(suite_tests_attr) if suite_tests_attr is not None else len(cases)
-        suite_failures = int(suite_failures_attr) if suite_failures_attr is not None else 0
-        suite_errors = int(suite_errors_attr) if suite_errors_attr is not None else 0
-        suite_skipped = int(suite_skipped_attr) if suite_skipped_attr is not None else 0
-
-        if has_cases:
-            # Verify consistency between declared metadata and actual testcase elements
-            actual_cases = len(cases)
-            if suite_tests_attr is not None and suite_tests != actual_cases:
-                raise ValueError(
-                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
-                    f"declared tests={suite_tests} but found {actual_cases} <testcase> elements in {path}."
-                )
-
-            actual_failures = sum(1 for c in cases if c.find("failure") is not None)
-            if suite_failures_attr is not None and suite_failures != actual_failures:
-                raise ValueError(
-                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
-                    f"declared failures={suite_failures} but found {actual_failures} <failure> elements in {path}."
-                )
-
-            actual_errors = sum(1 for c in cases if c.find("error") is not None)
-            if suite_errors_attr is not None and suite_errors != actual_errors:
-                raise ValueError(
-                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
-                    f"declared errors={suite_errors} but found {actual_errors} <error> elements in {path}."
-                )
-
-            actual_skipped = sum(1 for c in cases if c.find("skipped") is not None)
-            if suite_skipped_attr is not None and suite_skipped != actual_skipped:
-                raise ValueError(
-                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
-                    f"declared skipped={suite_skipped} but found {actual_skipped} <skipped> elements in {path}."
-                )
-
-        total_tests += suite_tests
-        failures += suite_failures
-        errors += suite_errors
-        skipped += suite_skipped
-
-    # If suite attributes were completely absent and total_tests is 0, check root cases
-    if total_tests == 0:
-        all_cases = list(root.iter("testcase"))
-        total_tests = len(all_cases)
-        for case in all_cases:
-            if case.find("failure") is not None:
-                failures += 1
-            if case.find("error") is not None:
-                errors += 1
-            if case.find("skipped") is not None:
-                skipped += 1
+        actual = {
+            "tests": total_tests,
+            "failures": failures,
+            "errors": errors,
+            "skipped": skipped,
+        }
+        for field, observed in actual.items():
+            declared = root.get(field)
+            if declared is not None and int(declared) != observed:
+                raise ValueError("JUnit XML inconsistent summary at root testsuites")
 
     summary: JUnitSummary = {
         "tests": total_tests,

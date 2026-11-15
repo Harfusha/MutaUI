@@ -337,3 +337,39 @@ def test_actionlint_download_stages_atomically(
     installer.download_actionlint_archive(archive)
     assert archive.read_bytes() == b"test-archive"
     assert not list(tmp_path.glob(".actionlint-download-*"))
+
+
+def test_validate_junit_nested_suites_include_direct_parent_testcases(tmp_path: Path) -> None:
+    """Nested summaries include child suites; direct parent cases count once."""
+    report = tmp_path / "nested.xml"
+    report.write_text(
+        '<testsuites tests="3" failures="0" errors="0" skipped="0">'
+        '<testsuite tests="3" failures="0" errors="0" skipped="0">'
+        '<testcase name="top"/>'
+        '<testsuite tests="2" failures="0" errors="0" skipped="0">'
+        '<testcase name="a"/><testcase name="b"/>'
+        '</testsuite></testsuite></testsuites>',
+        encoding="utf-8",
+    )
+    result = parse_and_validate_junit(report)
+    assert result["tests"] == 3
+    assert result["failures"] == 0
+
+
+def test_validate_junit_rejects_forged_summary_without_cases(tmp_path: Path) -> None:
+    """A metadata-only success report must never certify executed tests."""
+    report = tmp_path / "fabricated.xml"
+    report.write_text('<testsuite tests="800" failures="0" errors="0" skipped="0"/>')
+    with pytest.raises(ValueError, match="inconsistent summary"):
+        parse_and_validate_junit(report)
+
+
+def test_validate_junit_rejects_nested_parent_counter_mismatch(tmp_path: Path) -> None:
+    report = tmp_path / "malformed-nested.xml"
+    report.write_text(
+        '<testsuites><testsuite tests="4" failures="0" errors="0" skipped="0">'
+        '<testsuite tests="1" failures="0" errors="0" skipped="0">'
+        '<testcase name="a"/></testsuite></testsuite></testsuites>'
+    )
+    with pytest.raises(ValueError, match="inconsistent summary"):
+        parse_and_validate_junit(report)
