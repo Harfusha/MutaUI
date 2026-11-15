@@ -1,0 +1,56 @@
+"""Tests for generate_acceptance_report.py (QA-009 / P1-01)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from scripts.ci.generate_acceptance_report import generate_report, parse_coverage, parse_junit
+
+
+def test_parse_junit_sample(tmp_path: Path):
+    xml_content = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" tests="10" failures="0" errors="0" skipped="0">
+    <testcase classname="test_foo" name="test_one"/>
+  </testsuite>
+</testsuites>
+"""
+    junit_file = tmp_path / "junit.xml"
+    junit_file.write_text(xml_content, encoding="utf-8")
+
+    stats = parse_junit(junit_file)
+    assert stats["tests"] == 10
+    assert stats["failures"] == 0
+    assert stats["passed"] == 10
+
+
+def test_parse_coverage_sample(tmp_path: Path):
+    cov_content = """<?xml version="1.0" ?>
+<coverage branches-covered="95" branches-valid="100" line-rate="0.98"/>
+"""
+    cov_file = tmp_path / "cov.xml"
+    cov_file.write_text(cov_content, encoding="utf-8")
+
+    stats = parse_coverage(cov_file)
+    assert stats["branches_covered"] == 95
+    assert stats["branches_valid"] == 100
+    assert stats["branch_coverage"] == 0.95
+
+
+def test_generate_report_produces_valid_markdown(tmp_path: Path):
+    junit_file = tmp_path / "junit.xml"
+    junit_file.write_text(
+        """<testsuites><testsuite name="pytest" tests="5" failures="0" errors="0" skipped="0"/></testsuites>""",
+        encoding="utf-8",
+    )
+    cov_file = tmp_path / "cov.xml"
+    cov_file.write_text(
+        """<coverage branches-covered="96" branches-valid="100" line-rate="0.99"/>""",
+        encoding="utf-8",
+    )
+    out_file = tmp_path / "acceptance.md"
+
+    text = generate_report(junit_file, cov_file, out_file)
+    assert out_file.is_file()
+    assert "Acceptance and Verification Evidence Report" in text
+    assert "PASSED" in text

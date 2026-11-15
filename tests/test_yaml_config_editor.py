@@ -1,4 +1,5 @@
 import os
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -153,7 +154,12 @@ def test_windows_atomic_replace_failure_raises_os_error(tmp_path, monkeypatch):
         ctypes, "WinError", lambda code: OSError(code, "access denied"), raising=False
     )
 
-    with pytest.raises(OSError, match="access denied"):
+    expected_match = (
+        "access denied"
+        if sys.platform == "win32"
+        else "ReplaceFileW is only available on Windows systems."
+    )
+    with pytest.raises(OSError, match=expected_match):
         yaml_editor._replace_windows(
             tmp_path / "mutagen.yml",
             tmp_path / "mutagen.yml.tmp",

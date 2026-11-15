@@ -1,4 +1,5 @@
 import os
+import sys
 from uuid import uuid4
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -43,8 +44,14 @@ def test_single_instance_socket_name_is_stable_and_does_not_expose_user_identity
             {"command": "open_session", "session_id": "exact-id-1"},
         ),
         (
-            {"command": "open_folder", "path": "C:/Users/test/Sync"},
-            {"command": "open_folder", "path": "C:/Users/test/Sync"},
+            {
+                "command": "open_folder",
+                "path": "C:/Users/test/Sync" if sys.platform == "win32" else "/home/test/Sync",
+            },
+            {
+                "command": "open_folder",
+                "path": "C:/Users/test/Sync" if sys.platform == "win32" else "/home/test/Sync",
+            },
         ),
     ],
 )

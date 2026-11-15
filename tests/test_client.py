@@ -120,8 +120,11 @@ def test_clean_executable_finds_windows_program_files_install_after_path(tmp_pat
     monkeypatch.setattr(mutagen_client.sys, "platform", "win32")
     monkeypatch.setattr(mutagen_client.shutil, "which", lambda _name: None)
     monkeypatch.setenv("ProgramFiles", str(tmp_path / "Program Files"))
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path / "Program Files"))
     monkeypatch.delenv("ProgramW6432", raising=False)
+    monkeypatch.delenv("PROGRAMW6432", raising=False)
     monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.delenv("LocalAppData", raising=False)
 
     assert mutagen_client.clean_executable("") == str(binary)
 

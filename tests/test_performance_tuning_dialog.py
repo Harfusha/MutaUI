@@ -17,12 +17,14 @@ def qapp():
 
 
 def test_performance_assistant_returns_optional_local_suggestions(qapp, tmp_path):
+    # Simulate identical filesystem for root and mutagen staging
     dialog = PerformanceTuningDialog(
         {
             "watch": {"mode": "force-poll", "pollingInterval": 5},
             "scanMode": "full",
             "alpha": {"protocol": 0, "path": str(tmp_path)},
-        }
+        },
+        path_device_fn=lambda _p: 1,
     )
 
     assert dialog.result() != QDialog.DialogCode.Accepted
@@ -38,6 +40,26 @@ def test_performance_assistant_returns_optional_local_suggestions(qapp, tmp_path
     dialog.apply_button.click()
 
     assert dialog.result() == QDialog.DialogCode.Accepted
+
+
+def test_performance_assistant_recommends_neighboring_on_cross_device(qapp, tmp_path):
+    # Simulate cross-device mismatch between root (dev 1) and staging (dev 2)
+    def device_mock(p):
+        return 1 if str(tmp_path) in str(p) else 2
+
+    dialog = PerformanceTuningDialog(
+        {
+            "watch": {"mode": "force-poll", "pollingInterval": 5},
+            "scanMode": "full",
+            "alpha": {"protocol": 0, "path": str(tmp_path)},
+        },
+        path_device_fn=device_mock,
+    )
+    assert dialog.recommendations == {
+        "watch.mode": "portable",
+        "scanMode": "accelerated",
+        "alpha.stageMode": "neighboring",
+    }
 
 
 def test_stale_session_disables_suggestions_and_explains_refresh(qapp, tmp_path):

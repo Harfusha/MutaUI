@@ -50,8 +50,11 @@ def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tu
     output.append(points[-1])
     # Rare bucket-size rounding can exceed the requested bound by up to two.
     # Recurse once if necessary, keeping temporal extrema from stage one.
-    if len(output) > max_points:
+    if len(output) > max_points and len(output) < len(points):
         return envelope_downsample(output, max_points)
+    if len(output) > max_points:
+        step = (len(output) - 1) / (max_points - 1)
+        return [output[int(round(i * step))] for i in range(max_points - 1)] + [output[-1]]
     return output
 
 

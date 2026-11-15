@@ -25,7 +25,7 @@ if sys.platform == "win32":
         replace_file.restype = wintypes.BOOL
         if not replace_file(str(target), str(temporary), str(backup), 0x00000001, None, None):
             raise ctypes.WinError(ctypes.get_last_error())
-else:
+else:  # pragma: no cover
 
     def replace_file_win32(target: Path, temporary: Path, backup: Path) -> None:
         """Fallback for non-Windows platforms."""

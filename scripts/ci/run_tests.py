@@ -62,10 +62,13 @@ def run_tests(
         "-m",
         "pytest",
         "-q",
-        "tests",
         "--tb=short",
         f"--junitxml={junit_xml}",
     ]
+
+    has_explicit_path = bool(pytest_args and any(not a.startswith("-") for a in pytest_args))
+    if not has_explicit_path:
+        cmd.append("tests")
 
     if not skip_coverage_check:
         cmd.extend(
@@ -146,10 +149,15 @@ def main(argv: list[str] | None = None) -> int:
         nargs="*",
         help="Extra arguments passed directly to pytest",
     )
-    args = parser.parse_args(argv)
+    args, extra_args = parser.parse_known_args(argv)
+    forwarded_args = list(args.pytest_extra_args)
+    if extra_args:
+        if extra_args[0] == "--":
+            extra_args = extra_args[1:]
+        forwarded_args.extend(extra_args)
 
     return run_tests(
-        pytest_args=args.pytest_extra_args if args.pytest_extra_args else None,
+        pytest_args=forwarded_args if forwarded_args else None,
         junit_xml=args.junit_xml,
         coverage_xml=args.coverage_xml,
         min_branch_coverage=args.min_branch_coverage,

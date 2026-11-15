@@ -1,6 +1,7 @@
 """JUnit XML validator for MutaUI CI gates.
 
-Validates that all required test suites ran without failures, errors, or skips.
+Validates that all required test suites ran without failures, errors, or skips,
+and enforces structural integrity between suite metadata and testcase elements.
 """
 
 from __future__ import annotations
@@ -30,27 +31,79 @@ def parse_and_validate_junit(xml_path: str | Path, allow_skipped: bool = False) 
         raise ValueError(f"Failed to parse JUnit XML report at {path}: {exc}") from exc
 
     root = tree.getroot()
+    if root is None or (root.tag != "testsuites" and root.tag != "testsuite"):
+        raise ValueError(
+            f"Invalid JUnit XML structure at {path}: root tag must be <testsuites> or <testsuite>, got <{getattr(root, 'tag', None)}>"
+        )
+
+    # Prevent double-counting by avoiding recursive iter("testsuite") on nested containers
+    if root.tag == "testsuites":
+        suites = root.findall("testsuite")
+        if not suites:
+            # Fallback if testsuites has no direct child testsuite but has testcases
+            suites = [root]
+    else:
+        suites = [root]
+
     total_tests = 0
     failures = 0
     errors = 0
     skipped = 0
 
-    # Handles both <testsuites> container and root <testsuite>
-    suites = list(root.iter("testsuite"))
-    if not suites and root.tag == "testsuite":
-        suites = [root]
-
     for suite in suites:
-        total_tests += int(suite.get("tests", 0))
-        failures += int(suite.get("failures", 0))
-        errors += int(suite.get("errors", 0))
-        skipped += int(suite.get("skipped", 0))
+        cases = suite.findall("testcase")
+        has_cases = len(cases) > 0
 
-    # Also double check testcase elements directly in case suite attributes are missing
+        suite_tests_attr = suite.get("tests")
+        suite_failures_attr = suite.get("failures")
+        suite_errors_attr = suite.get("errors")
+        suite_skipped_attr = suite.get("skipped")
+
+        suite_tests = int(suite_tests_attr) if suite_tests_attr is not None else len(cases)
+        suite_failures = int(suite_failures_attr) if suite_failures_attr is not None else 0
+        suite_errors = int(suite_errors_attr) if suite_errors_attr is not None else 0
+        suite_skipped = int(suite_skipped_attr) if suite_skipped_attr is not None else 0
+
+        if has_cases:
+            # Verify consistency between declared metadata and actual testcase elements
+            actual_cases = len(cases)
+            if suite_tests_attr is not None and suite_tests != actual_cases:
+                raise ValueError(
+                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
+                    f"declared tests={suite_tests} but found {actual_cases} <testcase> elements in {path}."
+                )
+
+            actual_failures = sum(1 for c in cases if c.find("failure") is not None)
+            if suite_failures_attr is not None and suite_failures != actual_failures:
+                raise ValueError(
+                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
+                    f"declared failures={suite_failures} but found {actual_failures} <failure> elements in {path}."
+                )
+
+            actual_errors = sum(1 for c in cases if c.find("error") is not None)
+            if suite_errors_attr is not None and suite_errors != actual_errors:
+                raise ValueError(
+                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
+                    f"declared errors={suite_errors} but found {actual_errors} <error> elements in {path}."
+                )
+
+            actual_skipped = sum(1 for c in cases if c.find("skipped") is not None)
+            if suite_skipped_attr is not None and suite_skipped != actual_skipped:
+                raise ValueError(
+                    f"JUnit XML inconsistent summary in suite '{suite.get('name', 'default')}': "
+                    f"declared skipped={suite_skipped} but found {actual_skipped} <skipped> elements in {path}."
+                )
+
+        total_tests += suite_tests
+        failures += suite_failures
+        errors += suite_errors
+        skipped += suite_skipped
+
+    # If suite attributes were completely absent and total_tests is 0, check root cases
     if total_tests == 0:
-        cases = list(root.iter("testcase"))
-        total_tests = len(cases)
-        for case in cases:
+        all_cases = list(root.iter("testcase"))
+        total_tests = len(all_cases)
+        for case in all_cases:
             if case.find("failure") is not None:
                 failures += 1
             if case.find("error") is not None:
@@ -81,24 +134,24 @@ def parse_and_validate_junit(xml_path: str | Path, allow_skipped: bool = False) 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate JUnit XML test results.")
-    parser.add_argument("junit_xml", type=Path, help="Path to junit XML file")
+    parser = argparse.ArgumentParser(description="Validate JUnit XML reports for CI gatekeeping.")
+    parser.add_argument("xml_path", type=Path, help="Path to JUnit XML file")
     parser.add_argument(
         "--allow-skipped",
         action="store_true",
-        help="Allow skipped tests instead of failing",
+        help="Allow skipped tests (default: disallow)",
     )
     args = parser.parse_args(argv)
 
     try:
-        summary = parse_and_validate_junit(args.junit_xml, allow_skipped=args.allow_skipped)
+        summary = parse_and_validate_junit(args.xml_path, allow_skipped=args.allow_skipped)
         print(
-            f"JUnit XML valid: {summary['tests']} tests passed, "
+            f"JUnit validation passed: {summary['tests']} tests executed, "
             f"0 failures, 0 errors, {summary['skipped']} skipped."
         )
         return 0
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"Error: {exc}", file=sys.stderr)
         return 1
 
 

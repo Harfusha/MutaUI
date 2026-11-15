@@ -47,6 +47,7 @@ def _inspect_local_root(
     mode: str | None,
     mutagen_data_dir: Path,
     session_stage_mode: str,
+    path_device_fn: Any = None,
 ) -> tuple[list[dict[str, str]], dict[str, Any] | None]:
     raw_path = endpoint.get("path")
     if not isinstance(raw_path, str) or not raw_path.strip():
@@ -93,8 +94,9 @@ def _inspect_local_root(
         if _is_network_path(mutagen_data_dir):
             warnings.append({"code": "staging_path_network_uninspected", "side": side})
             return warnings, None
-        root_device = _path_device(root)
-        stage_device = _path_device(mutagen_data_dir)
+        device_fn = path_device_fn or _path_device
+        root_device = device_fn(root)
+        stage_device = device_fn(mutagen_data_dir)
         if root_device is not None and stage_device is not None and root_device != stage_device:
             warnings.append({"code": "cross_filesystem_staging", "side": side})
             return warnings, {"key": f"{side}.stageMode", "value": "neighboring"}
@@ -105,6 +107,7 @@ def analyze_sync_session(
     session: Mapping[str, Any] | None,
     *,
     mutagen_data_dir: str | Path | None = None,
+    path_device_fn: Any = None,
 ) -> dict[str, Any]:
     """Return advisory text keys, local proposal values, and bounded path findings.
 
@@ -155,6 +158,7 @@ def analyze_sync_session(
             mode=mode,
             mutagen_data_dir=data_dir,
             session_stage_mode=session_stage_mode,
+            path_device_fn=path_device_fn,
         )
         warnings.extend(endpoint_warnings)
         if stage_recommendation:

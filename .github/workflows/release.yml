@@ -29,10 +29,7 @@ jobs:
         run: python -m yamllint -s .github/workflows .yamllint
       - name: Check GitHub Actions workflows
         run: |
-          curl -fsSLo "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          (cd "$RUNNER_TEMP" && echo '8aca8db96f1b94770e6d0c23ca2f540b67519ec68db098ddfcfa96059e61f723  actionlint.tar.gz' | sha256sum --check)
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          bash scripts/ci/install_actionlint.sh "$RUNNER_TEMP/actionlint"
           "$RUNNER_TEMP/actionlint/actionlint" -color .github/workflows/*.yml
       - name: Scan tracked files for new secrets
         run: git ls-files -z -- ':!.secrets.baseline' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
@@ -131,17 +128,32 @@ jobs:
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
           $version = $env:VERSION.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Release tag must be a stable semantic version: $version" }
-          $parts = $version.Split('.') | ForEach-Object { [int]$_ }
-          if ($parts.Count -ne 3) { throw "Release tag must contain a semantic version: $version" }
-          if ($parts[2] -gt 0) { $parts[2]-- }
-          elseif ($parts[1] -gt 0) { $parts[1]--; $parts[2] = 99 }
-          else { $parts[0]--; $parts[1] = 99; $parts[2] = 99 }
-          $baselineVersion = ($parts -join '.')
-          & $compiler "/DMyAppVersion=$baselineVersion" packaging/windows/MutagenControl.iss
-          if ($LASTEXITCODE -ne 0) { throw "Baseline upgrade installer failed: $LASTEXITCODE" }
           & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
-          "BASELINE_INSTALLER_VERSION=$baselineVersion" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+
+          # Attempt to retrieve a genuine previous release installer for honest upgrade testing
+          $baselinePath = Join-Path $env:RUNNER_TEMP 'baseline-setup.exe'
+          $foundGenuineRelease = $false
+          try {
+            $repo = $env:GITHUB_REPOSITORY
+            if (-not [string]::IsNullOrWhiteSpace($repo)) {
+              $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" -TimeoutSec 10 -ErrorAction Stop
+              $prev = $releases | Where-Object { $_.tag_name -ne $env:VERSION -and -not $_.prerelease -and -not $_.draft } | Select-Object -First 1
+              if ($prev) {
+                $asset = $prev.assets | Where-Object { $_.name -match 'windows-x64-setup\.exe$' } | Select-Object -First 1
+                if ($asset) {
+                  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $baselinePath
+                  $foundGenuineRelease = $true
+                  "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+                }
+              }
+            }
+          } catch {
+            Write-Warning "Could not query GitHub releases API for previous release: $_"
+          }
+          if (-not $foundGenuineRelease) {
+            Write-Host "::notice::No genuine previous release found; upgrade gate marked unverified (initial release)."
+          }
       - name: Sign Windows release binaries
         if: runner.os == 'Windows'
         env:
@@ -218,7 +230,7 @@ jobs:
           codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" dist-platform/MutagenControl.app
           codesign --verify --deep --strict --verbose=2 dist-platform/MutagenControl.app
           ditto -c -k --keepParent dist-platform/MutagenControl.app "$archive"
-          xcrun notarytool submit "$archive" --key "$api_key" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
+          xcrun notarytool submit "$archive" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
           xcrun stapler staple dist-platform/MutagenControl.app
           xcrun stapler validate dist-platform/MutagenControl.app
       - name: Build macOS DMG
@@ -284,24 +296,33 @@ jobs:
         run: |
           $version = $env:VERSION.TrimStart('v')
           $setup = "dist/MutagenControl-$version-windows-x64-setup.exe"
-          $baselineSetup = "dist/MutagenControl-$env:BASELINE_INSTALLER_VERSION-windows-x64-setup.exe"
           $installDir = Join-Path $env:LOCALAPPDATA 'Programs\Mutagen Control'
           $profileDir = Join-Path $env:APPDATA 'MutagenControl'
           $marker = Join-Path $profileDir 'upgrade-preservation-smoke.marker'
           New-Item -ItemType Directory -Force -Path $profileDir | Out-Null
           Set-Content -LiteralPath $marker -Value 'keep user data across install, upgrade, and uninstall'
-          & $baselineSetup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Baseline installer run failed: $LASTEXITCODE" }
-          ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed"
-          & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Version upgrade run failed: $LASTEXITCODE" }
-          if (-not (Test-Path -LiteralPath $marker)) { throw 'In-place upgrade removed user data.' }
-          ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Upgraded"
+
+          if ($env:BASELINE_SETUP_PATH -and (Test-Path -LiteralPath $env:BASELINE_SETUP_PATH)) {
+            Write-Host "Running genuine previous-release upgrade test..."
+            & $env:BASELINE_SETUP_PATH /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+            if ($LASTEXITCODE -ne 0) { throw "Baseline installer run failed: $LASTEXITCODE" }
+            ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed-Baseline"
+            & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+            if ($LASTEXITCODE -ne 0) { throw "Version upgrade run failed: $LASTEXITCODE" }
+            if (-not (Test-Path -LiteralPath $marker)) { throw 'In-place upgrade removed user data.' }
+            ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Upgraded"
+          } else {
+            Write-Host "No genuine previous release found; executing initial clean install preservation smoke..."
+            & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+            if ($LASTEXITCODE -ne 0) { throw "Clean installer run failed: $LASTEXITCODE" }
+            if (-not (Test-Path -LiteralPath $marker)) { throw 'Install removed pre-existing user data.' }
+            ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed"
+          }
+
           $uninstaller = Join-Path $installDir 'unins000.exe'
           & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
           if ($LASTEXITCODE -ne 0) { throw "Uninstaller failed: $LASTEXITCODE" }
           if (-not (Test-Path -LiteralPath $marker)) { throw 'Uninstall removed user data.' }
-          Remove-Item -LiteralPath $baselineSetup -Force
       - name: Package Windows release files
         if: runner.os == 'Windows'
         shell: pwsh

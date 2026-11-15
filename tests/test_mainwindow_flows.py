@@ -2068,7 +2068,10 @@ def test_language_switch_updates_navigation_page_header_and_returns_to_english(
     assert window.page_name.text() == "Přehled"
     assert window.page_caption.text() == "Aktuální stav synchronizace a využití prostředků systému"
     assert window.nav[5].text().endswith("Nastavení")
-    assert window.nav[5].toolTip() == "Ctrl+6 · Nastavení aplikace"
+    expected_nav_shortcut = app_module.QKeySequence("Ctrl+6").toString(
+        app_module.QKeySequence.SequenceFormat.NativeText
+    )
+    assert window.nav[5].toolTip() == f"{expected_nav_shortcut} · Nastavení aplikace"
     assert window.mode_selector.itemText(0) == "Základní"
     assert window.nav_section_labels["overview"].text() == "PRACOVNÍ PROSTOR"
     assert window.side_state.text() == "●  Služba Mutagen je spuštěna"
@@ -6043,25 +6046,26 @@ def test_main_self_test_writes_result_and_returns_explicit_status(
 def test_main_forwards_launch_request_or_opens_primary_window(monkeypatch, primary):
     events = []
 
+    class FakeSignal:
+        def connect(self, callback):
+            self.callback = callback
+
     class FakeApplication:
         def __init__(self, _args):
             events.append("application")
+            self.aboutToQuit = FakeSignal()
 
-        def setApplicationName(self, _name):
+        def setApplicationName(self, name):
             pass
 
-        def setOrganizationName(self, _name):
+        def setOrganizationName(self, name):
             pass
 
-        def setQuitOnLastWindowClosed(self, _value):
+        def setQuitOnLastWindowClosed(self, value):
             pass
 
         def exec(self):
             return 7
-
-    class FakeSignal:
-        def connect(self, callback):
-            self.callback = callback
 
     class FakeBroker:
         def __init__(self):

@@ -48,10 +48,14 @@ Description: Desktop control center for the Mutagen CLI
 CONTROL
 dpkg-deb --root-owner-group --build "$DEB" "$OUTPUT_DIR/MutagenControl-$VERSION-linux-amd64.deb"
 
+APPIMAGETOOL_VERSION="1.9.1"
+APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+
 if [ ! -x "$STAGING/appimagetool.AppImage" ]; then
   curl --fail --location --retry 3 \
     --output "$STAGING/appimagetool.AppImage" \
-    https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+    "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+  echo "${APPIMAGETOOL_SHA256}  $STAGING/appimagetool.AppImage" | sha256sum --check
 fi
 chmod 755 "$STAGING/appimagetool.AppImage"
 ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$STAGING/appimagetool.AppImage" \

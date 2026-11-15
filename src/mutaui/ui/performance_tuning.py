@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -71,6 +72,8 @@ class PerformanceTuningDialog(QDialog):
         *,
         stale: bool = False,
         parent: QWidget | None = None,
+        mutagen_data_dir: str | Path | None = None,
+        path_device_fn: Any = None,
     ) -> None:
         super().__init__(parent)
         czech = active_language().casefold().startswith("cs")
@@ -115,7 +118,11 @@ class PerformanceTuningDialog(QDialog):
         self.setWindowTitle(self._copy["title"])
         self.setMinimumSize(650, 470)
         self.recommendations: dict[str, object] = {}
-        self.advice = analyze_sync_session(session)
+        self.advice = analyze_sync_session(
+            session,
+            mutagen_data_dir=mutagen_data_dir,
+            path_device_fn=path_device_fn,
+        )
         if stale:
             self.advice["warnings"].append({"code": "snapshot_stale"})
         self.recommendations = {} if stale else dict(self.advice["recommendations"])

@@ -28,7 +28,7 @@ if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
 # Register both before importing any PySide module so Windows cannot resolve
 # a same-named DLL from another Python or Qt installation on PATH.
 _DLL_DIRECTORY_HANDLES = []
-if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):
+if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):  # pragma: no cover
     _dll_directories = (Path(sys._MEIPASS) / "PySide6", Path(sys._MEIPASS) / "shiboken6")
     os.environ["PATH"] = os.pathsep.join(
         [
@@ -42,11 +42,11 @@ if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):
             _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(_dll_directory)))
 
 from PySide6.QtCore import (
-    QAbstractTableModel,
+    QAbstractTableModel,  # noqa: F401
     QEvent,
-    QModelIndex,
+    QModelIndex,  # noqa: F401
     QObject,
-    QPointF,
+    QPointF,  # noqa: F401
     QRectF,
     QRunnable,
     Qt,
@@ -59,16 +59,16 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QAction,
-    QBrush,
+    QBrush,  # noqa: F401
     QColor,
     QDesktopServices,
     QFont,
     QGuiApplication,
     QIcon,
     QKeySequence,
-    QLinearGradient,
+    QLinearGradient,  # noqa: F401
     QPainter,
-    QPainterPath,
+    QPainterPath,  # noqa: F401
     QPen,
     QPixmap,
     QShortcut,
@@ -107,7 +107,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QTextBrowser,
     QTimeEdit,
-    QToolTip,
+    QToolTip,  # noqa: F401
     QVBoxLayout,
     QWidget,
     QWizard,
@@ -219,7 +219,12 @@ from mutaui.ui.preferences import (
 )
 from mutaui.ui.project_viewer import NativeProjectManagerDialog
 from mutaui.ui.settings_registry import setting_tooltip
-from performance import PollBackoff, RefreshGate, envelope_downsample, nearest_time_index
+from performance import (  # noqa: F401
+    PollBackoff,
+    RefreshGate,
+    envelope_downsample,
+    nearest_time_index,
+)
 from portable_bundle import (
     PREFERENCE_KEYS,
     PortableBundleError,
@@ -355,55 +360,14 @@ def write_settings(data: dict) -> None:
     save_settings_file(settings_path(), data)
 
 
-def set_localized_text(
-    widget: QLabel | QPushButton | QCheckBox | QAction,
-    text: str,
-    *,
-    czech: str | None = None,
-) -> None:
-    widget.setProperty("mutauiSourceText", text)
-    widget.setProperty("mutauiCzechText", czech or translate_text(text, "cs"))
-    localized = widget.property("mutauiCzechText") if active_language() == "cs" else text
-    widget.setText(localized)
-
-
-_LOCALIZED_ITEM_ROLE = int(Qt.ItemDataRole.UserRole) + 73
-
-
-def set_localized_tooltip(widget: QWidget | QTableWidgetItem, text: str) -> None:
-    czech_tooltip = translate_text(text, "cs")
-    if not isinstance(widget, QWidget):
-        widget.setToolTip(czech_tooltip if active_language() == "cs" else text)
-        return
-    widget.setProperty("mutauiSourceTooltip", text)
-    widget.setProperty("mutauiCzechTooltip", czech_tooltip)
-    localized = widget.property("mutauiCzechTooltip") if active_language() == "cs" else text
-    widget.setToolTip(localized)
-
-
-def set_localized_placeholder(widget: QWidget, text: str) -> None:
-    widget.setProperty("mutauiSourcePlaceholder", text)
-    widget.setProperty("mutauiCzechPlaceholder", translate_text(text, "cs"))
-    localized = widget.property("mutauiCzechPlaceholder") if active_language() == "cs" else text
-    widget.setPlaceholderText(localized)
-
-
-def set_localized_title(widget: QWidget, text: str, *, page_title: bool = False) -> None:
-    widget.setProperty("mutauiSourceTitle", text)
-    widget.setProperty("mutauiCzechTitle", translate_text(text, "cs"))
-    widget.setProperty("mutauiTitleKind", "page" if page_title else "window")
-    localized = widget.property("mutauiCzechTitle") if active_language() == "cs" else text
-    if page_title:
-        widget.setTitle(localized)
-    else:
-        widget.setWindowTitle(localized)
-
-
-def set_localized_accessible_name(widget: QWidget, text: str) -> None:
-    widget.setProperty("mutauiSourceAccessibleName", text)
-    widget.setProperty("mutauiCzechAccessibleName", translate_text(text, "cs"))
-    localized = widget.property("mutauiCzechAccessibleName") if active_language() == "cs" else text
-    widget.setAccessibleName(localized)
+from mutaui.ui.localization import (
+    _LOCALIZED_ITEM_ROLE,
+    set_localized_accessible_name,
+    set_localized_placeholder,
+    set_localized_text,
+    set_localized_title,
+    set_localized_tooltip,
+)
 
 
 def label(text: str, *, muted=False, size=None, bold=False) -> QLabel:
@@ -578,307 +542,9 @@ def session_detail_html(lines, separator_text):
     return '<div style="line-height:1.35;">' + "".join(rendered) + "</div>"
 
 
-class Graph(QWidget):
-    """Time-aware, interactive, zero-based line/area chart with optional second series."""
-
-    def __init__(self, color: str, parent=None, *, unit="number", secondary=None):
-        super().__init__(parent)
-        self.color = QColor(color)
-        self.secondary = QColor(secondary) if secondary else None
-        self.unit = unit
-        self.points = deque(maxlen=720)  # (timestamp, primary, secondary)
-        self.timestamps = []
-        self.hover_index = -1
-        self._geometry_revision = 0
-        self._geometry_cache = None
-        self.setMouseTracking(True)
-        self.setMinimumHeight(153)
-
-    def add(self, value: float, second=None, ts=None):
-        stamp = float(time.time() if ts is None else ts)
-        self.points.append((stamp, float(value), float(second) if second is not None else None))
-        self.timestamps = [point[0] for point in self.points]
-        self._geometry_revision += 1
-        self._geometry_cache = None
-        self.update()
-
-    def set_data(self, entries):
-        values = envelope_downsample(
-            (
-                (
-                    float(t),
-                    None if x is None else float(x),
-                    None if y is None else float(y),
-                )
-                for t, x, y in entries
-            ),
-            max_points=600,
-        )
-        if tuple(self.points) == tuple(values):
-            return
-        self.points = deque(values, maxlen=720)
-        self.timestamps = [point[0] for point in values]
-        self.hover_index = -1
-        self._geometry_revision += 1
-        self._geometry_cache = None
-        self.update()
-
-    def amount(self, value):
-        if value is None:
-            return "—"
-        if self.unit == "bytes_s":
-            return human_bytes(value) + "/s"
-        if self.unit == "memory":
-            return human_bytes(value)
-        if self.unit == "percent":
-            return f"{value:.1f} %"
-        return f"{value:.1f}" if abs(value) < 10 else f"{value:.0f}"
-
-    def _plot_rect(self):
-        return self.rect().adjusted(68, 15, -17, -30)
-
-    def mouseMoveEvent(self, event):
-        items = list(self.points)
-        area = self._plot_rect()
-        if not items or not area.contains(event.position().toPoint()):
-            self.hover_index = -1
-            QToolTip.hideText()
-            self.update()
-            return
-        beginning = items[0][0]
-        span = max(1.0, items[-1][0] - beginning)
-        fractional = max(0.0, min(1.0, (event.position().x() - area.left()) / max(1, area.width())))
-        target = beginning + fractional * span
-        new_index = nearest_time_index(self.timestamps, target)
-        if new_index == self.hover_index:
-            return  # Avoid repainting the entire chart for every mouse pixel.
-        self.hover_index = new_index
-        t, first, second = items[self.hover_index]
-        value = self.amount(first)
-        if self.secondary:
-            value += " / " + self.amount(second)
-        QToolTip.showText(
-            event.globalPosition().toPoint(),
-            datetime.fromtimestamp(t).strftime("%d.%m. %H:%M:%S") + "\n" + value,
-            self,
-        )
-        self.update()
-
-    def leaveEvent(self, event):
-        self.hover_index = -1
-        QToolTip.hideText()
-        self.update()
-        super().leaveEvent(event)
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = self._plot_rect()
-        if rect.width() <= 0 or rect.height() <= 0:
-            p.end()
-            return
-        items = list(self.points)
-        upper = (
-            max(
-                [x for _, x, _ in items if x is not None]
-                + [y for _, _, y in items if y is not None]
-                + [1.0]
-            )
-            * 1.17
-        )
-        if self.unit == "percent" and upper <= 100:
-            upper = 100
-        axis_font = QFont("Segoe UI")
-        axis_font.setPixelSize(10)
-        p.setFont(axis_font)
-        for idx in range(5):
-            y = rect.bottom() - rect.height() * idx / 4
-            p.setPen(QPen(QColor("#2A3650"), 1, Qt.PenStyle.DashLine))
-            p.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
-            p.setPen(QColor(MUTED))
-            p.drawText(
-                QRectF(0, y - 9, rect.left() - 9, 18),
-                Qt.AlignmentFlag.AlignRight,
-                self.amount(upper * idx / 4),
-            )
-        if not items:
-            p.setPen(QColor(MUTED))
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Waiting for the first samples…")
-            p.end()
-            return
-        start, end = items[0][0], items[-1][0]
-        span = max(1.0, end - start)
-        p.setPen(QColor(MUTED))
-        timefmt = "%H:%M:%S" if span < 1200 else "%d.%m. %H:%M"
-        p.drawText(
-            QRectF(rect.left(), rect.bottom() + 8, 165, 18),
-            Qt.AlignmentFlag.AlignLeft,
-            datetime.fromtimestamp(start).strftime(timefmt),
-        )
-        p.drawText(
-            QRectF(rect.right() - 165, rect.bottom() + 8, 165, 18),
-            Qt.AlignmentFlag.AlignRight,
-            datetime.fromtimestamp(end).strftime(timefmt),
-        )
-        cache_key = (self._geometry_revision, rect.left(), rect.top(), rect.width(), rect.height())
-        if self._geometry_cache is None or self._geometry_cache[0] != cache_key:
-            # Path generation involves hundreds of QPointF/QPainterPath allocations.
-            # Cache it until new data or a resize; hover only redraws the cursor.
-            render_items = (
-                items if len(items) > 1 else [items[0], (items[0][0] + 1, items[0][1], items[0][2])]
-            )
-
-            def coords(index):
-                points = []
-                for t, x, y in render_items:
-                    value = x if index == 1 else y
-                    if value is None:
-                        points.append(None)
-                        continue
-                    points.append(
-                        QPointF(
-                            rect.left() + max(0, min(1, (t - start) / span)) * rect.width(),
-                            rect.bottom() - max(0, value / upper) * rect.height(),
-                        )
-                    )
-                return points
-
-            max_gap = max(15.0, span / 110.0)
-
-            def paths(points):
-                runs = []
-                current = []
-                previous_index = None
-                for i, point in enumerate(points):
-                    if point is None:
-                        if current:
-                            runs.append(current)
-                            current = []
-                        previous_index = None
-                        continue
-                    if (
-                        current
-                        and previous_index is not None
-                        and render_items[i][0] - render_items[previous_index][0] > max_gap
-                    ):
-                        runs.append(current)
-                        current = []
-                    current.append(point)
-                    previous_index = i
-                if current:
-                    runs.append(current)
-                output = []
-                for run in runs:
-                    if not run:
-                        continue
-                    path = QPainterPath(run[0])
-                    for point in run[1:]:
-                        path.lineTo(point)
-                    area = QPainterPath(path)
-                    if len(run) > 1:
-                        area.lineTo(QPointF(run[-1].x(), rect.bottom()))
-                        area.lineTo(QPointF(run[0].x(), rect.bottom()))
-                        area.closeSubpath()
-                    output.append((path, area, run[-1], len(run)))
-                return output
-
-            primary_pts = coords(1)
-            primary_paths = paths(primary_pts)
-            secondary_paths = paths(coords(2)) if self.secondary else []
-            self._geometry_cache = (cache_key, primary_pts, primary_paths, secondary_paths)
-        else:
-            _, primary_pts, primary_paths, secondary_paths = self._geometry_cache
-
-        def draw_cached(paths_to_draw, color, fill):
-            for line_path, area_path, last_point, count in paths_to_draw:
-                if count == 1:
-                    p.setPen(Qt.PenStyle.NoPen)
-                    p.setBrush(color)
-                    p.drawEllipse(last_point, 3.5, 3.5)
-                    continue
-                if fill:
-                    gradient = QLinearGradient(0, rect.top(), 0, rect.bottom())
-                    top = QColor(color)
-                    top.setAlpha(78)
-                    bottom = QColor(color)
-                    bottom.setAlpha(3)
-                    gradient.setColorAt(0, top)
-                    gradient.setColorAt(1, bottom)
-                    p.fillPath(area_path, QBrush(gradient))
-                p.setPen(QPen(color, 2.2))
-                p.setBrush(Qt.BrushStyle.NoBrush)
-                p.drawPath(line_path)
-            if paths_to_draw:
-                p.setPen(Qt.PenStyle.NoPen)
-                p.setBrush(color)
-                p.drawEllipse(paths_to_draw[-1][2], 3.5, 3.5)
-
-        draw_cached(primary_paths, self.color, True)
-        if self.secondary:
-            draw_cached(secondary_paths, self.secondary, False)
-        if 0 <= self.hover_index < len(primary_pts):
-            point = primary_pts[self.hover_index]
-            # Vertical + horizontal crosshair
-            p.setPen(QPen(QColor("#71809C"), 1, Qt.PenStyle.DashLine))
-            p.drawLine(QPointF(point.x(), rect.top()), QPointF(point.x(), rect.bottom()))
-            p.drawLine(QPointF(rect.left(), point.y()), QPointF(rect.right(), point.y()))
-            p.setBrush(self.color)
-            p.setPen(QPen(QColor("#121C2D"), 2))
-            p.drawEllipse(point, 5, 5)
-        p.end()
-
-
-class HealthRing(QWidget):
-    """High-DPI, zero-timer health indicator; repaint only on status changes."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.ui_language = active_language()
-        self.total = 0
-        self.healthy = 0
-        self.setFixedSize(122, 122)
-        set_localized_tooltip(self, "Share of sessions with no reported issues")
-        set_localized_accessible_name(self, "Share of sessions with no reported issues")
-
-    def set_ui_language(self, language: str) -> None:
-        self.ui_language = language
-        self.update()
-
-    def set_health(self, total: int, problem: int):
-        total = max(0, int(total))
-        healthy = max(0, total - max(0, int(problem)))
-        if (total, healthy) != (self.total, self.healthy):
-            self.total, self.healthy = total, healthy
-            self.update()
-
-    def paintEvent(self, event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        area = QRectF(18, 18, 86, 86)
-        p.setPen(QPen(QColor("#314354"), 10, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-        p.drawArc(area, 0, 360 * 16)
-        if self.total:
-            fraction = self.healthy / self.total
-            ring_color = QColor(TEAL if fraction >= 0.9 else AMBER if fraction >= 0.7 else RED)
-            p.setPen(QPen(ring_color, 10, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawArc(area, 90 * 16, -round(fraction * 360 * 16))
-        p.setPen(QColor(TEXT))
-        value_font = QFont("Segoe UI")
-        value_font.setPixelSize(23)
-        value_font.setWeight(QFont.Weight.Bold)
-        p.setFont(value_font)
-        value = f"{self.healthy / self.total:.0%}" if self.total else "—"
-        p.drawText(QRectF(12, 44, 98, 30), Qt.AlignmentFlag.AlignCenter, value)
-        p.setPen(QColor(MUTED))
-        caption_font = QFont("Segoe UI")
-        caption_font.setPixelSize(9)
-        p.setFont(caption_font)
-        p.drawText(
-            QRectF(20, 77, 82, 13),
-            Qt.AlignmentFlag.AlignCenter,
-            translate_text("no issues", self.ui_language),
-        )
-        p.end()
+from mutaui.ui.widgets.graph import Graph
+from mutaui.ui.widgets.health_ring import HealthRing
+from mutaui.ui.widgets.session_table import SessionTableModel
 
 
 class WorkerSignals(QObject):
@@ -900,143 +566,6 @@ class Worker(QRunnable):
             self.signals.error.emit(str(exc))
         finally:
             self.signals.finished.emit()
-
-
-class SessionTableModel(QAbstractTableModel):
-    """Small model/view data adapter for the frequently refreshed session lists."""
-
-    def __init__(self, headers, kind, *, dashboard=False, parent=None):
-        super().__init__(parent)
-        self.headers = list(headers)
-        self.kind = kind
-        self.dashboard = dashboard
-        self.sessions = []
-        self.favorites = set()
-        self.sort_column = -1
-        self.sort_order = Qt.SortOrder.AscendingOrder
-        self.ui_language = active_language()
-
-    def set_ui_language(self, language: str) -> None:
-        self.ui_language = language
-        if self.rowCount() and self.columnCount():
-            self.dataChanged.emit(
-                self.index(0, 0),
-                self.index(self.rowCount() - 1, self.columnCount() - 1),
-                [Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole],
-            )
-        if self.columnCount():
-            self.headerDataChanged.emit(Qt.Orientation.Horizontal, 0, self.columnCount() - 1)
-
-    def rowCount(self, parent=None):
-        return 0 if parent is not None and parent.isValid() else len(self.sessions)
-
-    def columnCount(self, parent=None):
-        return 0 if parent is not None and parent.isValid() else len(self.headers)
-
-    def _cells(self, session):
-        status, description = classify(session, self.kind)
-        identifier = str(session.get("identifier") or "")
-        name = session.get("name") or identifier[:22] or "(unnamed)"
-        if identifier in self.favorites:
-            name = "★ " + name
-        source = endpoint_text(session.get("alpha" if self.kind == "sync" else "source"), self.kind)
-        target = endpoint_text(
-            session.get("beta" if self.kind == "sync" else "destination"), self.kind
-        )
-        extra = (
-            conflict_count(session) + problem_count(session)
-            if self.kind == "sync"
-            else session.get("openConnections", 0)
-        )
-        return (
-            [name, description, source, target] + ([] if self.dashboard else [str(extra)]),
-            status,
-            identifier,
-            extra,
-        )
-
-    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
-        if not index.isValid() or not (0 <= index.row() < len(self.sessions)):
-            return None
-        session = self.sessions[index.row()]
-        cells, status, identifier, extra = self._cells(session)
-        value = cells[index.column()]
-        if role == Qt.ItemDataRole.DisplayRole or role == Qt.ItemDataRole.ToolTipRole:
-            if index.column() == 1:
-                return translate_text(value, self.ui_language)
-            return value
-        if role == Qt.ItemDataRole.UserRole and index.column() == 0:
-            return identifier
-        if role == Qt.ItemDataRole.ForegroundRole and index.column() == 1:
-            color = {"active": TEAL, "busy": BLUE, "error": RED, "paused": AMBER}.get(status)
-            return QColor(color) if color else None
-        if role == Qt.ItemDataRole.FontRole and index.column() == 0:
-            font = QFont()
-            font.setBold(True)
-            return font
-        if role == Qt.ItemDataRole.UserRole + 1:
-            return (
-                extra
-                if index.column() == len(cells) - 1 and not self.dashboard
-                else value.casefold()
-            )
-        return None
-
-    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
-        if role == Qt.ItemDataRole.DisplayRole and orientation == Qt.Orientation.Horizontal:
-            header = self.headers[section] if 0 <= section < len(self.headers) else None
-            return translate_text(header, self.ui_language) if header else None
-        return None
-
-    def set_sessions(self, sessions, favorites=()):
-        self.beginResetModel()
-        self.sessions = list(sessions)
-        self.favorites = set(favorites)
-        if self.sort_column >= 0:
-            self._sort_rows()
-        self.endResetModel()
-
-    def row_for_identifier(self, identifier):
-        return next(
-            (
-                row
-                for row, session in enumerate(self.sessions)
-                if session.get("identifier") == identifier
-            ),
-            -1,
-        )
-
-    def sort(self, column, order=Qt.SortOrder.AscendingOrder):
-        if not 0 <= column < len(self.headers):
-            return
-        persistent = self.persistentIndexList()
-        identity = [(index.data(Qt.ItemDataRole.UserRole), index.column()) for index in persistent]
-        self.layoutAboutToBeChanged.emit()
-        self.sort_column = column
-        self.sort_order = order
-        self._sort_rows()
-        updated = [
-            self.index(self.row_for_identifier(identifier), col)
-            if self.row_for_identifier(identifier) >= 0
-            else QModelIndex()
-            for identifier, col in identity
-        ]
-        self.changePersistentIndexList(persistent, updated)
-        self.layoutChanged.emit()
-
-    def _sort_rows(self):
-        reverse = self.sort_order == Qt.SortOrder.DescendingOrder
-
-        def sort_key(session):
-            cells, _status, _identifier, extra = self._cells(session)
-            if not self.dashboard and self.sort_column == len(cells) - 1:
-                try:
-                    return int(extra)
-                except (TypeError, ValueError):
-                    return 0
-            return cells[self.sort_column].casefold()
-
-        self.sessions.sort(key=sort_key, reverse=reverse)
 
 
 class SessionDialog(QDialog):
@@ -4006,26 +3535,58 @@ class MainWindow(QMainWindow):
         al.addWidget(warning_lbl)
         l.addWidget(actions)
         registry, reg = card()
-        reg.addWidget(label("Start Automatically at Windows Sign-In", size=16, bold=True))
+        autostart_titles = {"win32": "Start Automatically at Windows Sign-In"}
         reg.addWidget(
             label(
+                autostart_titles.get(sys.platform, "Daemon Autostart Configuration"),
+                size=16,
+                bold=True,
+            )
+        )
+        autostart_descriptions = {
+            "win32": (
                 "Native daemon registration through the Mutagen CLI (HKCU Run). "
-                "After sign-in, only unpaused sessions resume; paused sessions remain paused.",
+                "After sign-in, only unpaused sessions resume; paused sessions remain paused."
+            ),
+            "darwin": (
+                "On macOS, Mutagen daemon can be launched via launchd user agents "
+                "(~/Library/LaunchAgents). Mutagen CLI's built-in register command is Windows-only."
+            ),
+        }
+        reg.addWidget(
+            label(
+                autostart_descriptions.get(
+                    sys.platform,
+                    "On Linux, Mutagen daemon can be managed via systemd user services "
+                    "or XDG autostart. Mutagen CLI's built-in register command is Windows-only.",
+                ),
                 muted=True,
             )
         )
         row = QHBoxLayout()
         reg_btn = button("Register", partial(self.daemon_action, "register"), kind="primary")
+        reg_tooltips = {
+            "win32": "Adds the Mutagen daemon to Windows Run so it can start automatically at sign-in.",
+        }
         set_localized_tooltip(
             reg_btn,
-            "Adds the Mutagen daemon to Windows Run so it can start automatically at sign-in.",
+            reg_tooltips.get(
+                sys.platform, "Built-in daemon register command is only supported on Windows."
+            ),
         )
+        reg_btn.setEnabled(sys.platform == "win32")
         row.addWidget(reg_btn)
         unreg_btn = button("Unregister", partial(self.daemon_action, "unregister"), kind="danger")
+        unreg_tooltips = {
+            "win32": "Removes daemon registration — the daemon will not start automatically at sign-in",
+        }
         set_localized_tooltip(
             unreg_btn,
-            "Removes daemon registration — the daemon will not start automatically at sign-in",
+            unreg_tooltips.get(
+                sys.platform, "Built-in daemon unregister command is only supported on Windows."
+            ),
         )
+        unreg_btn.setEnabled(sys.platform == "win32")
         row.addWidget(unreg_btn)
         row.addStretch()
         reg.addLayout(row)
@@ -5742,9 +5303,11 @@ class MainWindow(QMainWindow):
             "unsupported": "Automatické spuštění: zjištění je dostupné pouze ve Windows",
         }.get(snap.registration, "Registrace: stav není známý")
         set_localized_text(self.register_message, registration_en, czech=registration_cs)
-        self.register_message.setToolTip(
-            snap.registration_command or "Registry entry in HKCU\\...\\Run\\Mutagen"
+        autostart_hints = {"win32": "Registry entry in HKCU\\...\\Run\\Mutagen"}
+        default_autostart_hint = autostart_hints.get(
+            sys.platform, "launchd (macOS) or systemd --user / XDG (Linux)"
         )
+        self.register_message.setToolTip(snap.registration_command or default_autostart_hint)
         available = bool(snap.binary)
         if not available:
             set_localized_text(self.side_state, "●  Mutagen CLI not found")

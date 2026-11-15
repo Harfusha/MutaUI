@@ -78,6 +78,34 @@ def test_session_model_invalid_indexes_unknown_colors_and_sort_guards(qapp):
     assert model.data(model.index(4, 0)) is None
     assert model.data(model.index(0, 1), Qt.ItemDataRole.ForegroundRole) is None
     assert model.data(model.index(0, 4), Qt.ItemDataRole.UserRole + 1) == 0
+    assert model.rowCount(model.index(0, 0)) == 0
+    assert model.columnCount(model.index(0, 0)) == 0
+    assert model.headerData(99, Qt.Orientation.Horizontal) is None
+    assert model.headerData(0, Qt.Orientation.Vertical) is None
+    assert model.data(model.index(0, 1), Qt.ItemDataRole.ToolTipRole) is not None
+    assert model.data(model.index(0, 0), Qt.ItemDataRole.ToolTipRole) is not None
+
+    # Status colors
+    for s_dict in (
+        {"identifier": "s1", "status": 6},  # active
+        {"identifier": "s2", "status": 4},  # busy
+        {"identifier": "s3", "paused": True},  # paused
+        {"identifier": "s4", "lastError": "err"},  # error
+    ):
+        m = SessionTableModel(["NAME", "STATUS"], "sync")
+        m.set_sessions([s_dict])
+        color = m.data(m.index(0, 1), Qt.ItemDataRole.ForegroundRole)
+        assert color is not None
+
+    # FontRole and unhandled role
+    font = model.data(model.index(0, 0), Qt.ItemDataRole.FontRole)
+    assert font is not None and font.bold()
+    assert model.data(model.index(0, 0), 9999) is None
+
+    # set_ui_language on populated model and set_sessions with active sort
+    model.set_ui_language("cs")
+    model.sort_column = 0
+    model.set_sessions([{"identifier": "sort1", "name": "Sort1", "status": 6}])
     dashboard = SessionTableModel(["NAME", "STATUS"], "sync", dashboard=True)
     dashboard.set_sessions([{"identifier": "x", "name": "MiXeD", "status": 6}])
     assert dashboard.data(dashboard.index(0, 0), Qt.ItemDataRole.UserRole + 1) == "mixed"

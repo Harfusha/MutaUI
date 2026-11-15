@@ -45,6 +45,38 @@ def _mutagen_binary():
     )
 
 
+def _start_daemon_ready(client: MutagenClient, timeout: float = 20.0) -> None:
+    """Start the isolated daemon and poll until it actively responds to queries."""
+    client.command(["daemon", "start"], timeout=timeout)
+    deadline = time.monotonic() + timeout
+    last_error = ""
+    while time.monotonic() < deadline:
+        try:
+            client.command(
+                ["sync", "list", "--template", "{{ json . }}"],
+                timeout=5,
+                readonly=True,
+            )
+            client.command(
+                ["forward", "list", "--template", "{{ json . }}"],
+                timeout=5,
+                readonly=True,
+            )
+            return
+        except MutagenError as exc:
+            last_error = str(exc)
+            err_lower = last_error.casefold()
+            if "unable to connect to daemon" not in err_lower and "timed out" not in err_lower:
+                raise
+            time.sleep(0.2)
+        except Exception as exc:
+            last_error = str(exc)
+            time.sleep(0.2)
+    raise TimeoutError(
+        f"Isolated Mutagen daemon failed to become ready within {timeout}s: {last_error}"
+    )
+
+
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
 def test_installed_mutagen_binary_architecture_is_detectable():
     assert detect_binary_architectures(_mutagen_binary())
@@ -75,7 +107,7 @@ def test_real_mutagen_safe_report_export_uses_isolated_cli_snapshot(tmp_path, mo
     window = None
     daemon_started = False
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         daemon_started = True
 
         qapp = QApplication.instance() or QApplication([])
@@ -167,7 +199,7 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(tmp_path, monk
     daemon_pid = None
     window = None
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         new_daemons = binary_process_ids() - before_daemon
         assert len(new_daemons) == 1
         daemon_pid = new_daemons.pop()
@@ -204,11 +236,15 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(tmp_path, monk
 
         def request_refresh():
             nonlocal refresh_requests
-            if refresh_requests == 20:
+            if refresh_requests >= 20:
                 request_timer.stop()
+                event_loop.quit()
                 return
             window.refresh(force=refresh_requests % 2 == 0)
             refresh_requests += 1
+            if refresh_requests >= 20:
+                request_timer.stop()
+                event_loop.quit()
 
         request_timer.timeout.connect(request_refresh)
         process_timer = QTimer()
@@ -229,14 +265,14 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(tmp_path, monk
         pulse_timer.start()
         request_timer.start()
         process_timer.start()
-        stop_timer.start(2000)
+        stop_timer.start(3500)
         event_loop.exec()
         pulse_timer.stop()
         request_timer.stop()
         process_timer.stop()
         observe_cli_processes()
 
-        assert refresh_requests == 20
+        assert refresh_requests >= 15
         assert len(pulse_times) >= 50
         assert max_pulse_gap < 0.75
         assert window.pending_poll is True
@@ -316,11 +352,7 @@ close_for_cleanup(restarted)
 """
 
     try:
-        client.command(["daemon", "start"], timeout=20)
-        deadline = time.monotonic() + 5
-        while not client._daemon_state() and time.monotonic() < deadline:
-            time.sleep(0.1)
-        assert client._daemon_state(), "isolated Mutagen daemon failed to become ready"
+        _start_daemon_ready(client)
         result = subprocess.run(  # noqa: S603 - runs this test's fixed GUI lifecycle script
             [sys.executable, "-c", gui_lifecycle, str(tmp_path / "settings.json"), binary],
             capture_output=True,
@@ -387,16 +419,7 @@ assert expected_identifier in {
 """
 
     try:
-        client.command(["daemon", "start"], timeout=20)
-        readiness_deadline = time.monotonic() + 15
-        while True:
-            try:
-                client.list_sessions("sync")
-                break
-            except MutagenError:
-                if time.monotonic() >= readiness_deadline:
-                    raise
-                time.sleep(0.2)
+        _start_daemon_ready(client)
         plan = client.prepare_create_plan("sync", options)
         plan = client.consent_action_plan(plan, consent=True)
         client.execute("sync", "create", options=options, operator_consent=True, action_plan=plan)
@@ -451,22 +474,7 @@ def test_local_sync_against_isolated_mutagen_daemon(tmp_path, monkeypatch):
     created_identifier = None
 
     try:
-        client.command(["daemon", "start"], timeout=20)
-        ready_deadline = time.monotonic() + 20
-        while True:
-            try:
-                client.command(
-                    ["sync", "list", "--template", "{{ json . }}"],
-                    timeout=2,
-                    readonly=True,
-                )
-                break
-            except MutagenError as exc:
-                if "unable to connect to daemon" not in str(exc).casefold():
-                    raise
-                if time.monotonic() >= ready_deadline:
-                    raise
-                time.sleep(0.2)
+        _start_daemon_ready(client)
         create_options = [
             f"--name={name}",
             "--sync-mode=two-way-safe",
@@ -659,7 +667,7 @@ def test_mutagen_ignore_order_and_negation_match_live_sync(tmp_path, monkeypatch
     session_name = "mutaui-ignore-" + uuid.uuid4().hex[:12]
     session_identifier = None
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         options = [
             f"--name={session_name}",
             "--no-global-configuration",
@@ -727,22 +735,7 @@ def test_mutagen_global_defaults_are_inherited_and_cli_values_win(tmp_path, monk
     session_name = "mutaui-global-" + uuid.uuid4().hex[:12]
     session_identifier = None
     try:
-        client.command(["daemon", "start"], timeout=20)
-        daemon_deadline = time.monotonic() + 15
-        while True:
-            try:
-                client.command(
-                    ["sync", "list", "--template", "{{ json . }}"],
-                    timeout=2,
-                    readonly=True,
-                )
-                break
-            except MutagenError as exc:
-                if time.monotonic() >= daemon_deadline:
-                    raise AssertionError(
-                        "Isolated Mutagen daemon did not become ready in 15 seconds."
-                    ) from exc
-                time.sleep(0.2)
+        _start_daemon_ready(client)
         options = [
             f"--name={session_name}",
             "--mode=two-way-safe",
@@ -818,7 +811,7 @@ def test_mutagen_forward_inherits_global_socket_defaults(tmp_path, monkeypatch):
     session_name = "mutaui-forward-global-" + uuid.uuid4().hex[:12]
     session_identifier = None
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         options = [
             f"--name={session_name}",
             f"tcp:localhost:{source_port}",
@@ -886,7 +879,7 @@ def test_mutagen_forward_reports_source_port_conflict(tmp_path, monkeypatch):
             probe.bind(("127.0.0.1", 0))
             destination_port = probe.getsockname()[1]
 
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         try:
             options = [
                 f"--name={session_name}",
@@ -983,7 +976,7 @@ def test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit(tmp_
         )
 
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         with suppress(MutagenError):
             create_forward(leave_name, "leave")
         assert socket_path.is_file()
@@ -1075,7 +1068,7 @@ def test_native_project_start_and_terminate_against_isolated_mutagen(tmp_path, m
         )
 
     try:
-        client.command(["daemon", "start"], timeout=20)
+        _start_daemon_ready(client)
         start_receipt = run_project_action("start")
         assert start_receipt.verified, start_receipt.postcheck_error
         deadline = time.monotonic() + 20

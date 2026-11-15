@@ -145,12 +145,12 @@ def _known_mutagen_locations() -> tuple[Path, ...]:
     """Return bounded, conventional install locations without scanning user files."""
     home = Path.home()
     if sys.platform == "win32":
-        locations = [
-            Path(root) / "Mutagen" / "mutagen.exe"
-            for root in (os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMW6432"))
-            if root
+        candidates = [
+            os.environ.get("PROGRAMFILES") or os.environ.get("ProgramFiles"),  # noqa: SIM112
+            os.environ.get("PROGRAMW6432") or os.environ.get("ProgramW6432"),  # noqa: SIM112
         ]
-        local_app_data = os.environ.get("LOCALAPPDATA")
+        locations = [Path(root) / "Mutagen" / "mutagen.exe" for root in candidates if root]
+        local_app_data = os.environ.get("LOCALAPPDATA") or os.environ.get("LocalAppData")  # noqa: SIM112
         if local_app_data:
             locations.append(Path(local_app_data) / "Programs" / "Mutagen" / "mutagen.exe")
         locations.append(home / "bin" / "mutagen.exe")
