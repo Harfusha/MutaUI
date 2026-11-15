@@ -35,6 +35,20 @@ jobs:
         run: python scripts/ci/verify_secret_detection.py
       - name: Scan tracked files for new secrets
         run: git ls-files -z -- ':!.secrets.baseline' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+      - name: Report baseline change without exposing candidate values
+        if: failure()
+        run: |
+          if ! git diff --quiet -- .secrets.baseline; then
+            echo "The scanner normalized/updated the hashed baseline. Review the attached baseline artifact."
+          fi
+      - name: Save scanner baseline diff for forensic review
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutaui-secret-baseline-review
+          path: .secrets.baseline
+          if-no-files-found: error
+          retention-days: 3
   checks:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
