@@ -131,29 +131,6 @@ jobs:
           & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
 
-          # Attempt to retrieve a genuine previous release installer for honest upgrade testing
-          $baselinePath = Join-Path $env:RUNNER_TEMP 'baseline-setup.exe'
-          $foundGenuineRelease = $false
-          try {
-            $repo = $env:GITHUB_REPOSITORY
-            if (-not [string]::IsNullOrWhiteSpace($repo)) {
-              $releases = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" -TimeoutSec 10 -ErrorAction Stop
-              $prev = $releases | Where-Object { $_.tag_name -ne $env:VERSION -and -not $_.prerelease -and -not $_.draft } | Select-Object -First 1
-              if ($prev) {
-                $asset = $prev.assets | Where-Object { $_.name -match 'windows-x64-setup\.exe$' } | Select-Object -First 1
-                if ($asset) {
-                  Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $baselinePath
-                  $foundGenuineRelease = $true
-                  "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
-                }
-              }
-            }
-          } catch {
-            Write-Warning "Could not query GitHub releases API for previous release: $_"
-          }
-          if (-not $foundGenuineRelease) {
-            Write-Host "::notice::No genuine previous release found; upgrade gate marked unverified (initial release)."
-          }
       - name: Sign Windows release binaries
         if: runner.os == 'Windows'
         env:
@@ -290,6 +267,38 @@ jobs:
         run: |
           ./scripts/run-self-test.ps1 -Executable "./dist-fast/MutagenControl/MutagenControl.exe" -Label "Fast"
           ./scripts/run-self-test.ps1 -Executable "./dist/MutagenControl.exe" -Label "Single"
+      - name: Select and authenticate genuine previous Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $selectionJson = & python scripts/ci/select_upgrade_baseline.py --repo $env:GITHUB_REPOSITORY --current-tag $env:VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify the release history; refusing to skip upgrade acceptance.' }
+          $selection = $selectionJson | ConvertFrom-Json
+          if ($selection.mode -eq 'initial') {
+            Write-Host '::notice::No published older stable release exists. First-release install smoke applies.'
+          } elseif ($selection.mode -eq 'upgrade') {
+            $baselinePath = Join-Path $env:RUNNER_TEMP 'mutaui-previous-signed-setup.exe'
+            Invoke-WebRequest -Uri $selection.url -OutFile $baselinePath -TimeoutSec 180
+            if ((Get-Item -LiteralPath $baselinePath).Length -lt 50000) {
+              throw 'Previous Windows installer is unexpectedly small.'
+            }
+            if ($selection.sha256) {
+              $observed = (Get-FileHash -Algorithm SHA256 -LiteralPath $baselinePath).Hash.ToLowerInvariant()
+              if ($observed -ne $selection.sha256) {
+                throw 'Previous installer SHA-256 does not match the authenticated release manifest.'
+              }
+            }
+            $signed = Get-AuthenticodeSignature -LiteralPath $baselinePath
+            if ($signed.Status -ne 'Valid') {
+              throw "Previous Windows installer has an invalid Authenticode signature: $($signed.Status)"
+            }
+            "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+            "BASELINE_RELEASE_TAG=$($selection.tag)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
+          } else {
+            throw "Unexpected release selection mode: $($selection.mode)"
+          }
       - name: Verify Windows install and upgrade data preservation
         if: runner.os == 'Windows'
         shell: pwsh
