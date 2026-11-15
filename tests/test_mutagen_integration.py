@@ -4,9 +4,9 @@ import json
 import os
 import shutil
 import socket
-import tempfile
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from contextlib import suppress
