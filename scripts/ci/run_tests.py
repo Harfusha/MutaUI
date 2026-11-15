@@ -90,9 +90,7 @@ def run_tests(
             arg == "--basetemp" or arg.startswith("--basetemp=") for arg in (pytest_args or [])
         )
         if sys.platform in {"darwin", "linux"} and not custom_basetemp:
-            temp_base = cleanup.enter_context(
-                tempfile.TemporaryDirectory(prefix="mu-", dir="/tmp")
-            )
+            temp_base = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="mu-", dir="/tmp"))
             cmd.append(f"--basetemp={temp_base}")
 
         if pytest_args:
