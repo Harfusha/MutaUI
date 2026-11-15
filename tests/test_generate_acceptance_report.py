@@ -170,9 +170,7 @@ def test_parse_junit_rejects_impossible_totals(tmp_path: Path):
 
 def test_parse_coverage_rejects_impossible_counters(tmp_path: Path):
     coverage = tmp_path / "bad-coverage.xml"
-    coverage.write_text(
-        '<coverage branches-covered="101" branches-valid="100" line-rate="0.99"/>'
-    )
+    coverage.write_text('<coverage branches-covered="101" branches-valid="100" line-rate="0.99"/>')
     import pytest
 
     with pytest.raises(ValueError, match="invalid counters"):
@@ -187,7 +185,7 @@ def test_parse_junit_counts_direct_parent_cases_with_nested_children(tmp_path: P
         '<testsuite tests="2" failures="1" errors="0" skipped="0">'
         '<testcase name="child-a"/>'
         '<testcase name="child-b"><failure message="oops"/></testcase>'
-        '</testsuite></testsuite></testsuites>',
+        "</testsuite></testsuite></testsuites>",
         encoding="utf-8",
     )
     assert parse_junit(junit) == {
@@ -206,9 +204,7 @@ def test_ci_evidence_rejects_tampered_junit_and_wrong_run(tmp_path: Path, monkey
     coverage = tmp_path / "coverage.xml"
     junit.write_text('<testsuite tests="1" failures="0" errors="0" skipped="0"/>')
     coverage.write_text('<coverage branches-covered="96" branches-valid="100"/>')
-    monkeypatch.setattr(
-        "scripts.ci.evidence_manifest.verified_git_sha", lambda: "expected-commit"
-    )
+    monkeypatch.setattr("scripts.ci.evidence_manifest.verified_git_sha", lambda: "expected-commit")
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", "expected-commit")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
@@ -232,9 +228,7 @@ def test_ci_evidence_refuses_wrong_checkout(tmp_path: Path, monkeypatch):
     coverage = tmp_path / "coverage.xml"
     junit.write_text("<testsuite tests='1'/>")
     coverage.write_text("<coverage branches-covered='96' branches-valid='100'/>")
-    monkeypatch.setattr(
-        "scripts.ci.evidence_manifest.verified_git_sha", lambda: "actual"
-    )
+    monkeypatch.setattr("scripts.ci.evidence_manifest.verified_git_sha", lambda: "actual")
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", "expected")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
@@ -251,7 +245,12 @@ def test_report_requires_matching_ci_evidence_even_when_xml_passes(tmp_path: Pat
     monkeypatch.setattr(
         module,
         "get_git_info",
-        lambda: {"commit": "verified", "short_commit": "verified", "branch": "PR", "dirty": "false"},
+        lambda: {
+            "commit": "verified",
+            "short_commit": "verified",
+            "branch": "PR",
+            "dirty": "false",
+        },
     )
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", "verified")

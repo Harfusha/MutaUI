@@ -55,7 +55,7 @@ def test_appimage_manifest_is_only_source_of_download_metadata() -> None:
     assert url.startswith("https://github.com/AppImage/appimagetool/releases/download/")
     script = Path("packaging/linux/build-packages.sh").read_text(encoding="utf-8")
     assert "appimage_manifest.py" in script
-    assert 'sha256sum --check' in script
+    assert "sha256sum --check" in script
 
 
 @pytest.mark.parametrize(

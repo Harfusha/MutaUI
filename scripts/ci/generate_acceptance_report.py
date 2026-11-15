@@ -86,9 +86,7 @@ def parse_junit(junit_path: Path) -> dict[str, int]:
             has_nested_suite = bool(suite.findall("testsuite"))
             for key in totals:
                 totals[key] += (
-                    fallback[key]
-                    if has_nested_suite
-                    else int(suite.get(key, fallback[key]))
+                    fallback[key] if has_nested_suite else int(suite.get(key, fallback[key]))
                 )
     else:
         totals.update(case_totals(list(root.iter("testcase"))))
@@ -99,9 +97,7 @@ def parse_junit(junit_path: Path) -> dict[str, int]:
         raise ValueError("JUnit failures, errors and skips exceed test count")
     return {
         **totals,
-        "passed": (
-            totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]
-        ),
+        "passed": (totals["tests"] - totals["failures"] - totals["errors"] - totals["skipped"]),
     }
 
 

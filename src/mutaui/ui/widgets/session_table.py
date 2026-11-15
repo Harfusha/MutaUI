@@ -251,7 +251,10 @@ class SessionTableModel(QAbstractTableModel):
             self._id_to_row = {identifier: index for index, identifier in enumerate(new_ids)}
             if self.columnCount():
                 for index, item in enumerate(presentation):
-                    if item.identifier in old_presentation and old_presentation[item.identifier] != item:
+                    if (
+                        item.identifier in old_presentation
+                        and old_presentation[item.identifier] != item
+                    ):
                         self.dataChanged.emit(
                             self.index(index, 0),
                             self.index(index, self.columnCount() - 1),

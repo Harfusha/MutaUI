@@ -348,7 +348,7 @@ def test_validate_junit_nested_suites_include_direct_parent_testcases(tmp_path: 
         '<testcase name="top"/>'
         '<testsuite tests="2" failures="0" errors="0" skipped="0">'
         '<testcase name="a"/><testcase name="b"/>'
-        '</testsuite></testsuite></testsuites>',
+        "</testsuite></testsuite></testsuites>",
         encoding="utf-8",
     )
     result = parse_and_validate_junit(report)

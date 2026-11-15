@@ -290,10 +290,7 @@ def test_many_insertions_fall_back_to_bounded_reset(qapp):
     resets = QSignalSpy(model.modelReset)
     model.set_sessions(
         [{"identifier": "stable", "name": "Stable"}]
-        + [
-            {"identifier": f"new-{index}", "name": f"New {index}"}
-            for index in range(65)
-        ]
+        + [{"identifier": f"new-{index}", "name": f"New {index}"} for index in range(65)]
     )
     assert resets.count() == 1
     assert model.rowCount() == 66

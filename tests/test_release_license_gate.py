@@ -22,8 +22,7 @@ def test_release_license_gate_rejects_placeholder(tmp_path: Path) -> None:
 
 def test_release_license_gate_accepts_owner_supplied_terms_and_notices(tmp_path: Path) -> None:
     (tmp_path / "LICENSE").write_text(
-        "Custom legal text supplied by the project owner, for automated shape testing only. "
-        * 4,
+        "Custom legal text supplied by the project owner, for automated shape testing only. " * 4,
         encoding="utf-8",
     )
     (tmp_path / "NOTICE.md").write_text("Third-party notices " * 10, encoding="utf-8")

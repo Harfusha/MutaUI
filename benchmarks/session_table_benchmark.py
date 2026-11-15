@@ -258,8 +258,7 @@ def run_benchmark(repetitions: int = REPETITIONS) -> dict[str, object]:
         for count in SESSION_SIZES
     }
     refresh_cases = {
-        str(count): measure_refresh_cases(count, repetitions)
-        for count in (1000, 5000)
+        str(count): measure_refresh_cases(count, repetitions) for count in (1000, 5000)
     }
     main_window = measure_main_window(1000, repetitions=repetitions)
     memory_after = process.memory_info()
