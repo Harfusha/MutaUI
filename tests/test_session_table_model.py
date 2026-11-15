@@ -224,3 +224,76 @@ def test_sort_preserves_persistent_index_for_duplicate_ids(qapp) -> None:
     assert persistent.row() == 1
     assert persistent.column() == 1
     assert model.index(1, 0).data() == "Zed"
+
+
+def test_incremental_insert_and_remove_preserve_persistent_selection(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions(
+        [
+            {"identifier": "a", "name": "Alpha"},
+            {"identifier": "b", "name": "Beta"},
+        ]
+    )
+    selected_status = QPersistentModelIndex(model.index(1, 1))
+    inserted = QSignalSpy(model.rowsInserted)
+    removed = QSignalSpy(model.rowsRemoved)
+    resets = QSignalSpy(model.modelReset)
+
+    model.set_sessions(
+        [
+            {"identifier": "a", "name": "Alpha"},
+            {"identifier": "new", "name": "New"},
+            {"identifier": "b", "name": "Beta"},
+        ]
+    )
+    assert inserted.count() == 1
+    assert resets.count() == 0
+    assert selected_status.isValid()
+    assert selected_status.row() == 2
+    assert selected_status.column() == 1
+    assert model.row_for_identifier("b") == 2
+
+    model.set_sessions(
+        [
+            {"identifier": "a", "name": "Alpha"},
+            {"identifier": "b", "name": "Beta edited"},
+        ]
+    )
+    assert removed.count() == 1
+    assert resets.count() == 0
+    assert selected_status.row() == 1
+    assert model.index(1, 0).data() == "Beta edited"
+
+
+def test_duplicate_ids_still_use_safe_reset(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions([{"identifier": "a", "name": "Alpha"}])
+    resets = QSignalSpy(model.modelReset)
+    model.set_sessions(
+        [
+            {"identifier": "a", "name": "Alpha"},
+            {"identifier": "a", "name": "Duplicate"},
+        ]
+    )
+    assert resets.count() == 1
+
+
+def test_many_insertions_fall_back_to_bounded_reset(qapp):
+    from PySide6.QtTest import QSignalSpy
+
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    model.set_sessions([{"identifier": "stable", "name": "Stable"}])
+    resets = QSignalSpy(model.modelReset)
+    model.set_sessions(
+        [{"identifier": "stable", "name": "Stable"}]
+        + [
+            {"identifier": f"new-{index}", "name": f"New {index}"}
+            for index in range(65)
+        ]
+    )
+    assert resets.count() == 1
+    assert model.rowCount() == 66

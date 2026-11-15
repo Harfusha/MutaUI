@@ -160,10 +160,11 @@ class SessionTableModel(QAbstractTableModel):
         sessions: Sequence[dict[str, Any]],
         favorites: Sequence[str] = (),
     ) -> None:
-        """Update changed rows without discarding selection on stable ID snapshots.
+        """Preserve stable native session identity across polling refreshes.
 
-        Structural changes and duplicate/blank identifiers intentionally take the
-        conservative full-reset path. No native session state is modified.
+        Incremental changes preserve persistent indexes for small ordered
+        insertions/removals. Reorders, duplicates and large replacements
+        conservatively reset the model. No native session state is modified.
         """
         incoming = list(sessions)
         previous = self._presentation_cache
@@ -202,6 +203,55 @@ class SessionTableModel(QAbstractTableModel):
             if self.columnCount():
                 for index, (before, after) in enumerate(zip(previous, presentation, strict=True)):
                     if before != after:
+                        self.dataChanged.emit(
+                            self.index(index, 0),
+                            self.index(index, self.columnCount() - 1),
+                            [],
+                        )
+            return
+
+        # For small structural deltas where surviving IDs retain their relative
+        # order, use Qt insert/remove signals rather than invalidating the whole
+        # view (including scroll position and persistent selection indexes).
+        old_set = set(old_ids)
+        new_set = set(new_ids)
+        identity_is_unambiguous = (
+            bool(old_ids)
+            and bool(new_ids)
+            and all(old_ids)
+            and all(new_ids)
+            and len(old_set) == len(old_ids)
+            and len(new_set) == len(new_ids)
+        )
+        old_survivors = tuple(identifier for identifier in old_ids if identifier in new_set)
+        new_survivors = tuple(identifier for identifier in new_ids if identifier in old_set)
+        change_count = len(old_set - new_set) + len(new_set - old_set)
+        if identity_is_unambiguous and old_survivors == new_survivors and change_count <= 64:
+            old_presentation = {item.identifier: item for item in previous}
+            for index in range(len(self.sessions) - 1, -1, -1):
+                if old_ids[index] not in new_set:
+                    self.beginRemoveRows(QModelIndex(), index, index)
+                    del self.sessions[index]
+                    del self._presentation_cache[index]
+                    self.endRemoveRows()
+
+            for index, identifier in enumerate(new_ids):
+                if (
+                    index < len(self._presentation_cache)
+                    and self._presentation_cache[index].identifier == identifier
+                ):
+                    continue
+                self.beginInsertRows(QModelIndex(), index, index)
+                self.sessions.insert(index, incoming[index])
+                self._presentation_cache.insert(index, presentation[index])
+                self.endInsertRows()
+
+            self.sessions = incoming
+            self._presentation_cache = presentation
+            self._id_to_row = {identifier: index for index, identifier in enumerate(new_ids)}
+            if self.columnCount():
+                for index, item in enumerate(presentation):
+                    if item.identifier in old_presentation and old_presentation[item.identifier] != item:
                         self.dataChanged.emit(
                             self.index(index, 0),
                             self.index(index, self.columnCount() - 1),
