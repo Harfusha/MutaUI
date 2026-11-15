@@ -55,6 +55,7 @@ def test_generate_report_produces_valid_markdown(tmp_path: Path):
     assert "Acceptance and Verification Evidence Report" in text
     assert "PASSED" in text
 
+
 def test_dirty_tree_does_not_claim_release_pass(tmp_path: Path, monkeypatch):
     """Even passing XML cannot certify a dirty checkout."""
     from scripts.ci import generate_acceptance_report as report_module
@@ -105,6 +106,7 @@ def test_ci_sha_mismatch_does_not_claim_pass(tmp_path: Path, monkeypatch):
     coverage.write_text('<coverage branches-covered="96" branches-valid="100" line-rate="0.97"/>')
     result = generate_report(junit, coverage, tmp_path / "report.md")
     assert "**Status:** **FAILED / GATES UNMET**" in result
+
 
 def test_unknown_git_provenance_cannot_pass_qa_gate(tmp_path: Path, monkeypatch):
     from scripts.ci import generate_acceptance_report as report_module
