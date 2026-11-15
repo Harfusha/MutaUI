@@ -10,6 +10,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -26,8 +27,11 @@ def file_sha256(path: Path) -> str:
 
 
 def verified_git_sha() -> str:
+    git_binary = shutil.which("git")
+    if not git_binary:
+        raise FileNotFoundError("Git executable required for verified provenance")
     return subprocess.check_output(
-        ["git", "rev-parse", "HEAD"],
+        [git_binary, "rev-parse", "HEAD"],
         text=True,
         stderr=subprocess.DEVNULL,
         timeout=10,

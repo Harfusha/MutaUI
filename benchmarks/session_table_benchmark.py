@@ -89,7 +89,7 @@ def measure_refresh_cases(count: int, repetitions: int = REPETITIONS) -> dict[st
     }
     target = count // 2
 
-    for i in range(repetitions):
+    for _ in range(repetitions):
         # Real applications receive a fresh native JSON snapshot every poll.
         start = time.perf_counter()
         model.set_sessions([dict(item) for item in original])
