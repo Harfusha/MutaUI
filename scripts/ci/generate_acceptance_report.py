@@ -16,7 +16,12 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from scripts.ci.evidence_manifest import verify_evidence_manifest
+try:
+    from scripts.ci.evidence_manifest import verify_evidence_manifest
+except ModuleNotFoundError:
+    # Direct 'python scripts/ci/generate_acceptance_report.py' uses its own
+    # directory as sys.path[0] instead of the repository root.
+    from evidence_manifest import verify_evidence_manifest
 
 
 def get_git_info() -> dict[str, str]:
