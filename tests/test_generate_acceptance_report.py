@@ -138,3 +138,41 @@ def test_unknown_git_provenance_cannot_pass_qa_gate(tmp_path: Path, monkeypatch)
     coverage.write_text('<coverage branches-covered="100" branches-valid="100" line-rate="1"/>')
     report = generate_report(junit, coverage, tmp_path / "out.md")
     assert "**Status:** **FAILED / GATES UNMET**" in report
+
+def test_parse_junit_nested_suites_do_not_double_count(tmp_path: Path):
+    junit = tmp_path / "nested.xml"
+    junit.write_text(
+        '<testsuites><testsuite tests="3" failures="0" errors="0" skipped="0">'
+        '<testsuite tests="2" failures="0" errors="0" skipped="0">'
+        '<testcase name="a"/><testcase name="b"/></testsuite>'
+        '<testsuite tests="1" failures="1" errors="0" skipped="0">'
+        '<testcase name="c"><failure/></testcase></testsuite></testsuite></testsuites>',
+        encoding="utf-8",
+    )
+    assert parse_junit(junit) == {
+        "tests": 3,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "passed": 2,
+    }
+
+
+def test_parse_junit_rejects_impossible_totals(tmp_path: Path):
+    junit = tmp_path / "bad.xml"
+    junit.write_text('<testsuite tests="1" failures="2" errors="0" skipped="0"/>')
+    import pytest
+
+    with pytest.raises(ValueError, match="exceed test count"):
+        parse_junit(junit)
+
+
+def test_parse_coverage_rejects_impossible_counters(tmp_path: Path):
+    coverage = tmp_path / "bad-coverage.xml"
+    coverage.write_text(
+        '<coverage branches-covered="101" branches-valid="100" line-rate="0.99"/>'
+    )
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid counters"):
+        parse_coverage(coverage)
