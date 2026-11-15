@@ -197,3 +197,69 @@ def test_parse_junit_counts_direct_parent_cases_with_nested_children(tmp_path: P
         "skipped": 0,
         "passed": 2,
     }
+
+
+def test_ci_evidence_rejects_tampered_junit_and_wrong_run(tmp_path: Path, monkeypatch):
+    from scripts.ci.evidence_manifest import create_evidence_manifest, verify_evidence_manifest
+
+    junit = tmp_path / "pytest.xml"
+    coverage = tmp_path / "coverage.xml"
+    junit.write_text('<testsuite tests="1" failures="0" errors="0" skipped="0"/>')
+    coverage.write_text('<coverage branches-covered="96" branches-valid="100"/>')
+    monkeypatch.setattr(
+        "scripts.ci.evidence_manifest.verified_git_sha", lambda: "expected-commit"
+    )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", "expected-commit")
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    create_evidence_manifest(junit, coverage)
+    assert verify_evidence_manifest(
+        junit, coverage, expected_commit="expected-commit", expected_run_id="12345"
+    )
+    assert not verify_evidence_manifest(
+        junit, coverage, expected_commit="expected-commit", expected_run_id="99999"
+    )
+    junit.write_text('<testsuite tests="2" failures="0" errors="0" skipped="0"/>')
+    assert not verify_evidence_manifest(
+        junit, coverage, expected_commit="expected-commit", expected_run_id="12345"
+    )
+
+
+def test_ci_evidence_refuses_wrong_checkout(tmp_path: Path, monkeypatch):
+    from scripts.ci.evidence_manifest import create_evidence_manifest
+
+    junit = tmp_path / "pytest.xml"
+    coverage = tmp_path / "coverage.xml"
+    junit.write_text("<testsuite tests='1'/>")
+    coverage.write_text("<coverage branches-covered='96' branches-valid='100'/>")
+    monkeypatch.setattr(
+        "scripts.ci.evidence_manifest.verified_git_sha", lambda: "actual"
+    )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", "expected")
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+    import pytest
+
+    with pytest.raises(ValueError, match="does not match"):
+        create_evidence_manifest(junit, coverage)
+    assert not (tmp_path / "evidence.json").exists()
+
+
+def test_report_requires_matching_ci_evidence_even_when_xml_passes(tmp_path: Path, monkeypatch):
+    from scripts.ci import generate_acceptance_report as module
+
+    monkeypatch.setattr(
+        module,
+        "get_git_info",
+        lambda: {"commit": "verified", "short_commit": "verified", "branch": "PR", "dirty": "false"},
+    )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", "verified")
+    monkeypatch.setenv("GITHUB_RUN_ID", "987")
+    junit = tmp_path / "pytest.xml"
+    coverage = tmp_path / "coverage.xml"
+    junit.write_text('<testsuite tests="1" failures="0" errors="0" skipped="0"/>')
+    coverage.write_text('<coverage branches-covered="96" branches-valid="100" line-rate="0.98"/>')
+    content = generate_report(junit, coverage, tmp_path / "report.md")
+    assert "**Status:** **FAILED / GATES UNMET**" in content
+    assert "**Test artifact SHA-256 provenance:** not verified" in content

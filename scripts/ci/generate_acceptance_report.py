@@ -16,6 +16,8 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from scripts.ci.evidence_manifest import verify_evidence_manifest
+
 
 def get_git_info() -> dict[str, str]:
     git_bin = shutil.which("git") or "git"
@@ -150,6 +152,12 @@ def generate_report(
     in_ci = os.environ.get("GITHUB_ACTIONS") == "true"
     expected_sha = os.environ.get("GITHUB_SHA")
     matches_ci_commit = bool(expected_sha and expected_sha == git_info["commit"])
+    evidence_verified = not in_ci or verify_evidence_manifest(
+        junit_path,
+        coverage_path,
+        expected_commit=git_info["commit"],
+        expected_run_id=os.environ.get("GITHUB_RUN_ID", ""),
+    )
     now_utc = datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     exit_status = (
@@ -162,6 +170,7 @@ def generate_report(
             and cov_stats["branch_coverage"] >= 0.95
             and clean
             and (not in_ci or matches_ci_commit)
+            and evidence_verified
         )
         else "FAILED / GATES UNMET"
     )
@@ -179,6 +188,7 @@ def generate_report(
 **Commit:** `{git_info["commit"]}` ({git_info["branch"]})  
 **Working tree dirty:** {git_info["dirty"]}  
 **CI SHA matches checkout:** {"yes" if matches_ci_commit else "not verified" if in_ci else "local only"}  
+**Test artifact SHA-256 provenance:** {"verified" if in_ci and evidence_verified else "not verified" if in_ci else "local only"}  
 **Status:** **{exit_status}**
 
 ## Environment Evidence
@@ -240,8 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    generate_report(args.junit_xml, args.coverage_xml, args.output)
-    return 0
+    generated = generate_report(args.junit_xml, args.coverage_xml, args.output)
+    return 1 if "**Status:** **FAILED / GATES UNMET**" in generated else 0
 
 
 if __name__ == "__main__":

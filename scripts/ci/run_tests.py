@@ -18,8 +18,10 @@ from pathlib import Path
 # Allow importing sibling modules in scripts/ci
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
+    from evidence_manifest import create_evidence_manifest
     from validate_junit import parse_and_validate_junit
 except ImportError:
+    from scripts.ci.evidence_manifest import create_evidence_manifest
     from scripts.ci.validate_junit import parse_and_validate_junit
 
 
@@ -56,6 +58,11 @@ def run_tests(
     allow_skipped_tests: bool = False,
 ) -> int:
     junit_xml.parent.mkdir(parents=True, exist_ok=True)
+    # A non-writing pytest process must never reuse a previous run's reports.
+    junit_xml.unlink(missing_ok=True)
+    (junit_xml.parent / "evidence.json").unlink(missing_ok=True)
+    if not skip_coverage_check:
+        coverage_xml.unlink(missing_ok=True)
 
     cmd = [
         sys.executable,
@@ -106,8 +113,10 @@ def run_tests(
     if not skip_coverage_check:
         try:
             validate_branch_coverage(coverage_xml, min_rate=min_branch_coverage)
+            evidence = create_evidence_manifest(junit_xml, coverage_xml)
+            print(f"[run_tests] Verified test evidence: {evidence}")
         except Exception as exc:
-            print(f"[run_tests] Coverage gate failure: {exc}", file=sys.stderr)
+            print(f"[run_tests] Coverage/evidence gate failure: {exc}", file=sys.stderr)
             return 1
 
     print("[run_tests] All CI quality gates PASSED.")

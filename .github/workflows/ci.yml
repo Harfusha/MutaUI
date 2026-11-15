@@ -122,6 +122,8 @@ jobs:
       - name: Run real OpenSSH host-key acceptance
         if: runner.os == 'Linux'
         run: python -m pytest -q integration/ssh --tb=short
+      - name: Produce SHA-bound test evidence report
+        run: python scripts/ci/generate_acceptance_report.py --output test-results/acceptance.md
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
@@ -129,6 +131,8 @@ jobs:
           name: mutaui-test-report-${{ matrix.os }}
           path: |
             test-results/pytest.xml
+            test-results/evidence.json
+            test-results/acceptance.md
             test-results/daemon-diagnostics/*.json
             coverage.xml
           if-no-files-found: warn
