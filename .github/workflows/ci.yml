@@ -186,7 +186,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           APPIMAGE_EXTRACT_AND_RUN=1 dist/MutagenControl-8.2.0-linux-x86_64.AppImage --self-test
-          sudo dpkg -i dist/MutagenControl-8.2.0-linux-amd64.deb
+          sudo apt-get install -y ./dist/MutagenControl-8.2.0-linux-amd64.deb
           python scripts/run_self_test.py /usr/bin/mutagen-control
       - name: Package macOS disk image
         if: runner.os == 'macOS'
