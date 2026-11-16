@@ -9,23 +9,12 @@ Status definitions:
 
 ## Environment verification summary
 
-- **Repository revision:** git commit `592cf7d5fbd3f015ef5354b9e8300da020d58b22` + follow-up audit resolution on branch `master`.
-- **Python environment:** Python 3.12.10, PySide6-Essentials 6.8.3, pytest 9.2.0, Coverage.py 7.1.0, Paramiko 5.0.0+, Ruff 0.11+.
-- **Mutagen CLI:** Official v0.18.1 installed at `.venv/Scripts/mutagen.exe`, SHA-256 verified against official release manifest.
-- **Test suite results:** **1,409 passed, 0 skipped, 0 failed in 104.97 s (exit code 0)** via `scripts/ci/run_tests.py`.
-- **Aggregate branch coverage:** **95.04%** (3,351 covered / 3,526 valid branches, strict Cobertura XML metric), exceeding the mandatory 95.0% threshold. Combined line/branch coverage: **96.13%** (11,875 statements, 11,454 executed).
-- **Packaged distributions:** Rebuilt both onedir (`dist-fast/MutagenControl/MutagenControl.exe`) and onefile (`dist/MutagenControl.exe`) with Python 3.12.10 and PyInstaller 6.12+. Both packages pass `scripts/run_self_test.py` and `scripts/run_crash_recovery_self_test.py`.
-- **Static & security audits:**
-  - `ruff check .`: all 258 files clean (exit code 0).
-  - `ruff format --check .`: all 258 files formatted (exit code 0).
-  - `mypy --strict src/mutaui`: 55 source files clean (exit code 0).
-  - `python verify_source.py`: OK (37 Python modules, 12 files, Qt layout checks).
-  - `python scripts/check_dependency_exports.py`: Pinned requirements exports match `pyproject.toml` and `uv.lock`.
-  - `pip-audit`: 0 known vulnerabilities across locked dependencies.
-  - `yamllint -s .github/workflows .yamllint`: 0 errors.
-  - `detect-secrets-hook`: clean baseline, exit code 0.
-  - `mkdocs build --strict`: site built with 0 errors.
-  - `git diff --check`: 0 errors.
+- **Hosted baseline:** `master` at `eda6078486ac4ca35c2802e50fb925da5dabb2fe`; [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) succeeded on that exact SHA across Windows, Ubuntu, macOS ARM, macOS Intel, and dependency/workflow/YAML/secret checks.
+- **Local environment:** Windows 11 x64, Python 3.12.10, PySide6-Essentials 6.8.3, pytest 9.2.0, Coverage.py 7.1.0.
+- **Local verification:** The run included isolated-daemon recovery coverage added after #81's SHA, so that new test is locally verified but was not part of hosted run #81.
+- **Test suite:** `uv run python scripts/ci/run_tests.py` passed **1,606 tests**, 0 failed/skipped. Branch coverage is **3,384/3,554 (95.22%)** and total coverage is **96.61%**.
+- **Static/security checks:** `uv run python scripts/ci/run_static_checks.py` passed, including Ruff, formatting, strict mypy across 95 source files, generated references, Markdown, strict MkDocs and source checks. Hosted security checks passed in #81. MkDocs reports audit/security pages outside navigation; the strict build succeeds.
+- **Platform limit:** Hosted build and package artifacts do not prove clean-user GUI installation, signing/notarization, OS integration, physical accessibility, or target-distribution support. These remain separate acceptance evidence.
 
 ---
 
@@ -40,8 +29,8 @@ Status definitions:
 | **AC-005** | Global changes affect new sessions only | Verified (local) | `sync_configuration.py`, `src/mutaui/adapters/yaml_config_editor.py` | `tests/test_effective_configuration.py`, `tests/test_mutagen_integration.py::test_mutagen_global_defaults_are_inherited_and_cli_values_win` | Broader native version matrix |
 | **AC-006** | Effective values, provenance, unknowns | Verified (local) | `sync_configuration.py`, `forward_configuration.py` | `tests/test_effective_configuration.py` (parameterized for all CLI overrides and unknown keys) | Expanded legacy CLI version coverage |
 | **AC-007** | Sync mode direction and destructive impact | Verified | `app.py::SessionDialog` | English and Czech mode descriptions for `two-way-safe`, `two-way-resolved`, `one-way-safe`, and `one-way-replica` with direction and risk warnings | None |
-| **AC-008** | Isolated local-to-local real sync | Verified (local) | `mutagen_client.py`, isolated test fixture | `tests/test_mutagen_integration.py::test_local_sync_against_isolated_mutagen_daemon` passes against official Mutagen 0.18.1 | Hosted CI execution on macOS and Linux |
-| **AC-009** | Wrong/verified SSH host key behavior | Verified (local) | `ssh_profiles.py` | `tests/test_ssh_profiles.py` (10 tests); `integration/ssh/test_host_key_acceptance.py` with real OpenSSH server | Hosted Linux runner execution |
+| **AC-008** | Isolated local-to-local real sync | Verified (hosted) | `mutagen_client.py`, isolated test fixture | `tests/test_mutagen_integration.py::test_local_sync_against_isolated_mutagen_daemon`; hosted run #81 passed on Windows, Ubuntu, macOS ARM and Intel | Real user-daemon / target-fleet walkthrough |
+| **AC-009** | Wrong/verified SSH host key behavior | Verified (hosted Linux) | `ssh_profiles.py` | `tests/test_ssh_profiles.py`; `integration/ssh/test_host_key_acceptance.py` with real OpenSSH server; hosted run #81 | Live OpenSSH acceptance on Windows and macOS |
 | **AC-010** | Replica requires high-risk confirmation | Verified | `app.py::SessionDialog`, `action_planner.py` | `tests/test_client.py`, `tests/test_mainwindow_flows.py`, `tests/test_native_project_dialog.py`; typed phrase and backup requirements | None |
 | **AC-011** | Existing settings read-only; proposal separate | Verified | `sync_configuration.py`, `forward_configuration.py`, `app.py` | `tests/test_settings.py` (proposal isolation), `tests/test_ui_formatting.py` | None |
 | **AC-012** | Unknown/unsupported fields block replacement | Verified | `src/mutaui/services/reconfiguration.py`, `replacement.py`, `replacement_command.py` | `tests/test_reconfiguration.py` (21 tests), `tests/test_replacement_command.py` (38 tests) | None |
@@ -61,9 +50,9 @@ Status definitions:
 | **AC-026** | CLI failure leaves GUI responsive with exact scope | Verified | `mutagen_client.py`, `app.py` worker threads | `tests/test_mutagen_integration.py::test_frozen_real_mutagen_refresh_does_not_spawn_process_storm` (20 requests with blocked daemon) | None |
 | **AC-027** | 1,000 sessions meet render/filter budgets | Verified (local) | `benchmarks/session_table_benchmark.py`, `SessionTableModel` | 1,000-row model update P95: 71.754 ms; offscreen Qt view filter/render P95: 30.612 ms; onedir startup P95: 1,035 ms | Reference-hardware SSD audit |
 | **AC-028** | Safe export excludes private host/path/key data | Verified (local) | `insights.py::build_safe_report` | `tests/test_insights.py`, `tests/test_mutagen_integration.py::test_real_mutagen_safe_report_export_uses_isolated_cli_snapshot` | Independent privacy review |
-| **AC-029** | Packaged self-tests on Windows/macOS/Linux | Verified (local) | `scripts/run_self_test.py`, `.github/workflows/ci.yml` | Passed on local Windows 11 for both onedir and onefile executables | Hosted macOS and Linux runner execution |
+| **AC-029** | Packaged self-tests on Windows/macOS/Linux | Verified (hosted build) | `scripts/run_self_test.py`, `.github/workflows/ci.yml` | Hosted run #81 succeeded across Windows, Ubuntu, macOS ARM and Intel and produced platform package/report artifacts | Clean-user GUI install, upgrade retention and uninstall on target systems |
 | **AC-030** | Readable language/theme/scale and help on every input | Verified (local) | `src/mutaui/ui/settings_registry.py`, `preferences.py` | `tests/test_ui_preferences.py`; 20-case capture matrix; visual review of 100%, 125%, 150%, 200%, 320% viewports | Assistive technology review |
-| **AC-031** | Required Mutagen integration never silently skips in CI | Verified (local) | `.github/workflows/ci.yml` | Local suite verified with 1,385 passed and 0 skipped; CI asserts `skipped == 0` | Hosted multiplatform execution |
+| **AC-031** | Required Mutagen integration never silently skips in CI | Verified (hosted) | `.github/workflows/ci.yml` | Hosted run #81 passed across Windows, Ubuntu, macOS ARM and Intel; CI asserts `skipped == 0` | None for the current hosted workflow; target-system acceptance remains separate |
 | **AC-032** | Screenshots depict actual GUI | Verified | `docs/assets/images/actual-ui/`, `README.md` | 12 actual UI screenshots generated and verified from demo build | None |
 | **AC-033** | Unsupported settings visible but cannot be applied | Verified (local) | `src/mutaui/services/replacement_command.py` | `tests/test_replacement_command.py` (38 tests; installed CLI help option validation) | Broader native version matrix |
 | **AC-034** | Name collisions never target wrong session | Verified | `app.py`, `mutagen_client.py` exact ID targeting | `tests/test_mainwindow_flows.py` (session action uses native ID; display name collision tests) | None |

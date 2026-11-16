@@ -52,6 +52,20 @@ def test_isolated_daemon_repeat_cycles(tmp_path: Path) -> None:
         assert daemon.phase == "stopped"
 
 
+@pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
+def test_isolated_daemon_recovers_after_external_stop(tmp_path: Path) -> None:
+    binary = _mutagen_binary()
+    assert binary is not None
+    daemon = IsolatedMutagenDaemon(binary, tmp_path / "recovery-test")
+
+    with daemon:
+        daemon.client.command(["daemon", "stop"], timeout=daemon.stop_timeout)
+        daemon.start()
+        assert isinstance(daemon.client.list_sessions("sync"), list)
+
+    assert daemon.phase == "stopped"
+
+
 def test_isolated_daemon_timeout_records_diagnostics(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

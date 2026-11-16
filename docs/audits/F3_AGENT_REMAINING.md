@@ -1,11 +1,21 @@
 # MutaUI — F3 agent continuation and acceptance contract
 
-**Date:** 2026-11-15  
+**Audit started:** 2026-11-15
 **Repository:** https://github.com/Harfusha/MutaUI  
-**Working branch:** `audit/f3-hardening-2026-11-15`  
+**Current working branch:** `master` (the PR branch is already integrated)
 **Review:** https://github.com/Harfusha/MutaUI/pull/1 (draft)  
 **Baseline audit:** `101796a28971a40fbc5cb45e154abb5016e6d192`  
 **Canonical specification:** `docs/audits/F3_AGENT_REMAINING.md`
+
+## Current continuation checkpoint — 2026-11-17
+
+- Main checkout is `master` at `eda6078486ac4ca35c2802e50fb925da5dabb2fe`; `origin/master` matched after fetch. Worktree tip `ac4c304c69bccfd2dfb94d30755473e7d3fc26da` and remote branch `fix/ci-platform-tests-notarization-20261115` at `855110a` are ancestors of `master`.
+- Hosted [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) completed successfully on exactly `eda6078`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
+- Local Windows/Python 3.12 verification included an additional isolated-daemon recovery test not present in hosted run #81: `uv run python scripts/ci/run_tests.py` passed **1,606 tests**, 0 failures/skips, branch coverage **3,384/3,554 (95.22%)**, total coverage **96.61%**. `uv run python scripts/ci/run_static_checks.py` passed, including strict mypy across 95 source files. These local results do not bind the new test to a hosted SHA.
+- The new recovery test stops and restarts only its disposable Mutagen daemon. The existing 10-cycle lifecycle test remains in place. IPv6/Unicode SSH parsing and remote symlink escape tests already exist; the Linux hosted OpenSSH acceptance job ran successfully in #81.
+- **Still open:** actual signed Windows upgrade/install, macOS notarization and Gatekeeper, Linux target-distribution GUI install, cross-platform physical GUI/accessibility acceptance, an 8-hour soak, live network fault matrices, owner license selection/signing credentials, and final release/tag acceptance.
+
+The older continuation entries below are historical snapshots and their reported dirty roots, commits, counts and CI runs do not describe the current checkout.
 
 ## Critical instructions
 
@@ -101,18 +111,18 @@ Since the preceding handoff, **six additional implementation commits** were adde
 | F3-010 | P1 | **Package smoke added.** Release workflow launches the AppImage and installs the deb. Still validate clean GUI install/run/uninstall, retained user files and file-manager integration on Ubuntu and target Fedora |
 | F3-011 | P1 | **Pipeline added.** Release workflow signs and verifies Windows binaries/installer and checks publisher identity during upgrade. Still validate fresh install and upgrade retention with owner certificate on native Windows |
 | F3-012 | P1 | **Release gates added.** Tag/version check, source/security gates, per-OS tests, checksums, CycloneDX SBOMs, attestations, signing/notarization, package smoke and publish dependency are in `release.yml`. Still require a successful exact-tag pipeline and verify published assets |
-| F3-013 | P1 | **Implemented and locally verified.** `app.py` is now included in configured strict mypy; all 78 source files pass without disabling strict checks. Keep hosted validation tied to the final exact SHA. |
-| F3-014 | P1 | **Partial.** Extracted typed `SessionDialog` and shared dialog helpers to `src/mutaui/ui/`, preserving `app.SessionDialog` and settings-path injection. Full test and static results below include the latest SSH-dialog refactor. Further sync/forward controller splitting remains |
-| F3-015 | P1 | **Partial.** Extracted SSH inspection, connection-profile management, and portable import preview dialogs to `src/mutaui/ui/`, preserving their `app.py` aliases. Targeted SSH/profile/portable tests and full local CI pass. YAML/global preference controllers and further native-project boundaries remain |
-| F3-016 | P1 | **Partial.** Health policy construction lives in `mutaui.services.health_tracker`; sustained `AlertEngine` now lives in `mutaui.services.alert_engine`. MainWindow health method and callers remain compatible. Focused health and alert/GUI tests pass (36 and 16). Network monitor, alert UI, doctor, tray/background controllers and Qt thread-safety acceptance remain open |
-| F3-017 | P1 | **Partial tests exist.** Existing tests cover stale snapshots, fsync/disk-full, canceled plans, replacement failures, conflict restore and rollback uncertainty. Local Windows with Mutagen 0.18.1 passed 10 isolated daemon start/list/stop cycles; add remaining daemon-crash/SSH-flap cases and repeat on supported OS runners |
-| F3-018 | P1 | **Partial tests exist.** Strict host-key and changed-key checks plus isolated OpenSSH integration are present. The native Windows `leave`/`overwrite` forward test passed with Mutagen 0.18.1; IPv6, Unicode, symlink, latency, live SSH-host and native project-hook consent remain unverified |
-| F3-019 | P1 | **Partial.** Qt tests cover persistent indexes through sorting (including duplicate IDs) and insert/remove selection; the latest full suite passes. The offscreen benchmark covers 1k/5k rows and inserts/removes; no-op refresh had 0 model resets. Physical GUI/a11y, viewport scroll retention and cross-OS acceptance remain open |
-| F3-020 | P2 | Beginner Basic wizard: initial setup, safe local sync, understandable defaults/errors, help text, no accidental destructive action |
-| F3-021 | P2 | Critical-path Czech/English translation audit, dynamic message interpolation, live language switching and correct keyboard mnemonics |
-| F3-022 | P2 | Real visual/a11y QA on each OS across DPI 100/125/150/200, themes, language modes, screen readers and keyboard-only navigation |
-| F3-023 | P2 | Clean reproducible CPU/RSS, startup p50/p95/p99, CLI spawn-count, tray idle and 8-hour soak measurements, explicitly separated from the Mutagen daemon |
-| F3-024 | P2 | Platform-specific documentation, clean-install screenshots, privacy inventory, redacted support bundle and honest capability matrix |
+| F3-013 | P1 | **Implemented and verified.** `app.py` is included in configured strict mypy; all 95 configured source files pass without disabling strict checks. Hosted run #81 passed on exact SHA `eda6078`; rerun for each later candidate SHA. |
+| F3-014 | P1 | **Implemented locally.** `SessionDialog` and shared helpers are outside `app.py`; proposal parsing is in `mutaui.services.session_configuration`, while sync/forward native configuration and validation are separate. Compatibility alias and settings-path injection remain tested. The shared dialog owns common form presentation; no duplicate Sync/Forward widgets needed |
+| F3-015 | P1 | **Implemented locally.** SSH inspection, connection profiles, portable import preview, global YAML editing, preferences, and native-project operations have dedicated UI/service/project modules with `app.py` compatibility paths. Hosted run #81 and local static/full tests pass. Further module-size reduction is not required for current behavior |
+| F3-016 | P1 | **Implemented locally.** Health policy, alert engine, network monitoring, session doctor/observer, notification gate and tray status each have dedicated service/UI modules; `MainWindow` compatibility paths remain. Hosted run #81 and local tests pass. Physical Qt thread-safety/a11y acceptance remains under F3-022 |
+| F3-017 | P1 | **Partial tests exist.** Existing tests cover stale snapshots, fsync/disk-full, canceled plans, replacement failures, conflict restore and rollback uncertainty. Hosted run #81 passed the 10-cycle isolated start/list/stop test on Windows, Ubuntu, macOS ARM and Intel. An additional stop/restart recovery test passes locally but still needs hosted validation; abrupt process-crash and network-flap recovery remain open |
+| F3-018 | P1 | **Partial tests exist.** Strict host-key and changed-key checks, IPv6/Unicode SSH parsing, remote symlink escape rejection, isolated OpenSSH integration, and Windows `leave`/`overwrite` forward behavior are covered. Hosted Linux OpenSSH acceptance passed in #81. Cross-platform live host/network-flap, latency, and native project-hook consent acceptance remain open |
+| F3-019 | P1 | **Implemented locally.** Qt tests cover persistent indexes, duplicate IDs, insert/remove selection, and viewport scroll retention during incremental refresh. Offscreen 1k/5k benchmark and CI #81 pass. Physical GUI/a11y acceptance remains open |
+| F3-020 | P2 | **Implemented locally.** Basic onboarding covers CLI discovery, safe local sync, default choices, help/errors, and keeps destructive actions behind later explicit flows; `tests/test_onboarding.py` has 23 cases. Clean installed-user walkthrough remains open |
+| F3-021 | P2 | **Implemented locally.** EN/CS catalogs and interpolation checks exist; live settings switching now has a GUI regression test. Physical keyboard-mnemonic/accessibility audit remains open |
+| F3-022 | P2 | **External acceptance open.** Real visual/a11y QA is still required on each OS across DPI 100/125/150/200, themes, languages, screen readers and keyboard-only navigation |
+| F3-023 | P2 | **Partial.** CI performance artifacts and session-table/startup benchmarks exist. Reproducible app-only CPU/RSS, CLI spawn count, tray idle, reference hardware and 8-hour soak measurements remain open |
+| F3-024 | P2 | **Implemented locally, platform proof open.** Platform setup docs, actual UI screenshots, privacy-safe support exports and capability matrix exist. Clean installed-user screenshots and target-distribution walkthroughs remain open |
 | F3-025 | Owner | **Release gate added.** Owner still must select/authorize LICENSE and verify redistribution terms, especially Qt LGPL; no license was invented |
 | F3-026 | P1 | Final single-SHA signed release acceptance with current security evidence, all platform test matrices, installer acceptance and maintained version/tag |
 
@@ -124,7 +134,7 @@ The owner must decide the license; provide Apple Developer ID, notary API creden
 
 ```bash
 git fetch origin
-git switch audit/f3-hardening-2026-11-15
+git switch master
 git pull --ff-only
 uv sync --locked --group build --group test --group quality
 python scripts/ci/run_static_checks.py
@@ -137,7 +147,7 @@ Run on Python 3.12 and inspect the **hosted** workflow run for the exact resulti
 
 ## Next action for the agent
 
-Continue on PR #1; verify the latest Actions logs first, fix confirmed P0 regressions without masking checks, then proceed through F3-008 to F3-026. Update this file with new SHA, evidence URL, actual pass/fail state and any owner blockers; never mark a task done solely because source code or a synthetic test exists.
+Continue directly on `master`. Review the remaining F3-014—016 architecture items against current modules; close only verified repository-level work, and keep signed-install, physical GUI/accessibility, long-soak and owner-credential/license acceptance open until their real evidence exists. Keep the draft PR for reference; do not tag or publish a release while those gates remain open.
 
 ## Local continuation evidence — 2026-11-15
 
