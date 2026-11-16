@@ -316,4 +316,4 @@ def test_ssh_connection(
 
 
 # pytest otherwise mistakes this imported public operation for a test in consumers.
-test_ssh_connection.__test__ = False
+test_ssh_connection.__test__ = False  # type: ignore[attr-defined]

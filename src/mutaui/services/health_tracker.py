@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 HealthMode = Literal["monitor_only", "assisted", "auto_safe"]
 EnvironmentEvent = Literal["sleep", "wake", "network_change"]
@@ -40,6 +40,18 @@ class HealthPolicy:
             raise ValueError("Recovery attempt window must be at least 30 minutes")
         if self.environment_grace_seconds < 0:
             raise ValueError("Environment grace cannot be negative")
+
+
+def health_policy_from_settings(settings: Mapping[str, Any]) -> HealthPolicy:
+    return HealthPolicy(
+        mode=settings.get("health_mode", "monitor_only"),
+        failure_count_threshold=int(settings.get("health_failure_count", 3)),
+        failure_elapsed_seconds=int(settings.get("health_failure_elapsed", 120)),
+        cooldown_seconds=int(settings.get("health_cooldown", 60)),
+        max_attempts=int(settings.get("health_max_attempts", 2)),
+        attempt_window_seconds=int(settings.get("health_attempt_window", 1800)),
+        environment_grace_seconds=int(settings.get("health_environment_grace", 120)),
+    )
 
 
 @dataclass(frozen=True, slots=True)

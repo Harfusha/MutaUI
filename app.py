@@ -14,11 +14,13 @@ import sys
 import tempfile
 import time
 from collections import deque
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, datetime
 from functools import partial
 from html import escape as html_escape
 from pathlib import Path
+from typing import Any, Literal, TypedDict, cast
 
 _SOURCE_PACKAGE_PATH = Path(__file__).resolve().parent / "src"
 if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
@@ -29,11 +31,12 @@ if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
 # a same-named DLL from another Python or Qt installation on PATH.
 _DLL_DIRECTORY_HANDLES = []
 if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):  # pragma: no cover
-    _dll_directories = (Path(sys._MEIPASS) / "PySide6", Path(sys._MEIPASS) / "shiboken6")
+    _bundle_root = Path(cast(str, sys.__dict__["_MEIPASS"]))
+    _dll_directories = (_bundle_root / "PySide6", _bundle_root / "shiboken6")
     os.environ["PATH"] = os.pathsep.join(
         [
             *(str(path) for path in _dll_directories),
-            str(Path(sys._MEIPASS)),
+            str(_bundle_root),
             os.environ.get("PATH", ""),
         ]
     )
@@ -46,6 +49,7 @@ from PySide6.QtCore import (
     QEvent,
     QModelIndex,  # noqa: F401
     QObject,
+    QPoint,
     QPointF,  # noqa: F401
     QRectF,
     QRunnable,
@@ -60,10 +64,12 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QAction,
     QBrush,  # noqa: F401
+    QCloseEvent,
     QColor,
     QDesktopServices,
     QFont,
     QGuiApplication,
+    QHideEvent,
     QIcon,
     QKeySequence,
     QLinearGradient,  # noqa: F401
@@ -72,6 +78,7 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
     QShortcut,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -118,29 +125,24 @@ from async_recorder import AsyncRecorder
 from connection_profiles import (
     ConnectionProfile,
     ConnectionProfileStore,
-    ProfileStoreError,
-    duplicate_profile,
     load_profile_store,
 )
 from endpoint_inspector import summary as inspect_session
 from forward_configuration import (
     FORWARD_CONFIG_FIELDS,
-    ForwardConfigurationDraft,
+    ForwardConfigField,
+    ForwardConfigRow,
     forward_configuration_rows,
 )
 from ignore_presets import (
     IgnorePresetError,
     IgnorePresetStore,
     apply_preset_import,
-    explain_ignore_path,
-    format_ignore_layers,
     load_ignore_presets,
-    parse_ignore_file,
     path_aware_ignore_rule,
     preset_to_record,
-    preview_preset_import,
 )
-from insights import AlertEngine, local_self_check, safe_diagnostic_report, session_log_report
+from insights import local_self_check, safe_diagnostic_report, session_log_report
 from log_stream import FileTail, TrackedLogLines
 from monitoring import (
     ForwardTrafficMeter,
@@ -174,7 +176,13 @@ from mutaui.adapters.yaml_config_editor import (
     preview_yaml_text,
 )
 from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner, ActionRequest
-from mutaui.services.health_tracker import HealthObservation, HealthPolicy, HealthTracker
+from mutaui.services.alert_engine import AlertEngine
+from mutaui.services.health_network_monitor import attach_health_network_monitor
+from mutaui.services.health_tracker import (
+    HealthPolicy,
+    HealthTracker,
+    health_policy_from_settings,
+)
 from mutaui.services.quiet_hours import quiet_hours_active
 from mutaui.services.reconfiguration import (
     build_reconfiguration_preview,
@@ -183,11 +191,13 @@ from mutaui.services.reconfiguration import (
 )
 from mutaui.services.replacement import ReplacementRequest, replace_non_project_mutagen_session
 from mutaui.services.replacement_command import render_sync_replacement_arguments
+from mutaui.services.session_configuration import build_session_configuration_proposal
 from mutaui.services.session_doctor import (
     FRESHNESS_SECONDS,
     SessionDoctorContext,
     diagnose_sessions,
 )
+from mutaui.services.session_health_observer import observe_session_health
 from mutaui.services.session_notification_gate import SessionNotificationGate
 from mutaui.services.session_provenance import ProvenanceStoreError, SessionProvenanceStore
 from mutaui.services.tray_status import worst_tray_status
@@ -197,7 +207,8 @@ from mutaui.services.update_checker import (
     check_for_update,
 )
 from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog
-from mutaui.ui.ignore_rules import IgnoreConversionDialog, IgnorePresetManagerDialog
+from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
+from mutaui.ui.ignore_rules import IgnorePresetManagerDialog
 from mutaui.ui.onboarding import (
     host_architecture,
     inspect_cli,
@@ -207,6 +218,7 @@ from mutaui.ui.page_shell import PAGE_ROUTES, LazyStackedWidget
 from mutaui.ui.performance_tuning import (
     apply_performance_assistant,
 )
+from mutaui.ui.portable_import_dialog import PortableImportPreviewDialog
 from mutaui.ui.preferences import (
     ADVANCED_ROUTE_IDS,
     active_language,
@@ -219,6 +231,7 @@ from mutaui.ui.preferences import (
 )
 from mutaui.ui.project_viewer import NativeProjectManagerDialog
 from mutaui.ui.settings_registry import setting_tooltip
+from mutaui.ui.ssh_profile_dialog import SSHProfileManagerDialog
 from performance import (  # noqa: F401
     PollBackoff,
     RefreshGate,
@@ -226,28 +239,36 @@ from performance import (  # noqa: F401
     nearest_time_index,
 )
 from portable_bundle import (
-    PREFERENCE_KEYS,
     PortableBundleError,
     apply_profile_import,
     build_bundle,
     load_bundle,
-    preview_profile_import,
     selected_preferences,
 )
 from server_groups import group_servers, session_servers
 from settings import load_settings, migrate_settings_file, rollback_settings_migration
 from settings import write_settings as save_settings_file
-from ssh_profiles import parse_ssh_config, resolve_ssh_options, test_ssh_connection
 from sync_configuration import (
     SYNC_CONFIG_FIELDS,
-    SyncConfigurationDraft,
-    load_effective_forward_configuration,
-    load_effective_sync_configuration,
+    SyncConfigField,
+    SyncConfigRow,
     session_configuration_rows,
 )
-from sync_profiles import PROFILES, AdaptivePolling, profile_flags
+from sync_profiles import PROFILES, AdaptivePolling
 
 BG = "#0B1019"
+
+
+class EndpointCardWidgets(TypedDict):
+    title: QLabel
+    address: QLabel
+    conn: QLabel
+    stats: QLabel
+    issues: QLabel
+    progress: QProgressBar
+    stage: QLabel
+
+
 CARD = "#141D2A"
 CARD2 = "#1C2B3A"
 BORDER = "#2A394A"
@@ -338,7 +359,7 @@ def settings_path() -> Path:
     return root / "settings.json"
 
 
-def read_settings() -> dict:
+def read_settings() -> dict[str, Any]:
     return load_settings(settings_path()).values
 
 
@@ -356,10 +377,19 @@ def settings_warning_message(warnings: tuple[str, ...]) -> str | None:
     return translate_text(message, active_language())
 
 
-def write_settings(data: dict) -> None:
+def write_settings(data: dict[str, Any]) -> None:
     save_settings_file(settings_path(), data)
 
 
+from mutaui.ui.dialog_components import (
+    add_localized_item,
+    add_localized_items,
+    add_localized_row,
+    button,
+    label,
+    localized_checkbox,
+    localized_label,
+)
 from mutaui.ui.localization import (
     _LOCALIZED_ITEM_ROLE,
     set_localized_accessible_name,
@@ -370,66 +400,8 @@ from mutaui.ui.localization import (
 )
 
 
-def label(text: str, *, muted=False, size=None, bold=False) -> QLabel:
-    result = QLabel()
-    set_localized_text(result, text)
-    if len(text) >= 72 or "\n" in text:
-        result.setWordWrap(True)
-    if muted:
-        result.setObjectName("muted")
-    if size or bold:
-        style = []
-        if size:
-            style.append(f"font-size: {size}px")
-        if bold:
-            style.append("font-weight: 700")
-        result.setStyleSheet(";".join(style))
-    return result
-
-
-def button(text: str, fn=None, *, kind="", minwidth=0) -> QPushButton:
-    b = QPushButton()
-    set_localized_text(b, text)
-    if kind:
-        b.setObjectName(kind)
-    if minwidth:
-        b.setMinimumWidth(minwidth)
-    b.setCursor(Qt.CursorShape.PointingHandCursor)
-    if fn:
-        b.clicked.connect(fn)
-    return b
-
-
-def localized_label(text: str) -> QLabel:
-    widget = QLabel()
-    set_localized_text(widget, text)
-    return widget
-
-
-def add_localized_row(form: QFormLayout, text: str, *fields) -> None:
-    form.addRow(localized_label(text), *fields)
-
-
-def add_localized_item(combo: QComboBox, text: str, *user_data) -> None:
-    combo.addItem(text, *user_data)
-    index = combo.count() - 1
-    combo.setItemData(index, text, _LOCALIZED_ITEM_ROLE)
-    combo.setItemText(index, translate_text(text, active_language()))
-
-
-def add_localized_items(combo: QComboBox, texts: list[str]) -> None:
-    for text in texts:
-        add_localized_item(combo, text)
-
-
 def localized_button(text: str) -> QPushButton:
     widget = QPushButton()
-    set_localized_text(widget, text)
-    return widget
-
-
-def localized_checkbox(text: str) -> QCheckBox:
-    widget = QCheckBox()
     set_localized_text(widget, text)
     return widget
 
@@ -452,7 +424,7 @@ def _czech_plural(count: int, forms: tuple[str, str, str]) -> str:
     return forms[2]
 
 
-def card(*, layout=None) -> tuple[QFrame, QVBoxLayout]:
+def card(*, layout: QVBoxLayout | None = None) -> tuple[QFrame, QVBoxLayout]:
     f = QFrame()
     f.setObjectName("card")
     l = QVBoxLayout(f)
@@ -478,7 +450,7 @@ def field_format(field: str, value: float | None) -> str:
     return human_bytes(value) + "/s"
 
 
-def readable_record_lines(value, *, indent=0):
+def readable_record_lines(value: object, *, indent: int = 0) -> list[str]:
     """Turn nested Mutagen conflict/problem objects into labeled text lines."""
     pad = " " * indent
     if isinstance(value, dict):
@@ -506,7 +478,7 @@ def readable_record_lines(value, *, indent=0):
     return [f"{pad}{value}"]
 
 
-def session_detail_html(lines, separator_text):
+def session_detail_html(lines: list[str], separator_text: str) -> str:
     """Render session detail rows with visual hierarchy while escaping values."""
     rendered = []
     for line in lines:
@@ -554,12 +526,12 @@ class WorkerSignals(QObject):
 
 
 class Worker(QRunnable):
-    def __init__(self, func):
+    def __init__(self, func: Callable[[], object]) -> None:
         super().__init__()
         self.func = func
         self.signals = WorkerSignals()
 
-    def run(self):
+    def run(self) -> None:
         try:
             self.signals.result.emit(self.func())
         except Exception as exc:
@@ -568,1199 +540,28 @@ class Worker(QRunnable):
             self.signals.finished.emit()
 
 
-class SessionDialog(QDialog):
+from mutaui.ui.session_dialog import SessionDialog as _SessionDialog
+
+
+class SessionDialog(_SessionDialog):
     def __init__(
         self,
         kind: str,
-        parent=None,
+        parent: QWidget | None = None,
         default_profile: str = "default",
         ui_mode: str = "basic",
         executable: str = "mutagen",
         saved_profiles: tuple[ConnectionProfile, ...] = (),
-    ):
-        super().__init__(parent)
-        self.kind = kind
-        self.ui_mode = ui_mode if ui_mode in {"basic", "advanced"} else "basic"
-        self.executable = executable or "mutagen"
-        set_localized_title(self, "New Sync" if kind == "sync" else "New Forward")
-        self.setMinimumWidth(520)
-        box = QVBoxLayout(self)
-        box.setSpacing(16)
-        box.setContentsMargins(26, 24, 26, 22)
-        box.addWidget(label("New Session Settings", size=21, bold=True))
-        box.addWidget(
-            label(
-                "Paths can be local, SSH, or Docker. For SSH, use preconfigured keys.", muted=True
-            )
+    ) -> None:
+        super().__init__(
+            kind,
+            parent,
+            default_profile,
+            ui_mode,
+            executable,
+            saved_profiles,
+            settings_path_provider=settings_path,
         )
-        form = QFormLayout()
-        form.setVerticalSpacing(14)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        self.name = QLineEdit()
-        set_localized_placeholder(self.name, "e.g. my-project")
-        add_localized_row(form, "Name", self.name)
-        self.a = QLineEdit()
-        self.b = QLineEdit()
-        self.socket_overwrite_source: QComboBox | None = None
-        self.socket_overwrite_destination: QComboBox | None = None
-        self.socket_owner_source: QLineEdit | None = None
-        self.socket_owner_destination: QLineEdit | None = None
-        self.socket_group_source: QLineEdit | None = None
-        self.socket_group_destination: QLineEdit | None = None
-        self.socket_permission_source: QLineEdit | None = None
-        self.socket_permission_destination: QLineEdit | None = None
-        matching_profiles = [profile for profile in saved_profiles if profile.kind == kind]
-        self.connection_profile = None
-        if matching_profiles:
-            self.connection_profile = QComboBox()
-            add_localized_item(self.connection_profile, "No saved profile", None)
-            for profile in matching_profiles:
-                prefix = "★ " if profile.favorite else ""
-                tags = f" · {', '.join(profile.tags)}" if profile.tags else ""
-                self.connection_profile.addItem(prefix + profile.name + tags, profile)
-            add_localized_row(form, "Connection Profile", self.connection_profile)
-        if kind == "sync":
-            set_localized_placeholder(self.a, "C:\\Projects\\web")
-            set_localized_tooltip(
-                self.a,
-                "ALPHA: local or remote path.\nSSH: user@host:/path  |  Docker: docker://name/path",
-            )
-            set_localized_placeholder(self.b, "user@server:/var/www/web")
-            set_localized_tooltip(
-                self.b,
-                "BETA: the second sync endpoint. Mutagen synchronizes the contents of both directories.",
-            )
-        else:
-            set_localized_placeholder(self.a, "tcp:localhost:8080")
-            set_localized_tooltip(
-                self.a,
-                "Source: local address where forwarding will listen.\nExample: tcp:localhost:8080",
-            )
-            set_localized_placeholder(self.b, "docker://web:tcp:localhost:8080")
-            set_localized_tooltip(
-                self.b, "Destination: remote address to which traffic is forwarded (SSH or Docker)."
-            )
-        rowa = QHBoxLayout()
-        rowa.addWidget(self.a)
-        if kind == "sync":
-            rowa.addWidget(button("…", self.browse_alpha))
-        form.addRow("ALPHA" if kind == "sync" else "Source", rowa)
-        form.addRow("BETA" if kind == "sync" else "Destination", self.b)
-        if kind == "forward" and self.ui_mode == "advanced":
-            self.socket_overwrite_source = QComboBox()
-            add_localized_item(self.socket_overwrite_source, "Leave existing entry", "leave")
-            add_localized_item(
-                self.socket_overwrite_source, "Overwrite existing entry", "overwrite"
-            )
-            self.socket_overwrite_destination = QComboBox()
-            add_localized_item(self.socket_overwrite_destination, "Leave existing entry", "leave")
-            add_localized_item(
-                self.socket_overwrite_destination, "Overwrite existing entry", "overwrite"
-            )
-            self.socket_owner_source = QLineEdit()
-            self.socket_owner_destination = QLineEdit()
-            self.socket_group_source = QLineEdit()
-            self.socket_group_destination = QLineEdit()
-            self.socket_permission_source = QLineEdit()
-            self.socket_permission_destination = QLineEdit()
-            for control in (self.socket_owner_source, self.socket_owner_destination):
-                set_localized_placeholder(control, "Optional socket owner")
-            for control in (self.socket_group_source, self.socket_group_destination):
-                set_localized_placeholder(control, "Optional socket group")
-            for control in (self.socket_permission_source, self.socket_permission_destination):
-                set_localized_placeholder(control, "Optional octal mode, e.g. 0600")
-            add_localized_row(form, "Source socket overwrite mode", self.socket_overwrite_source)
-            add_localized_row(
-                form, "Destination socket overwrite mode", self.socket_overwrite_destination
-            )
-            add_localized_row(form, "Source socket owner", self.socket_owner_source)
-            add_localized_row(form, "Destination socket owner", self.socket_owner_destination)
-            add_localized_row(form, "Source socket group", self.socket_group_source)
-            add_localized_row(form, "Destination socket group", self.socket_group_destination)
-            add_localized_row(form, "Source socket permission mode", self.socket_permission_source)
-            add_localized_row(
-                form, "Destination socket permission mode", self.socket_permission_destination
-            )
-            socket_note = label(
-                "Socket flags are checked against the installed Mutagen CLI before creation. "
-                "Remote endpoint support is validated by Mutagen. Leave preserves existing "
-                "entries; overwrite requires high-risk typed confirmation.",
-                muted=True,
-            )
-            socket_note.setWordWrap(True)
-            form.addRow("", socket_note)
-        self.mode = QComboBox()
-        sync_modes = ["two-way-safe", "one-way-safe"]
-        if self.ui_mode == "advanced":
-            sync_modes = ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]
-        self.mode.addItems(sync_modes)
-        self.mode_descriptions = {
-            "two-way-safe": (
-                "Bidirectional: changes from ALPHA and BETA flow both ways. Conflicts that "
-                "would discard unsynchronized data stay for manual resolution.",
-                "Obousměrná synchronizace: změny z ALPHA i BETA se přenášejí na druhou stranu. "
-                "Konflikty, jejichž automatické vyřešení by ztratilo nesynchronizovaná data, "
-                "zůstávají k ručnímu vyřešení.",
-            ),
-            "two-way-resolved": (
-                "Bidirectional: ALPHA wins every conflict, including when an ALPHA deletion "
-                "overwrites a BETA change. BETA changes can be overwritten or deleted.",
-                "Obousměrná synchronizace: ALPHA vyhrává každý konflikt, i když smazání na "
-                "ALPHA přepíše změnu na BETA. Změny na BETA mohou být přepsány nebo smazány.",
-            ),
-            "one-way-safe": (
-                "Only changes from ALPHA to BETA propagate. BETA-only content is preserved; "
-                "conflicting BETA edits stay unresolved, while deletions of ALPHA content on "
-                "BETA are restored from ALPHA.",
-                "Přenášejí se jen změny z ALPHA na BETA. Obsah pouze na BETA zůstává; "
-                "konfliktní úpravy na BETA se nevyřeší automaticky a smazaný obsah ALPHA se "
-                "na BETA obnoví z ALPHA.",
-            ),
-            "one-way-replica": (
-                "One-way ALPHA to BETA: BETA becomes an exact copy of ALPHA. Deletes BETA-only "
-                "content and overwrites BETA changes.",
-                "Jednosměrně z ALPHA na BETA: BETA bude přesnou kopií ALPHA. Smaže obsah jen na "
-                "BETA a přepíše změny na BETA.",
-            ),
-        }
-        self.mode_help = label("", muted=True)
-        self.mode_help.setWordWrap(True)
-
-        def update_mode_help(mode: str) -> None:
-            english, czech = self.mode_descriptions[mode]
-            set_localized_text(self.mode_help, english, czech=czech)
-
-        self.mode.currentTextChanged.connect(update_mode_help)
-        self.ignore = QPlainTextEdit()
-        self.ignore.setFixedHeight(75)
-        set_localized_placeholder(self.ignore, "One ignore pattern per line, e.g. node_modules")
-        set_localized_tooltip(
-            self.ignore,
-            "File/directory patterns to ignore (glob, one per line).\nExamples: node_modules, *.log, .DS_Store, build/",
-        )
-        self.ignore_vcs = localized_checkbox("Ignore .git, .svn, and other VCS directories")
-        self.ignore_vcs.setTristate(True)
-        self.ignore_vcs.setCheckState(Qt.CheckState.PartiallyChecked)
-        set_localized_tooltip(
-            self.ignore_vcs,
-            "Checked: ignore VCS directories. Unchecked: propagate them. Partially checked: inherit global and Mutagen defaults.",
-        )
-        self.pause = localized_checkbox("Start paused")
-        set_localized_tooltip(
-            self.pause,
-            "The session will be created, but sync will not start. Start it manually with the Resume button.",
-        )
-        self.replica_backup = localized_checkbox(
-            "I have a recoverable backup of the BETA destination"
-        )
-        set_localized_tooltip(
-            self.replica_backup,
-            "Confirm a separate recoverable copy exists before using destructive replica mode.",
-        )
-        self.replica_backup.setVisible(False)
-        if kind == "sync":
-            self.profile = QComboBox()
-            for code, (title, _flags) in PROFILES.items():
-                self.profile.addItem(title, code)
-            self.profile.setCurrentIndex(max(0, self.profile.findData(default_profile)))
-            set_localized_tooltip(
-                self.profile,
-                "The profile controls how Mutagen watches for file changes when creating a session.\ninotify/FSEvents = native OS events (fast, low overhead).\nPolling = active checks — slower, but also works on network drives.",
-            )
-            add_localized_row(form, "File Change Detection", self.profile)
-            add_localized_row(form, "Mode", self.mode)
-            form.addRow("", self.mode_help)
-            update_mode_help(self.mode.currentText())
-            self.ignore_preset = QComboBox()
-            self.ignore_presets = {
-                "None": (),
-                "Python": ("__pycache__/", "*.py[cod]", ".venv/", ".pytest_cache/"),
-                "Node.js": ("node_modules/", "dist/"),
-                "PHP / Composer": ("vendor/", "cache/", "*.log"),
-                "JetBrains IDE": (".idea/",),
-                "VS Code": (".vscode/",),
-                "Temporary files and logs": ("*.tmp", "*.swp", "*.log", ".DS_Store", "Thumbs.db"),
-                "IDE and logs": (".idea/", ".vscode/", "*.log", ".DS_Store"),
-            }
-            saved_ignores = load_ignore_presets(settings_path().with_name("ignore-presets.json"))
-            if saved_ignores.valid:
-                for preset in saved_ignores.presets:
-                    title = preset.name
-                    if title in self.ignore_presets:
-                        title += " (custom)"
-                    self.ignore_presets[title] = preset.patterns
-            elif saved_ignores.warnings:
-                self.ignore_store_warning = " ".join(saved_ignores.warnings)
-            self.ignore_preset.addItems(self.ignore_presets)
-            self.ignore_preset.activated.connect(self.apply_ignore_preset)
-            preset_row = QHBoxLayout()
-            preset_row.addWidget(self.ignore_preset)
-            preset_row.addWidget(
-                button("Import .gitignore/.dockerignore…", self.import_ignore_file)
-            )
-            preset_row.addWidget(button("Explain path…", self.explain_ignore))
-            add_localized_row(form, "Ignore preset", preset_row)
-            add_localized_row(form, "Ignore", self.ignore)
-            form.addRow("", self.ignore_vcs)
-        form.addRow("", self.pause)
-        if kind == "sync":
-            form.addRow("", self.replica_backup)
-        box.addLayout(form)
-        info = label(
-            "Warning: one-way-replica mode can overwrite and delete files at the destination."
-            if kind == "sync"
-            else "Forwarding exposes the destination connection through the specified source.",
-            muted=True,
-        )
-        info.setWordWrap(True)
-        box.addWidget(info)
-        box.addWidget(
-            label("Exact CLI argument preview (JSON array; no shell parsing)", muted=True)
-        )
-        self.command_preview = QPlainTextEdit()
-        self.command_preview.setReadOnly(True)
-        self.command_preview.setFixedHeight(84)
-        box.addWidget(self.command_preview)
-        box.addWidget(
-            button(
-                "Preview Effective New-Session Configuration…",
-                self.preview_effective_session_configuration,
-            )
-        )
-        self.name.textChanged.connect(self.update_command_preview)
-        self.a.textChanged.connect(self.update_command_preview)
-        self.b.textChanged.connect(self.update_command_preview)
-        self.pause.stateChanged.connect(lambda _state: self.update_command_preview())
-        if kind == "sync":
-            self.mode.currentIndexChanged.connect(self.update_command_preview)
-            self.profile.currentIndexChanged.connect(self.update_command_preview)
-            self.ignore_vcs.stateChanged.connect(lambda _state: self.update_command_preview())
-            self.ignore.textChanged.connect(self.update_command_preview)
-        elif self.ui_mode == "advanced":
-            for control in (
-                self.socket_overwrite_source,
-                self.socket_overwrite_destination,
-            ):
-                if control is not None:
-                    control.currentIndexChanged.connect(self.update_command_preview)
-            for control in (
-                self.socket_owner_source,
-                self.socket_owner_destination,
-                self.socket_group_source,
-                self.socket_group_destination,
-                self.socket_permission_source,
-                self.socket_permission_destination,
-            ):
-                if control is not None:
-                    control.textChanged.connect(self.update_command_preview)
-        self.mode.currentIndexChanged.connect(self.update_replica_backup_visibility)
-        self.update_replica_backup_visibility()
-        if self.connection_profile is not None:
-            self.connection_profile.currentIndexChanged.connect(self.apply_connection_profile)
-        self.update_command_preview()
-        controls = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
-        )
-        set_localized_text(controls.button(QDialogButtonBox.StandardButton.Ok), "Create Session")
-        set_localized_text(controls.button(QDialogButtonBox.StandardButton.Cancel), "Cancel")
-        controls.accepted.connect(self.validate)
-        controls.rejected.connect(self.reject)
-        box.addWidget(controls)
-
-    def browse_alpha(self):
-        selected = QFileDialog.getExistingDirectory(
-            self, translate_text("Choose Local Directory", active_language())
-        )
-        if selected:
-            self.a.setText(selected.replace("/", "\\") if os.name == "nt" else selected)
-
-    def apply_ignore_preset(self, index: int):
-        preset = self.ignore_presets.get(self.ignore_preset.itemText(index), ())
-        existing = self.ignore.toPlainText().splitlines()
-        self.ignore.setPlainText("\n".join(dict.fromkeys([*existing, *preset])))
-
-    def import_ignore_file(self):
-        source, _ = QFileDialog.getOpenFileName(
-            self,
-            translate_text("Import Ignore Rules", active_language()),
-            str(Path.cwd()),
-            translate_text(
-                "Ignore files (.gitignore .dockerignore);;All files (*)", active_language()
-            ),
-        )
-        if not source:
-            return
-        path = Path(source)
-        source_format = "dockerignore" if path.name == ".dockerignore" else "gitignore"
-        try:
-            if path.stat().st_size > 1024 * 1024:
-                raise IgnorePresetError("Ignore source exceeds the 1 MiB size limit.")
-            preview = parse_ignore_file(path.read_bytes(), source_format=source_format)
-        except (OSError, IgnorePresetError) as exc:
-            QMessageBox.warning(
-                self,
-                translate_text("Ignore Import", active_language()),
-                f"Could not read rules: {exc}",
-            )
-            return
-        dialog = IgnoreConversionDialog(preview, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        patterns = dialog.selected_patterns()
-        existing = self.ignore.toPlainText().splitlines()
-        self.ignore.setPlainText("\n".join(dict.fromkeys([*existing, *patterns])))
-
-    def explain_ignore(self):
-        path, accepted = QInputDialog.getText(
-            self,
-            translate_text("Explain Ignore Rules", active_language()),
-            translate_text("Path relative to the sync root:", active_language()),
-        )
-        if not accepted:
-            return
-        try:
-            global_preview = load_effective_sync_configuration(Path.home() / ".mutagen.yml", ())
-            effective_preview = load_effective_sync_configuration(
-                Path.home() / ".mutagen.yml", self.arguments()[:-2]
-            )
-            if not global_preview.valid or not effective_preview.valid:
-                raise IgnorePresetError(global_preview.error or effective_preview.error)
-            global_values = global_preview.as_mapping()
-            effective_values = effective_preview.as_mapping()
-            global_rules = tuple(global_values.get("ignore.paths", ()))
-            vcs_rules = (".git/", ".svn/", ".hg/", ".bzr/", "_darcs/")
-            vcs_origin = effective_preview.origin_for("ignore.vcs")
-            if effective_values.get("ignore.vcs") is True and vcs_origin == "global config":
-                global_rules += vcs_rules
-            project_rules: tuple[str, ...] = ()
-            session_rules = tuple(self.ignore.toPlainText().splitlines())
-            if effective_values.get("ignore.vcs") is True and vcs_origin == "command line":
-                session_rules += vcs_rules
-            result = explain_ignore_path(
-                path,
-                global_rules=global_rules,
-                project_rules=project_rules,
-                session_rules=session_rules,
-            )
-        except IgnorePresetError as exc:
-            QMessageBox.warning(self, translate_text("Ignore Preview", active_language()), str(exc))
-            return
-        status = (
-            "Known rules indicate ignored" if result.ignored else "Known rules indicate not ignored"
-        )
-        matched = (
-            f"\nLast matching rule: {result.matched_rule} ({result.scope})"
-            if result.matched_rule
-            else "\nNo rule matched."
-        )
-        QMessageBox.information(
-            self,
-            translate_text("Ignore Preview", active_language()),
-            f"{status}{matched}\n\n"
-            f"{format_ignore_layers(global_rules=global_rules, project_rules=project_rules, session_rules=session_rules)}"
-            "\n\nNative project defaults are not selected here. Built-in defaults are not enumerated.\n"
-            f"{result.note}",
-        )
-
-    def preview_effective_session_configuration(self) -> None:
-        config_path = Path.home() / ".mutagen.yml"
-        if self.kind == "sync":
-            preview = load_effective_sync_configuration(config_path, self.arguments()[:-2])
-            details = (
-                "New standalone sync only. Global defaults precede CLI options; ignore paths append.",
-                "Built-in defaults and unselected native project defaults are not enumerated.",
-            )
-        else:
-            preview = load_effective_forward_configuration(config_path, self.arguments()[:-2])
-            details = (
-                "New standalone forward only. Global defaults precede CLI options.",
-                "Built-in defaults are not enumerated.",
-            )
-        if not preview.valid:
-            QMessageBox.warning(
-                self,
-                translate_text("Effective Configuration", active_language()),
-                preview.error,
-            )
-            return
-        lines = [
-            f"{translate_text('Global source', active_language())}: {preview.source_path}",
-            translate_text(details[0], active_language()),
-            translate_text(details[1], active_language()),
-        ]
-        lines.extend(
-            f"{key} = {json.dumps(value, ensure_ascii=False)}  [{origin}]"
-            for key, value, origin in preview.values
-        )
-        if not preview.values:
-            lines.append(
-                translate_text("No explicit global or CLI configuration values.", active_language())
-            )
-        QMessageBox.information(
-            self,
-            translate_text("Effective Configuration", active_language()),
-            "\n\n".join(lines),
-        )
-
-    def apply_connection_profile(self, *_args):
-        if self.connection_profile is None:
-            return
-        profile = self.connection_profile.currentData()
-        if not isinstance(profile, ConnectionProfile):
-            return
-        self.name.setText(profile.name)
-        self.a.setText(profile.endpoint_a)
-        self.b.setText(profile.endpoint_b)
-        if self.kind == "sync":
-            defaults = profile.defaults
-            mode = defaults.get("mode")
-            if isinstance(mode, str) and self.mode.findText(mode) >= 0:
-                self.mode.setCurrentText(mode)
-            ignore_paths = defaults.get("ignore.paths")
-            if isinstance(ignore_paths, (list, tuple)):
-                self.ignore.setPlainText("\n".join(str(item) for item in ignore_paths))
-            ignore_vcs = defaults.get("ignore.vcs")
-            if isinstance(ignore_vcs, bool):
-                self.ignore_vcs.setChecked(ignore_vcs)
-            watch = defaults.get("watch.mode")
-            interval = defaults.get("watch.pollingInterval")
-            profile_code = {
-                ("portable", None): "events",
-                ("force-poll", 5): "fast_poll",
-                ("force-poll", 20): "balanced_poll",
-                ("force-poll", 60): "eco_poll",
-                ("no-watch", None): "manual",
-            }.get((watch, interval))
-            if profile_code is not None:
-                profile_index = self.profile.findData(profile_code)
-                if profile_index >= 0:
-                    self.profile.setCurrentIndex(profile_index)
-        self.update_command_preview()
-
-    def update_command_preview(self, *_args):
-        command = [self.executable, self.kind, "create", *self.arguments()]
-        self.command_preview.setPlainText(json.dumps(command, ensure_ascii=False, indent=2))
-
-    def endpoint_error(self, endpoint: str) -> str | None:
-        value = endpoint.strip()
-        if not value:
-            return translate_text("Enter both endpoints.", active_language())
-        if "\x00" in value or value.startswith("-"):
-            return translate_text(
-                "Endpoint contains an invalid NUL or option-like value.", active_language()
-            )
-        if self.kind == "sync":
-            if value.startswith("ssh://"):
-                return translate_text(
-                    "Use Mutagen's native SSH form, such as user@host:/path.", active_language()
-                )
-            if value.startswith("docker://") and not value.removeprefix("docker://").strip("/:"):
-                return translate_text(
-                    "Docker endpoint needs a container name or path.", active_language()
-                )
-            if "@" in value and ":" not in value:
-                return translate_text(
-                    "SSH endpoint needs a path after the host, for example user@host:/path.",
-                    active_language(),
-                )
-            return None
-        if value.startswith(("tcp:", "tcp4:", "tcp6:")):
-            address = value.split(":", 1)[1]
-            if ":" not in address:
-                return translate_text(
-                    "TCP endpoint needs a host and port, for example tcp:localhost:8080.",
-                    active_language(),
-                )
-            host, port = address.rsplit(":", 1)
-            try:
-                valid_port = 1 <= int(port) <= 65535
-            except ValueError:
-                valid_port = False
-            if not host or not valid_port:
-                return translate_text(
-                    "TCP endpoint needs a host and a port from 1 to 65535.", active_language()
-                )
-        elif value.startswith("unix:") and not value.removeprefix("unix:").strip():
-            return translate_text("Unix socket endpoint needs a path.", active_language())
-        elif value.startswith("unix:") and not self.local_unix_socket_supported():
-            return translate_text(
-                "Unix sockets are unavailable on this local platform.", active_language()
-            )
-        elif value.startswith("npipe:") and os.name != "nt":
-            return translate_text(
-                "Windows named pipes are available only on Windows endpoints.", active_language()
-            )
-        elif value.startswith("docker://") and not value.removeprefix("docker://").strip("/:"):
-            return translate_text(
-                "Docker forwarding endpoint needs a container and address.", active_language()
-            )
-        return None
-
-    @staticmethod
-    def local_unix_socket_supported() -> bool:
-        if os.name == "posix":
-            return True
-        if sys.platform == "win32":
-            try:
-                return sys.getwindowsversion().build >= 17063
-            except AttributeError:
-                return False
-        return False
-
-    def forward_socket_error(self) -> str | None:
-        if self.socket_overwrite_source is None:
-            return None
-        assert self.socket_overwrite_destination is not None
-        assert self.socket_owner_source is not None
-        assert self.socket_owner_destination is not None
-        assert self.socket_group_source is not None
-        assert self.socket_group_destination is not None
-        assert self.socket_permission_source is not None
-        assert self.socket_permission_destination is not None
-        from forward_configuration import validate_forward_proposal
-
-        endpoints = {
-            "source": (self.a.text().strip(), "source"),
-            "destination": (self.b.text().strip(), "destination"),
-        }
-        fields = {
-            "source": {
-                "overwriteMode": self.socket_overwrite_source.currentData(),
-                "owner": self.socket_owner_source.text().strip(),
-                "group": self.socket_group_source.text().strip(),
-                "permissionMode": self.socket_permission_source.text().strip(),
-            },
-            "destination": {
-                "overwriteMode": self.socket_overwrite_destination.currentData(),
-                "owner": self.socket_owner_destination.text().strip(),
-                "group": self.socket_group_destination.text().strip(),
-                "permissionMode": self.socket_permission_destination.text().strip(),
-            },
-        }
-        from forward_configuration import is_unix_forward_endpoint, local_unix_socket_entry_type
-
-        for side, (endpoint, field_side) in endpoints.items():
-            values = fields[field_side]
-            explicitly_configured = values["overwriteMode"] != "leave" or any(
-                values[key] for key in ("owner", "group", "permissionMode")
-            )
-            if explicitly_configured and not is_unix_forward_endpoint(endpoint):
-                return translate_text(
-                    "Socket settings for {side} require a Unix socket endpoint.",
-                    active_language(),
-                ).format(side=side.title())
-            if values["overwriteMode"] == "overwrite":
-                entry_type = local_unix_socket_entry_type(endpoint)
-                if entry_type == "directory":
-                    return translate_text(
-                        "A directory already exists at the local socket path; overwrite is blocked.",
-                        active_language(),
-                    )
-                if entry_type in {"unavailable", "special filesystem entry"}:
-                    return translate_text(
-                        "The local socket path cannot be safely inspected; overwrite is blocked.",
-                        active_language(),
-                    )
-            try:
-                for key, value in values.items():
-                    if key in {"owner", "group", "permissionMode"} and not value:
-                        continue
-                    validate_forward_proposal(f"{side}.socket.{key}", value)
-            except ValueError as exc:
-                return translate_text(str(exc), active_language())
-        return None
-
-    def validate(self):
-        endpoint_message = self.endpoint_error(self.a.text()) or self.endpoint_error(self.b.text())
-        if endpoint_message:
-            QMessageBox.warning(
-                self, translate_text("Invalid Endpoint", active_language()), endpoint_message
-            )
-            return
-        socket_message = self.forward_socket_error()
-        if socket_message:
-            QMessageBox.warning(
-                self, translate_text("Invalid Socket Settings", active_language()), socket_message
-            )
-            return
-        if self.kind == "forward" and any(
-            control is not None and control.currentData() == "overwrite"
-            for control in (self.socket_overwrite_source, self.socket_overwrite_destination)
-        ):
-            from forward_configuration import local_unix_socket_entry_type
-
-            overwrite_endpoints = ", ".join(
-                f"{endpoint} ({translate_text(local_unix_socket_entry_type(endpoint) or 'remote path not inspected', active_language())})"
-                for control, endpoint in (
-                    (self.socket_overwrite_source, self.a.text().strip()),
-                    (self.socket_overwrite_destination, self.b.text().strip()),
-                )
-                if control is not None and control.currentData() == "overwrite"
-            )
-            response = QMessageBox.warning(
-                self,
-                translate_text("Review Socket Overwrite", active_language()),
-                translate_text(
-                    "Socket overwrite may remove one existing file, symbolic link, or socket at {endpoint}. A directory is never removed.",
-                    active_language(),
-                ).format(endpoint=overwrite_endpoints)
-                + "\n\n"
-                + translate_text("Continue to the high-risk confirmation?", active_language()),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if response != QMessageBox.StandardButton.Yes:
-                return
-        if self.kind == "sync":
-            mode_warnings = {
-                "two-way-resolved": (
-                    "This mode resolves conflicts automatically with ALPHA as the winner. "
-                    "Unmerged changes on BETA can be lost. Continue?"
-                ),
-                "one-way-replica": (
-                    "This mode makes BETA an exact copy of ALPHA and can overwrite or delete "
-                    "files on BETA that are not on ALPHA. Continue?"
-                ),
-            }
-            warning = mode_warnings.get(self.mode.currentText())
-            if warning:
-                response = QMessageBox.warning(
-                    self,
-                    translate_text("Risky Mode", active_language()),
-                    warning,
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if response != QMessageBox.StandardButton.Yes:
-                    return
-            if self.mode.currentText() == "one-way-replica" and not self.replica_backup.isChecked():
-                QMessageBox.warning(
-                    self,
-                    translate_text("Backup Required", active_language()),
-                    translate_text(
-                        "Create and verify a recoverable backup of BETA before continuing.",
-                        active_language(),
-                    ),
-                )
-                return
-        if self.kind == "forward" and self.a.text().strip().startswith(
-            ("tcp:0.0.0.0:", "tcp:::", "tcp4:0.0.0.0:", "tcp6:[::]:")
-        ):
-            response = QMessageBox.warning(
-                self,
-                translate_text("Public Forwarding Listener", active_language()),
-                translate_text(
-                    "This source binds beyond loopback and may expose the destination publicly. Continue?",
-                    active_language(),
-                ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if response != QMessageBox.StandardButton.Yes:
-                return
-        self.accept()
-
-    def update_replica_backup_visibility(self, *_args):
-        visible = self.kind == "sync" and self.mode.currentText() == "one-way-replica"
-        self.replica_backup.setVisible(visible)
-
-    @property
-    def backup_choice(self):
-        if (
-            self.kind == "sync"
-            and self.mode.currentText() == "one-way-replica"
-            and self.replica_backup.isChecked()
-        ):
-            return "operator-confirmed-recoverable-beta-backup"
-        return None
-
-    def arguments(self):
-        args = []
-        if self.name.text().strip():
-            args.append("--name=" + self.name.text().strip())
-        if self.pause.isChecked():
-            args.append("--paused")
-        if self.kind == "sync":
-            args.append("--mode=" + self.mode.currentText())
-            args.extend(profile_flags(self.profile.currentData()))
-            if self.ignore_vcs.checkState() == Qt.CheckState.Checked:
-                args.append("--ignore-vcs")
-            elif self.ignore_vcs.checkState() == Qt.CheckState.Unchecked:
-                args.append("--no-ignore-vcs")
-            for entry in self.ignore.toPlainText().splitlines():
-                if entry.strip():
-                    args.append("--ignore=" + entry.strip())
-        elif any(
-            endpoint.startswith("unix:") or ":unix:" in endpoint
-            for endpoint in (self.a.text().strip().lower(), self.b.text().strip().lower())
-        ):
-            args.append("--socket-overwrite-mode=leave")
-            for side, endpoint, controls in (
-                (
-                    "source",
-                    self.a.text().strip(),
-                    (
-                        self.socket_overwrite_source,
-                        self.socket_owner_source,
-                        self.socket_group_source,
-                        self.socket_permission_source,
-                    ),
-                ),
-                (
-                    "destination",
-                    self.b.text().strip(),
-                    (
-                        self.socket_overwrite_destination,
-                        self.socket_owner_destination,
-                        self.socket_group_destination,
-                        self.socket_permission_destination,
-                    ),
-                ),
-            ):
-                if not endpoint.lower().startswith("unix:") and ":unix:" not in endpoint.lower():
-                    continue
-                overwrite, owner, group, permission = controls
-                if overwrite is not None and overwrite.currentData() != "leave":
-                    args.append(f"--socket-overwrite-mode-{side}={overwrite.currentData()}")
-                for control, flag in (
-                    (owner, "owner"),
-                    (group, "group"),
-                    (permission, "permission-mode"),
-                ):
-                    value = control.text().strip() if control is not None else ""
-                    if value:
-                        args.append(f"--socket-{flag}-{side}={value}")
-        return [*args, self.a.text().strip(), self.b.text().strip()]
-
-
-class SSHProfileManagerDialog(QDialog):
-    """Inspect local SSH aliases and run an explicit strict-host-key test."""
-
-    def __init__(self, parent=None, config_path: str | Path | None = None):
-        super().__init__(parent)
-        self.config_path = Path(config_path) if config_path else Path.home() / ".ssh" / "config"
-        set_localized_title(self, "SSH Profiles")
-        self.resize(760, 560)
-        layout = QVBoxLayout(self)
-        layout.addWidget(label("Read-only OpenSSH profile inspection", size=18, bold=True))
-        layout.addWidget(
-            label(
-                "Configuration and private keys are never changed or opened. Effective options use local `ssh -G`; the connection test requires a known host key.",
-                muted=True,
-            )
-        )
-        self.config_status = label(str(self.config_path), muted=True)
-        self.config_status.setWordWrap(True)
-        layout.addWidget(self.config_status)
-        row = QHBoxLayout()
-        self.alias_input = QComboBox()
-        self.alias_input.setEditable(False)
-        row.addWidget(self.alias_input, 1)
-        row.addWidget(button("Reload config", self.reload_config))
-        row.addWidget(button("Resolve with ssh -G", self.resolve_selected, kind="primary"))
-        layout.addLayout(row)
-        self.details = QPlainTextEdit()
-        self.details.setReadOnly(True)
-        set_localized_placeholder(
-            self.details, "Select an SSH alias to inspect its effective options."
-        )
-        layout.addWidget(self.details, 1)
-        controls = QHBoxLayout()
-        controls.addWidget(button("Test connection…", self.test_selected, kind="primary"))
-        controls.addStretch(1)
-        controls.addWidget(button("Done", self.accept))
-        layout.addLayout(controls)
-        self.reload_config()
-
-    def reload_config(self):
-        result = parse_ssh_config(self.config_path)
-        self.alias_input.clear()
-        self._profiles = {profile.alias: profile for profile in result.profiles}
-        self.alias_input.addItems(self._profiles)
-        notices = [str(self.config_path), "Read-only; no SSH files were changed."]
-        notices.extend(result.warnings)
-        if not result.valid:
-            notices.insert(1, "Config could not be read safely; SSH operations are disabled.")
-            self.alias_input.setEnabled(False)
-        else:
-            self.alias_input.setEnabled(bool(self._profiles))
-        self.config_status.setText("\n".join(notices))
-        self._config_valid = result.valid
-        if not self._profiles:
-            self.details.setPlainText(
-                "No concrete SSH aliases found. Wildcard and Match rules are shown as warnings."
-            )
-
-    def resolve_selected(self):
-        alias = self.alias_input.currentText()
-        if not self._config_valid or alias not in self._profiles:
-            return
-        result = resolve_ssh_options(alias)
-        if not result.success:
-            self.details.setPlainText(
-                result.message + ("\n" + result.stderr if result.stderr else "")
-            )
-            return
-        keys = (
-            "hostname",
-            "user",
-            "port",
-            "identityfile",
-            "identitiesonly",
-            "proxyjump",
-            "stricthostkeychecking",
-            "userknownhostsfile",
-            "globalknownhostsfile",
-            "connecttimeout",
-        )
-        lines = [f"Alias: {alias}", "Effective values from local `ssh -G`:"]
-        for key in keys:
-            values = result.options.get(key)
-            if not values:
-                continue
-            lines.append(f"{key}: " + "; ".join(values))
-            if key == "identityfile":
-                for value in values:
-                    key_path = Path(value).expanduser()
-                    lines.append(f"  key file exists: {key_path.is_file()} (contents not read)")
-        profile = self._profiles[alias]
-        if profile.unsupported:
-            lines.append(
-                "Unexpanded directives in config listing: " + ", ".join(profile.unsupported)
-            )
-        if str(result.options.get("stricthostkeychecking", ("",))[0]).lower() == "no":
-            lines.append(
-                "WARNING: effective config disables strict host-key checking. Connection test overrides it to yes."
-            )
-        self.details.setPlainText("\n".join(lines))
-
-    def test_selected(self):
-        alias = self.alias_input.currentText()
-        if not self._config_valid or alias not in self._profiles:
-            return
-        answer = QMessageBox.question(
-            self,
-            translate_text("Test SSH connection", active_language()),
-            f"Connect to {alias} now? The test uses BatchMode and StrictHostKeyChecking=yes. It will not add or replace host keys.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        result = test_ssh_connection(alias)
-        detail = result.message
-        if result.stderr.strip():
-            detail += "\n\n" + result.stderr.strip()
-        if result.success:
-            QMessageBox.information(
-                self, translate_text("SSH connection test", active_language()), detail
-            )
-        else:
-            QMessageBox.warning(
-                self, translate_text("SSH connection test", active_language()), detail
-            )
-
-
-class PortableImportPreviewDialog(QDialog):
-    """Dry-run choices for portable profiles and selected safe preferences."""
-
-    def __init__(self, parent, bundle, existing_profiles, existing_ignores=()):
-        super().__init__(parent)
-        self.bundle = bundle
-        self.preview = preview_profile_import(bundle, existing_profiles)
-        self.ignore_preview = preview_preset_import(
-            bundle.data["items"]["ignore_presets"], existing_ignores
-        )
-        set_localized_title(self, "Review Portable Import")
-        self.resize(900, 560)
-        layout = QVBoxLayout(self)
-        layout.addWidget(label("Import preview · no files changed yet", size=18, bold=True))
-        layout.addWidget(
-            label(
-                "Choose create, merge, or skip for each profile. Application binary, session notes, and history stay local. Import never creates or edits Mutagen sessions.",
-                muted=True,
-            )
-        )
-        if bundle.warnings:
-            warning = label("\n".join(bundle.warnings), muted=True)
-            warning.setWordWrap(True)
-            layout.addWidget(warning)
-        self.table = QTableWidget(len(self.preview), 4)
-        set_localized_accessible_name(self.table, "Portable profile preview table")
-        self.table.setHorizontalHeaderLabels(["Name", "Type", "Stable ID", "Action / reason"])
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        for row, item in enumerate(self.preview):
-            self.table.setItem(row, 0, QTableWidgetItem(item.profile.name))
-            self.table.setItem(row, 1, QTableWidgetItem(item.profile.kind.title()))
-            self.table.setItem(row, 2, QTableWidgetItem(item.profile.id))
-            control = QComboBox()
-            options = [("Create new", "create")]
-            if item.action == "conflict":
-                options.append(("Merge / replace same ID", "merge"))
-            options.append(("Skip", "skip"))
-            for title, value in options:
-                control.addItem(title, value)
-            default = control.findData(
-                "skip" if item.action in {"skip", "conflict"} else item.action
-            )
-            control.setCurrentIndex(max(0, default))
-            control.setToolTip(item.reason)
-            self.table.setCellWidget(row, 3, control)
-        layout.addWidget(self.table, 1)
-        items = bundle.data["items"]
-        prefs = items["preferences"]
-        self.preference_checks: dict[str, QCheckBox] = {}
-        if prefs:
-            layout.addWidget(label("Select safe preferences to import", bold=True))
-            for key in sorted(PREFERENCE_KEYS & set(prefs)):
-                check = QCheckBox(f"{key}: {prefs[key]}")
-                check.setChecked(True)
-                self.preference_checks[key] = check
-                layout.addWidget(check)
-        if self.ignore_preview:
-            layout.addWidget(label("Review portable ignore presets", bold=True))
-            self.ignore_table = QTableWidget(len(self.ignore_preview), 3)
-            set_localized_accessible_name(self.ignore_table, "Ignore preset preview table")
-            self.ignore_table.setHorizontalHeaderLabels(
-                ["Preset", "Ordered rules", "Action / reason"]
-            )
-            self.ignore_table.horizontalHeader().setStretchLastSection(True)
-            for row, item in enumerate(self.ignore_preview):
-                self.ignore_table.setItem(row, 0, QTableWidgetItem(item.preset.name))
-                self.ignore_table.setItem(
-                    row, 1, QTableWidgetItem(" · ".join(item.preset.patterns))
-                )
-                control = QComboBox()
-                add_localized_item(control, "Create new", "create")
-                if item.action == "conflict":
-                    add_localized_item(control, "Replace same ID", "merge")
-                add_localized_item(control, "Skip", "skip")
-                control.setCurrentIndex(
-                    max(
-                        0,
-                        control.findData(
-                            "skip" if item.action in {"skip", "conflict"} else item.action
-                        ),
-                    )
-                )
-                control.setToolTip(item.reason)
-                self.ignore_table.setCellWidget(row, 2, control)
-            layout.addWidget(self.ignore_table, 1)
-        if items["project_references"]:
-            layout.addWidget(
-                label(
-                    f"Project references: {len(items['project_references'])} (not imported in this stage).",
-                    muted=True,
-                )
-            )
-        controls = QHBoxLayout()
-        controls.addStretch(1)
-        controls.addWidget(button("Cancel", self.reject))
-        controls.addWidget(button("Apply selected…", self.accept, kind="primary"))
-        layout.addLayout(controls)
-
-    def profile_choices(self) -> dict[str, str]:
-        choices = {}
-        for row, item in enumerate(self.preview):
-            control = self.table.cellWidget(row, 3)
-            if isinstance(control, QComboBox):
-                choices[item.profile.id] = control.currentData()
-        return choices
-
-    def selected_preferences(self) -> set[str]:
-        return {key for key, check in self.preference_checks.items() if check.isChecked()}
-
-    def ignore_choices(self) -> dict[str, str]:
-        choices = {}
-        for row, item in enumerate(self.ignore_preview):
-            control = self.ignore_table.cellWidget(row, 2)
-            if isinstance(control, QComboBox):
-                choices[item.preset.id] = control.currentData()
-        return choices
-
-
-class ConnectionProfilesDialog(QDialog):
-    """Manage versioned local connection profiles without touching Mutagen sessions."""
-
-    def __init__(self, parent, store: ConnectionProfileStore):
-        super().__init__(parent)
-        self.store = store
-        set_localized_title(self, "Connection Profiles")
-        self.resize(920, 560)
-        layout = QVBoxLayout(self)
-        layout.addWidget(label("Saved local connection profiles", size=18, bold=True))
-        filters = QHBoxLayout()
-        self.search_input = QLineEdit()
-        set_localized_placeholder(self.search_input, "Search name or tag")
-        self.kind_filter = QComboBox()
-        add_localized_item(self.kind_filter, "All types", None)
-        add_localized_item(self.kind_filter, "Sync", "sync")
-        add_localized_item(self.kind_filter, "Forward", "forward")
-        self.favorites_only = localized_checkbox("Favorites only")
-        filters.addWidget(self.search_input, 1)
-        filters.addWidget(self.kind_filter)
-        filters.addWidget(self.favorites_only)
-        layout.addLayout(filters)
-        self.table = QTableWidget(0, 6)
-        set_localized_accessible_name(self.table, "Connection profiles table")
-        self.table.setHorizontalHeaderLabels(
-            ["Name", "Type", "Endpoint A / Source", "Endpoint B / Destination", "Tags", "Favorite"]
-        )
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        layout.addWidget(self.table, 1)
-        controls = QHBoxLayout()
-        controls.addWidget(button("New…", self.new_profile, kind="primary"))
-        controls.addWidget(button("Duplicate", self.duplicate_selected))
-        controls.addWidget(button("Favorite", self.toggle_favorite))
-        controls.addWidget(button("Delete…", self.delete_selected, kind="danger"))
-        controls.addStretch(1)
-        controls.addWidget(button("Done", self.accept))
-        layout.addLayout(controls)
-        self.search_input.textChanged.connect(self.refresh)
-        self.kind_filter.currentIndexChanged.connect(self.refresh)
-        self.favorites_only.stateChanged.connect(lambda _state: self.refresh())
-        self.refresh()
-
-    def selected_profile(self) -> ConnectionProfile | None:
-        row = self.table.currentRow()
-        if row < 0 or self.table.item(row, 0) is None:
-            return None
-        return self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-
-    def refresh(self, *_args):
-        kind = self.kind_filter.currentData()
-        profiles = self.store.search(
-            self.search_input.text(),
-            kind=kind,
-            favorites_only=self.favorites_only.isChecked(),
-        )
-        selected_id = self.selected_profile().id if self.selected_profile() else None
-        self.table.setRowCount(len(profiles))
-        for row, profile in enumerate(profiles):
-            values = (
-                profile.name,
-                profile.kind.title(),
-                profile.endpoint_a,
-                profile.endpoint_b,
-                ", ".join(profile.tags),
-                "★" if profile.favorite else "",
-            )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, profile)
-                self.table.setItem(row, column, item)
-            if profile.id == selected_id:
-                self.table.selectRow(row)
-
-    def new_profile(self):
-        dialog = QDialog(self)
-        set_localized_title(dialog, "New Connection Profile")
-        form = QFormLayout(dialog)
-        name = QLineEdit()
-        kind = QComboBox()
-        add_localized_item(kind, "Sync", "sync")
-        add_localized_item(kind, "Forward", "forward")
-        endpoint_a = QLineEdit()
-        endpoint_b = QLineEdit()
-        tags = QLineEdit()
-        favorite = localized_checkbox("Favorite")
-        defaults = QPlainTextEdit("{}")
-        defaults.setMaximumHeight(100)
-        add_localized_row(form, "Name", name)
-        add_localized_row(form, "Type", kind)
-        add_localized_row(form, "Endpoint A / Source", endpoint_a)
-        add_localized_row(form, "Endpoint B / Destination", endpoint_b)
-        add_localized_row(form, "Tags (comma-separated)", tags)
-        add_localized_row(form, "Default settings (JSON)", defaults)
-        form.addRow("", favorite)
-        controls = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-        )
-        controls.accepted.connect(dialog.accept)
-        controls.rejected.connect(dialog.reject)
-        form.addRow(controls)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        try:
-            raw_defaults = json.loads(defaults.toPlainText())
-            if not isinstance(raw_defaults, dict):
-                raise ValueError("Default settings must be a JSON object.")
-            profile = self.store.create(
-                name.text(),
-                endpoint_a.text(),
-                endpoint_b.text(),
-                kind=kind.currentData(),
-                tags=tuple(tag.strip() for tag in tags.text().split(",") if tag.strip()),
-                favorite=favorite.isChecked(),
-                defaults=raw_defaults,
-            )
-        except (ProfileStoreError, json.JSONDecodeError, ValueError, OSError) as exc:
-            QMessageBox.warning(
-                self, translate_text("Invalid Profile", active_language()), str(exc)
-            )
-            return
-        self.refresh()
-        for row in range(self.table.rowCount()):
-            item = self.table.item(row, 0)
-            if item and item.data(Qt.ItemDataRole.UserRole).id == profile.id:
-                self.table.selectRow(row)
-                break
-
-    def duplicate_selected(self):
-        profile = self.selected_profile()
-        if profile is None:
-            return
-        duplicate = duplicate_profile(profile)
-        try:
-            self.store.add(duplicate)
-        except (ProfileStoreError, OSError) as exc:
-            QMessageBox.warning(
-                self, translate_text("Could not duplicate profile", active_language()), str(exc)
-            )
-            return
-        self.refresh()
-
-    def toggle_favorite(self):
-        profile = self.selected_profile()
-        if profile is None:
-            return
-        from dataclasses import replace
-
-        try:
-            self.store.update(replace(profile, favorite=not profile.favorite))
-        except (ProfileStoreError, OSError) as exc:
-            QMessageBox.warning(
-                self, translate_text("Could not update profile", active_language()), str(exc)
-            )
-            return
-        self.refresh()
-
-    def delete_selected(self):
-        profile = self.selected_profile()
-        if profile is None:
-            return
-        result = QMessageBox.question(
-            self,
-            translate_text("Delete Profile", active_language()),
-            f"Delete local profile '{profile.name}'? This does not affect any Mutagen session.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if result != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self.store.delete(profile.id)
-        except (ProfileStoreError, OSError, KeyError) as exc:
-            QMessageBox.warning(
-                self, translate_text("Could not delete profile", active_language()), str(exc)
-            )
-        self.refresh()
 
 
 class QuickNavigator(QDialog):
@@ -1770,12 +571,16 @@ class QuickNavigator(QDialog):
     GLYPHS = tuple(route.glyph for route in PAGE_ROUTES)
     CAPTIONS = tuple(route.search_description for route in PAGE_ROUTES)
 
-    def __init__(self, parent, commands=()):
+    def __init__(
+        self,
+        parent: QWidget | None,
+        commands: Iterable[tuple[str | None, str | None, str | None, str, str]] = (),
+    ) -> None:
         super().__init__(parent)
         set_localized_title(self, "Quick Navigation  ·  Ctrl+K")
         self.setMinimumSize(520, 420)
-        self.target = None
-        self.command = None
+        self.target: int | None = None
+        self.command: tuple[str | None, str | None, str | None] | None = None
         self.commands = tuple(commands)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(23, 21, 23, 21)
@@ -1798,7 +603,7 @@ class QuickNavigator(QDialog):
         self.filter("")
         self.search.setFocus()
 
-    def filter(self, term):
+    def filter(self, term: str) -> None:
         self.list.clear()
         query = term.casefold().split()
         for index, page in enumerate(self.PAGES):
@@ -1819,7 +624,7 @@ class QuickNavigator(QDialog):
         if self.list.count():
             self.list.setCurrentRow(0)
 
-    def choose(self):
+    def choose(self) -> None:
         item = self.list.currentItem()
         if item is not None:
             value = item.data(Qt.ItemDataRole.UserRole)
@@ -1839,8 +644,8 @@ class SupportBundleDialog(QDialog):
         snapshot_preview: str,
         event_count: int,
         monitored_line_count: int,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         czech = active_language().casefold().startswith("cs")
         copy = {
@@ -1896,7 +701,7 @@ class SupportBundleDialog(QDialog):
         layout.addWidget(self.button_box)
         self.update_preview()
 
-    def update_preview(self, *_args):
+    def update_preview(self, *_args: object) -> None:
         mode = self.mode.currentData()
         logs_selected = mode == "logs"
         self.include_event_messages.setEnabled(logs_selected)
@@ -1975,7 +780,7 @@ class SupportBundleDialog(QDialog):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, demo=False, *, history_path: str | Path | None = None):
+    def __init__(self, demo: bool = False, *, history_path: str | Path | None = None) -> None:
         super().__init__()
         self.demo = demo
         self.settings_load = load_settings(settings_path())
@@ -1989,16 +794,16 @@ class MainWindow(QMainWindow):
         self.snapshot = example_snapshot() if demo else Snapshot(binary=self.client.binary)
         self.health_tracker = HealthTracker(self.health_policy_from_settings())
         self._power_event_filter: object | None = None
-        self._last_snapshot_received_monotonic = None
+        self._last_snapshot_received_monotonic: float | None = None
         self._health_network_information = None
         self._health_network_reachability = None
         if not demo:
             self._attach_health_network_monitor()
-        self._doctor_observation_key = None
-        self._doctor_previous_issue_count = None
-        self._doctor_current_issue_count = None
-        self.cpu_series = deque(maxlen=50)
-        self.mem_series = deque(maxlen=50)
+        self._doctor_observation_key: tuple[datetime | None, datetime | None] | None = None
+        self._doctor_previous_issue_count: int | None = None
+        self._doctor_current_issue_count: int | None = None
+        self.cpu_series: deque[float | int] = deque(maxlen=50)
+        self.mem_series: deque[float | int] = deque(maxlen=50)
         selected_history_path = history_path
         if selected_history_path is None:
             selected_history_path = (
@@ -2019,19 +824,19 @@ class MainWindow(QMainWindow):
         self.traffic_rates = (0.0, 0.0)
         self._traffic_sample_pending = False
         self.last_metrics = {"cpu": 0, "memory": 0, "read_rate": 0, "write_rate": 0, "processes": 0}
-        self.previous_states = None
-        self.previous_daemon = None
+        self.previous_states: dict[tuple[str, Any], Any] | None = None
+        self.previous_daemon: bool | None = None
         self.session_counts = (0, 0)
         self.alert_engine = AlertEngine()
         self.session_notification_gate = SessionNotificationGate()
         self.chart_frozen = False
-        self.tail_file = None
+        self.tail_file: FileTail | None = None
         self.tail_lines = TrackedLogLines(maxlen=1200)
         self._tail_render_epoch = -1
         self._tail_render_count = 0
         self._tail_render_filter = ""
         self._stats_cache_at = 0.0
-        self._stats_cache_range = None
+        self._stats_cache_range: float | None = None
         self._stats_pending = False
         self.favorites = {
             kind: set(str(x) for x in self.conf.get("favorites", {}).get(kind, []))
@@ -2045,7 +850,7 @@ class MainWindow(QMainWindow):
             maxlen=800,
         )
         self.pending_poll = False
-        self._pending_launch_requests = []
+        self._pending_launch_requests: list[dict[str, Any]] = []
         self._initial_refresh_pending = True
         self._refresh_generation = 0
         self._refresh_again = False
@@ -2060,7 +865,7 @@ class MainWindow(QMainWindow):
         self.current_kind = "sync"
         self.current_id = ""
         self._allow_exit = False
-        self.workers = set()
+        self.workers: set[Worker] = set()
         self._shutdown_pending = False
         self.pool = QThreadPool.globalInstance()
         self.pool.setMaxThreadCount(4)
@@ -2074,7 +879,8 @@ class MainWindow(QMainWindow):
         self._chart_monitor_gate = RefreshGate(3.2)
         self._chart_query_pending = False
         self._chart_query_reschedule = False
-        self._table_signatures = {}
+        self._table_signatures: dict[str, tuple[Any, ...]] = {}
+        self.onboarding_wizard: QWizard | None = None
         self._tail_render_pending = False
         self._eco_hidden = False
         # Mode stays in memory only; changing it never writes settings or Mutagen data.
@@ -2091,20 +897,18 @@ class MainWindow(QMainWindow):
         self.set_ui_mode(self.ui_mode)
         self.apply_theme(self.conf.get("theme", "system"))
         self.create_tray()
-        QShortcut(QKeySequence("Ctrl+R"), self, activated=lambda: self.refresh(force=True))
-        QShortcut(QKeySequence("F5"), self, activated=lambda: self.refresh(force=True))
-        QShortcut(QKeySequence("Ctrl+N"), self, activated=self.new_current_session)
-        QShortcut(QKeySequence("Ctrl+M"), self, activated=partial(self.set_page, 6))
-        QShortcut(QKeySequence("Ctrl+K"), self, activated=self.open_navigator)
+        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(lambda: self.refresh(force=True))
+        QShortcut(QKeySequence("F5"), self).activated.connect(lambda: self.refresh(force=True))
+        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.new_current_session)
+        QShortcut(QKeySequence("Ctrl+M"), self).activated.connect(partial(self.set_page, 6))
+        QShortcut(QKeySequence("Ctrl+K"), self).activated.connect(self.open_navigator)
         # Direct page shortcuts: Ctrl+1 through Ctrl+0 (pages 0–9) and Ctrl+Shift+1 for page 10
         for _i in range(10):
             _idx = _i  # capture
             QShortcut(
-                QKeySequence(f"Ctrl+{(_i + 1) % 10 if _i < 9 else 0}"),
-                self,
-                activated=partial(self.set_page, _idx),
-            )
-        QShortcut(QKeySequence("Ctrl+Shift+1"), self, activated=partial(self.set_page, 10))
+                QKeySequence(f"Ctrl+{(_i + 1) % 10 if _i < 9 else 0}"), self
+            ).activated.connect(partial(self.set_page, _idx))
+        QShortcut(QKeySequence("Ctrl+Shift+1"), self).activated.connect(partial(self.set_page, 10))
         self.add_log("Application started" + (" (DEMO mode)" if demo else ""))
         settings_warning = settings_warning_message(self.settings_load.warnings)
         if settings_warning:
@@ -2126,7 +930,7 @@ class MainWindow(QMainWindow):
 
     def poll_period_ms(self) -> int:
         eco = self._eco_hidden and bool(self.conf.get("eco_tray", True))
-        return (
+        return int(
             self.adaptive_policy.interval(
                 enabled=bool(self.conf.get("adaptive_poll", True)),
                 normal=int(self.conf.get("interval", 4)),
@@ -2142,27 +946,27 @@ class MainWindow(QMainWindow):
             seconds = max(6, seconds)
         return seconds * 1000
 
-    def update_polling_mode(self):
+    def update_polling_mode(self) -> None:
         self._eco_hidden = not self.isVisible() or self.isMinimized()
         if hasattr(self, "metric_timer"):
             self.metric_timer.setInterval(self.metric_period_ms())
         if hasattr(self, "timer"):
             self.timer.setInterval(self.poll_period_ms())
 
-    def showEvent(self, event):
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self.update_polling_mode()
 
-    def hideEvent(self, event):
+    def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         self.update_polling_mode()
 
-    def changeEvent(self, event):
+    def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
             self.update_polling_mode()
 
-    def seed_demo_history(self):
+    def seed_demo_history(self) -> None:
         """Populate illustrative graphs offline (only in explicitly marked demo mode)."""
         now = time.time()
         for i in range(125):
@@ -2199,9 +1003,9 @@ class MainWindow(QMainWindow):
         p.end()
         return QIcon(pix)
 
-    def create_tray(self):
+    def create_tray(self) -> None:
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
-        self._last_notification_session_keys = ()
+        self._last_notification_session_keys: tuple[tuple[str, str], ...] = ()
         set_localized_tooltip(self.tray, "Mutagen Control")
         menu = QMenu(self)
         show_action = localized_action("Open Mutagen Control", self)
@@ -2223,7 +1027,7 @@ class MainWindow(QMainWindow):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
 
-    def _tray_status_icon(self, status):
+    def _tray_status_icon(self, status: str) -> QIcon:
         pixmap = self.windowIcon().pixmap(64, 64)
         painter = QPainter(pixmap)
         colors = {
@@ -2241,7 +1045,7 @@ class MainWindow(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
-    def update_tray_status(self, snap, states):
+    def update_tray_status(self, snap: Snapshot, states: Mapping[str, str]) -> None:
         status = worst_tray_status(
             daemon_online=bool(snap.daemon),
             sessions_stale=bool(getattr(snap, "sessions_stale", False)),
@@ -2261,7 +1065,7 @@ class MainWindow(QMainWindow):
         )
         self.tray.setIcon(self._tray_status_icon(status))
 
-    def open_notified_issue(self):
+    def open_notified_issue(self) -> None:
         keys = self._last_notification_session_keys
         if not keys:
             self.show_window()
@@ -2284,7 +1088,7 @@ class MainWindow(QMainWindow):
         self.handle_launch_request({"command": "open_session", "session_id": identifier})
 
     def open_onboarding(self) -> None:
-        if getattr(self, "onboarding_wizard", None) is not None:
+        if self.onboarding_wizard is not None:
             self.onboarding_wizard.raise_()
             self.onboarding_wizard.activateWindow()
             return
@@ -2293,7 +1097,7 @@ class MainWindow(QMainWindow):
         set_localized_title(wizard, "Welcome to Mutagen Control")
         wizard.setMinimumWidth(560)
         self.onboarding_wizard = wizard
-        self._onboarding_pending_client = None
+        self._onboarding_pending_client: MutagenClient | None = None
 
         welcome = QWizardPage()
         set_localized_title(welcome, "Welcome", page_title=True)
@@ -2392,7 +1196,7 @@ class MainWindow(QMainWindow):
         )
         self.submit(lambda: inspect_cli(client), self.show_onboarding_cli_result)
 
-    def show_onboarding_cli_result(self, result) -> None:
+    def show_onboarding_cli_result(self, result: Any) -> None:
         capabilities = ", ".join(result.capabilities) or "no session commands confirmed"
         binary_architecture = ", ".join(result.architectures) or "Unknown"
         detail = (
@@ -2584,7 +1388,7 @@ class MainWindow(QMainWindow):
             self.language_input.setItemText(1, translate("appearance.czech", self.ui_language))
         self.update_endpoint_sessions(self.snapshot)
 
-    def create_ui(self):
+    def create_ui(self) -> None:
         root = QWidget()
         root.setObjectName("main")
         self.setCentralWidget(root)
@@ -2699,7 +1503,7 @@ class MainWindow(QMainWindow):
         cr.addLayout(topline)
         self.pages = LazyStackedWidget()
         cr.addWidget(self.pages, 1)
-        page_builders = (
+        page_builders: tuple[Callable[[], QWidget], ...] = (
             self.dashboard_page,
             partial(self.sessions_page, "sync"),
             partial(self.sessions_page, "forward"),
@@ -2729,8 +1533,8 @@ class MainWindow(QMainWindow):
         outer.addWidget(content, 1)
         self.set_page(0)
 
-    def open_navigator(self):
-        commands = [
+    def open_navigator(self) -> None:
+        commands: list[tuple[str, str | None, str | None, str, str]] = [
             ("doctor", None, None, "Open Doctor", "health diagnostics"),
             ("open_project", None, None, "Open native project…", "mutagen yaml project"),
         ]
@@ -2772,7 +1576,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         if dialog.command is not None:
-            command, kind, identifier = dialog.command
+            command, selected_kind, identifier = dialog.command
             if command == "doctor":
                 self.set_page(7)
             elif command == "open_project":
@@ -2787,13 +1591,13 @@ class MainWindow(QMainWindow):
                 if path:
                     self.handle_launch_request({"command": "open_project", "path": path})
             elif command in {"focus_session", "flush_session"}:
-                self.focus_session_from_navigator(kind, identifier)
+                self.focus_session_from_navigator(selected_kind or "", identifier)
                 if command == "flush_session":
                     self.session_action("sync", "flush")
         elif dialog.target is not None:
             self.set_page(dialog.target)
 
-    def focus_session_from_navigator(self, kind, identifier):
+    def focus_session_from_navigator(self, kind: str, identifier: str | None) -> None:
         if kind not in {"sync", "forward"} or not identifier:
             return
         self.set_page(1 if kind == "sync" else 2)
@@ -2812,7 +1616,7 @@ class MainWindow(QMainWindow):
             table.selectRow(row)
             table.scrollTo(table.model().index(row, 0))
 
-    def set_page(self, index):
+    def set_page(self, index: int) -> None:
         route = PAGE_ROUTES[index]
         self.pages.setCurrentIndex(index)
         self.page_name.setText(
@@ -2836,7 +1640,7 @@ class MainWindow(QMainWindow):
         if index in (1, 2) and hasattr(self, "sync_details"):
             self.refresh_detail("sync" if index == 1 else "forward")
 
-    def dashboard_page(self):
+    def dashboard_page(self) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setFrameShape(QFrame.Shape.NoFrame)
@@ -2949,7 +1753,7 @@ class MainWindow(QMainWindow):
         page.setWidget(body)
         return page
 
-    def show_metric_menu(self, metric_key):
+    def show_metric_menu(self, metric_key: str) -> None:
         sessions_by_kind = {"sync": self.snapshot.sync, "forward": self.snapshot.forward}
         metric_titles = {
             "all": "All sessions",
@@ -2964,13 +1768,14 @@ class MainWindow(QMainWindow):
             wanted = state_sets.get(metric_key)
             count = sum(not wanted or classify(session, kind)[0] in wanted for session in sessions)
             action = menu.addAction(f"{title} · {count} {metric_titles[metric_key].lower()}")
-            action.triggered.connect(
-                lambda _checked=False, k=kind, m=metric_key: self.open_metric_sessions(k, m)
-            )
+            if action is not None:
+                action.triggered.connect(
+                    lambda _checked=False, k=kind, m=metric_key: self.open_metric_sessions(k, m)
+                )
         button = self.metric_widgets[metric_key]
         menu.exec(button.mapToGlobal(button.rect().bottomLeft()))
 
-    def open_metric_sessions(self, kind, metric_key):
+    def open_metric_sessions(self, kind: str, metric_key: str) -> None:
         self.set_page(1 if kind == "sync" else 2)
         filters = self.sync_state_filter if kind == "sync" else self.forward_state_filter
         search = self.sync_search if kind == "sync" else self.forward_search
@@ -2984,10 +1789,10 @@ class MainWindow(QMainWindow):
         filters.blockSignals(previous)
         self.filter_table(kind)
 
-    def session_state_filter_changed(self, kind):
+    def session_state_filter_changed(self, kind: str) -> None:
         self.filter_table(kind)
 
-    def graph_card(self, title, suffix, color):
+    def graph_card(self, title: str, suffix: str, color: str) -> tuple[QFrame, Graph, QLabel]:
         f, vl = card()
         top = QHBoxLayout()
         top.addWidget(label(title + " · Mutagen procesy", muted=True, size=12))
@@ -3006,7 +1811,13 @@ class MainWindow(QMainWindow):
         vl.addLayout(footer)
         return f, graph, value
 
-    def make_table(self, headers, height=370, *, stretch_columns=()):
+    def make_table(
+        self,
+        headers: Sequence[str],
+        height: int = 370,
+        *,
+        stretch_columns: Iterable[int] = (),
+    ) -> QTableWidget:
         table = QTableWidget(0, len(headers))
         set_localized_accessible_name(table, "Data table")
         for column, source_header in enumerate(headers):
@@ -3039,8 +1850,14 @@ class MainWindow(QMainWindow):
         return table
 
     def make_session_table(
-        self, headers, height=370, *, stretch_columns=(), kind="sync", dashboard=False
-    ):
+        self,
+        headers: Sequence[str],
+        height: int = 370,
+        *,
+        stretch_columns: Iterable[int] = (),
+        kind: str = "sync",
+        dashboard: bool = False,
+    ) -> QTableView:
         table = QTableView()
         set_localized_accessible_name(
             table,
@@ -3072,7 +1889,7 @@ class MainWindow(QMainWindow):
         table.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         return table
 
-    def sessions_page(self, kind):
+    def sessions_page(self, kind: str) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setFrameShape(QFrame.Shape.NoFrame)
@@ -3302,7 +2119,7 @@ class MainWindow(QMainWindow):
         page.setWidget(root)
         return page
 
-    def logs_page(self):
+    def logs_page(self) -> QWidget:
         root = QWidget()
         root.setObjectName("main")
         l = QVBoxLayout(root)
@@ -3391,7 +2208,7 @@ class MainWindow(QMainWindow):
         l.addWidget(note)
         return root
 
-    def choose_tail_file(self):
+    def choose_tail_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
             translate_text("Select a Continuously Updated Log", active_language()),
@@ -3406,16 +2223,16 @@ class MainWindow(QMainWindow):
         self.tail_info.setText("Monitoring read-only: " + filename)
         self.poll_tail()
 
-    def stop_tail_file(self):
+    def stop_tail_file(self) -> None:
         self.tail_file = None
         self.tail_timer.stop()
         set_localized_text(self.tail_info, "Log monitoring stopped.")
 
-    def clear_tail(self):
+    def clear_tail(self) -> None:
         self.tail_lines.clear()
         self.tail_view.clear()
 
-    def poll_tail(self):
+    def poll_tail(self) -> None:
         if self.tail_file is None:
             return
         try:
@@ -3429,17 +2246,17 @@ class MainWindow(QMainWindow):
         self.tail_lines.extend(found)
         self.schedule_tail_render()
 
-    def schedule_tail_render(self):
+    def schedule_tail_render(self) -> None:
         """Merge bursts of debug output into one UI paint (~6 FPS at most)."""
         if not self._tail_render_pending:
             self._tail_render_pending = True
             QTimer.singleShot(160, self._render_pending_tail)
 
-    def _render_pending_tail(self):
+    def _render_pending_tail(self) -> None:
         self._tail_render_pending = False
         self.render_tail()
 
-    def render_tail(self, *_):
+    def render_tail(self, *_args: object) -> None:
         """Append only newly arrived matching lines; never reread Qt's full text.
 
         A filter change or explicit clear performs one full rebuild. Following
@@ -3475,7 +2292,7 @@ class MainWindow(QMainWindow):
                 f"{n} {'line' if n == 1 else 'lines' if 2 <= n <= 4 else 'lines'}"
             )
 
-    def export_tail_file(self):
+    def export_tail_file(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Export Currently Displayed Live Log", active_language()),
@@ -3489,7 +2306,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc))
 
-    def daemon_page(self):
+    def daemon_page(self) -> QWidget:
         root = QWidget()
         root.setObjectName("main")
         l = QVBoxLayout(root)
@@ -3599,7 +2416,7 @@ class MainWindow(QMainWindow):
         l.addStretch()
         return root
 
-    def alerts_page(self):
+    def alerts_page(self) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setFrameShape(QFrame.Shape.NoFrame)
@@ -3794,7 +2611,7 @@ class MainWindow(QMainWindow):
         page.setWidget(body)
         return page
 
-    def save_alert_rules(self):
+    def save_alert_rules(self) -> None:
         self.conf.update(
             cpu_alert_on=self.cpu_alert_on.isChecked(),
             cpu_alert_limit=self.cpu_alert_limit.value(),
@@ -3910,43 +2727,22 @@ class MainWindow(QMainWindow):
     def open_release_page(self) -> None:
         QDesktopServices.openUrl(QUrl(RELEASES_URL))
 
-    def health_policy_from_settings(self):
-        return HealthPolicy(
-            mode=self.conf.get("health_mode", "monitor_only"),
-            failure_count_threshold=int(self.conf.get("health_failure_count", 3)),
-            failure_elapsed_seconds=int(self.conf.get("health_failure_elapsed", 120)),
-            cooldown_seconds=int(self.conf.get("health_cooldown", 60)),
-            max_attempts=int(self.conf.get("health_max_attempts", 2)),
-            attempt_window_seconds=int(self.conf.get("health_attempt_window", 1800)),
-            environment_grace_seconds=int(self.conf.get("health_environment_grace", 120)),
-        )
+    def health_policy_from_settings(self) -> HealthPolicy:
+        return health_policy_from_settings(self.conf)
 
-    def _attach_health_network_monitor(self):
-        try:
-            from PySide6.QtNetwork import QNetworkInformation
-
-            if not hasattr(QNetworkInformation, "loadDefaultBackend"):
-                return
-            if not QNetworkInformation.loadDefaultBackend():
-                return
-            information = QNetworkInformation.instance()
-            if information is None or not information.supports(
-                QNetworkInformation.Feature.Reachability
-            ):
-                return
+    def _attach_health_network_monitor(self) -> None:
+        information, reachability = attach_health_network_monitor(self._health_network_changed)
+        if information is not None:
             self._health_network_information = information
-            self._health_network_reachability = information.reachability()
-            information.reachabilityChanged.connect(self._health_network_changed)
-        except (ImportError, RuntimeError):
-            return
+            self._health_network_reachability = reachability
 
-    def _health_network_changed(self, reachability):
+    def _health_network_changed(self, reachability: Any) -> None:
         previous = self._health_network_reachability
         self._health_network_reachability = reachability
         if previous is not None and reachability != previous:
             self.health_tracker.note_environment_event("network_change", now=time.monotonic())
 
-    def settings_page(self):
+    def settings_page(self) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setFrameShape(QFrame.Shape.NoFrame)
@@ -4200,7 +2996,7 @@ class MainWindow(QMainWindow):
         page.setWidget(root)
         return page
 
-    def browse_binary(self):
+    def browse_binary(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             translate_text("Select mutagen.exe", active_language()),
@@ -4210,7 +3006,7 @@ class MainWindow(QMainWindow):
         if path:
             self.binary_edit.setText(path)
 
-    def manage_ignore_presets(self):
+    def manage_ignore_presets(self) -> None:
         try:
             dialog = IgnorePresetManagerDialog(
                 settings_path().with_name("ignore-presets.json"), self
@@ -4223,7 +3019,7 @@ class MainWindow(QMainWindow):
                 f"Could not open preset manager: {exc}",
             )
 
-    def manage_native_projects(self):
+    def manage_native_projects(self) -> None:
         from mutaui.projects.native_project import ProjectStoreError
 
         try:
@@ -4240,7 +3036,7 @@ class MainWindow(QMainWindow):
                 self, translate_text("Native Mutagen Projects", active_language()), str(exc)
             )
 
-    def manage_connection_profiles(self):
+    def manage_connection_profiles(self) -> None:
         profile_path = settings_path().with_name("connection-profiles.json")
         loaded = load_profile_store(profile_path)
         if not loaded.valid:
@@ -4254,10 +3050,10 @@ class MainWindow(QMainWindow):
         dialog = ConnectionProfilesDialog(self, ConnectionProfileStore(profile_path))
         dialog.exec()
 
-    def manage_ssh_profiles(self):
+    def manage_ssh_profiles(self) -> None:
         SSHProfileManagerDialog(self).exec()
 
-    def export_portable_bundle(self):
+    def export_portable_bundle(self) -> None:
         profile_path = settings_path().with_name("connection-profiles.json")
         loaded = load_profile_store(profile_path)
         if not loaded.valid:
@@ -4360,7 +3156,7 @@ class MainWindow(QMainWindow):
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
 
-    def import_portable_bundle(self):
+    def import_portable_bundle(self) -> None:
         source, _ = QFileDialog.getOpenFileName(
             self,
             translate_text("Import Portable Bundle", active_language()),
@@ -4488,7 +3284,7 @@ class MainWindow(QMainWindow):
                 f"Import stopped with an error: {exc}",
             )
 
-    def migrate_local_settings(self):
+    def migrate_local_settings(self) -> None:
         try:
             result = migrate_settings_file(settings_path())
         except OSError as exc:
@@ -4503,7 +3299,7 @@ class MainWindow(QMainWindow):
             self, translate_text("Settings Migration", active_language()), detail
         )
 
-    def rollback_local_settings_migration(self):
+    def rollback_local_settings_migration(self) -> None:
         backup, _ = QFileDialog.getOpenFileName(
             self,
             translate_text("Select pre-migration settings backup", active_language()),
@@ -4534,7 +3330,7 @@ class MainWindow(QMainWindow):
             f"Exact migration backup restored: {target}",
         )
 
-    def browse_global_config(self):
+    def browse_global_config(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             translate_text("Select Mutagen global YAML", active_language()),
@@ -4544,7 +3340,7 @@ class MainWindow(QMainWindow):
         if path:
             self.global_config_path_input.setText(path)
 
-    def load_global_config(self):
+    def load_global_config(self) -> None:
         path = self.global_config_path_input.text().strip()
         if not path:
             QMessageBox.information(
@@ -4575,7 +3371,7 @@ class MainWindow(QMainWindow):
                 ),
             )
 
-    def show_global_yaml_recovery(self):
+    def show_global_yaml_recovery(self) -> None:
         snapshot = getattr(self, "_global_config_snapshot", None)
         if snapshot is None or snapshot.valid:
             return
@@ -4617,7 +3413,7 @@ class MainWindow(QMainWindow):
         dialog.resize(720, 520)
         dialog.exec()
 
-    def preview_global_config(self):
+    def preview_global_config(self) -> None:
         snapshot = getattr(self, "_global_config_snapshot", None)
         if snapshot is None:
             QMessageBox.information(
@@ -4692,7 +3488,7 @@ class MainWindow(QMainWindow):
             f"Saved safely. Backup: {result.backup_path} · new SHA-256 {result.new_sha256}"
         )
 
-    def save_settings(self):
+    def save_settings(self) -> None:
         binary = self.binary_edit.text().strip()
         client = MutagenClient(binary)
         if binary and not client.binary:
@@ -4739,7 +3535,7 @@ class MainWindow(QMainWindow):
         self.add_log("Settings saved")
         self.refresh(force=True)
 
-    def add_log(self, message):
+    def add_log(self, message: object) -> None:
         safe_message = str(message).replace("\r", "").strip()
         self.logs.append(f"[{datetime.now():%d.%m. %H:%M:%S}] {safe_message}")
         severity = "warning" if "ERROR" in safe_message or "WARNING" in safe_message else "info"
@@ -4758,7 +3554,7 @@ class MainWindow(QMainWindow):
                 f"{n} {'entry' if n == 1 else 'entries' if 2 <= n <= 4 else 'entries'}"
             )
 
-    def clear_logs(self):
+    def clear_logs(self) -> None:
         self.logs.clear()
         self.log_view.clear()
         if self.recorder is not None:
@@ -4768,7 +3564,7 @@ class MainWindow(QMainWindow):
                 self.history.clear_events()
         self.add_log("UI history cleared")
 
-    def export_logs(self):
+    def export_logs(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Save History", active_language()),
@@ -4782,22 +3578,28 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             QMessageBox.critical(self, translate_text("Write Error", active_language()), str(exc))
 
-    def submit(self, func, on_result, on_error=None, on_done=None):
+    def submit(
+        self,
+        func: Callable[[], Any],
+        on_result: Callable[[Any], None],
+        on_error: Callable[[str], None] | None = None,
+        on_done: Callable[[], None] | None = None,
+    ) -> None:
         worker = Worker(func)
         self.workers.add(worker)
 
-        def deliver_result(result):
+        def deliver_result(result: Any) -> None:
             if not self._shutdown_pending:
                 on_result(result)
 
-        def deliver_error(message):
+        def deliver_error(message: str) -> None:
             if not self._shutdown_pending:
                 (on_error or self.report_error)(message)
 
         worker.signals.result.connect(deliver_result)
         worker.signals.error.connect(deliver_error)
 
-        def finished():
+        def finished() -> None:
             self.workers.discard(worker)
             if on_done and not self._shutdown_pending:
                 on_done()
@@ -4807,7 +3609,7 @@ class MainWindow(QMainWindow):
         worker.signals.finished.connect(finished)
         self.pool.start(worker)
 
-    def refresh(self, *, force=False):
+    def refresh(self, *, force: bool = False) -> None:
         if not self.demo and not self.poll_backoff.can_retry(force):
             return
         if self.demo:
@@ -4831,7 +3633,7 @@ class MainWindow(QMainWindow):
         cached_version, cache_at, cache_binary = self._version_cache
         version_valid = cache_binary == binary and time.monotonic() - cache_at < 600
 
-        def work():
+        def work() -> Snapshot:
             snap = Snapshot(binary=client.binary)
             snap.registration, snap.registration_command = read_registration(client.binary)
             if not client.binary:
@@ -4869,11 +3671,11 @@ class MainWindow(QMainWindow):
                     snap.version = cached_version if cache_binary == binary else ""
             return snap
 
-        def apply_if_current(snap):
+        def apply_if_current(snap: Snapshot) -> None:
             if generation == self._refresh_generation:
                 self.apply_snapshot(snap, generation=generation)
 
-        def finish_poll():
+        def finish_poll() -> None:
             self.pending_poll = False
             if self._refresh_again:
                 self._refresh_again = False
@@ -4890,7 +3692,7 @@ class MainWindow(QMainWindow):
             on_done=finish_poll,
         )
 
-    def refresh_resources(self):
+    def refresh_resources(self) -> None:
         if self.demo:
             self.apply_resource_metrics(
                 {
@@ -4914,7 +3716,7 @@ class MainWindow(QMainWindow):
             on_done=lambda: setattr(self, "_resource_pending", False),
         )
 
-    def apply_resource_metrics(self, data):
+    def apply_resource_metrics(self, data: dict[str, Any]) -> None:
         # Runs in the GUI thread; psutil enumeration itself happens in QThreadPool.
         self.last_metrics = data
         cpu, ram, count = data["cpu"], data["memory"], data["processes"]
@@ -5042,7 +3844,7 @@ class MainWindow(QMainWindow):
             self.fill_processes(detail)
         self.refresh_charts()
 
-    def fill_processes(self, processes):
+    def fill_processes(self, processes: list[dict[str, Any]]) -> None:
         table = self.process_table
         table.setSortingEnabled(False)
         table.setUpdatesEnabled(False)
@@ -5075,7 +3877,7 @@ class MainWindow(QMainWindow):
             table.setUpdatesEnabled(True)
         self.fit_table_to_rows(table)
 
-    def refresh_charts(self, *args, force=False):
+    def refresh_charts(self, *args: object, force: bool = False) -> None:
         if self.chart_frozen and not force:
             return
         page_index = self.pages.currentIndex()
@@ -5102,7 +3904,7 @@ class MainWindow(QMainWindow):
                 self._chart_query_reschedule = False
                 path = self.history.path
 
-                def finished_query():
+                def finished_query() -> None:
                     self._chart_query_pending = False
                     if self._chart_query_reschedule and self.pages.currentIndex() == 6:
                         self._chart_monitor_gate.reset()
@@ -5140,7 +3942,7 @@ class MainWindow(QMainWindow):
         except sqlite3.Error:
             pass
 
-    def apply_monitor_chart_data(self, rows: list[dict], hours: float):
+    def apply_monitor_chart_data(self, rows: list[dict[str, Any]], hours: float) -> None:
         if self.pages.currentIndex() != 6 or float(self.monitor_range.currentData()) != hours:
             return  # Ignore asynchronous results for a previously selected range.
         mapping = {
@@ -5155,14 +3957,14 @@ class MainWindow(QMainWindow):
                 (row["ts"], row[left], row[right] if right else None) for row in rows
             )
 
-    def apply_statistics(self, stats: dict, hours: float):
+    def apply_statistics(self, stats: dict[str, Any], hours: float | None) -> None:
         if self.pages.currentIndex() != 6 or float(self.monitor_range.currentData()) != hours:
             return  # Ignore an outdated result from another selected interval.
         self._stats_cache_at = time.monotonic()
         self._stats_cache_range = hours
         self._last_monitor_stats = stats
 
-        def fmt(field, unit):
+        def fmt(field: str, unit: str) -> str:
             values = stats["fields"][field]
             localized_unit = translate_text(unit, self.ui_language)
             return (
@@ -5194,7 +3996,7 @@ class MainWindow(QMainWindow):
             + fmt("forward_in_rate", "Forward Inbound")
         )
 
-    def apply_snapshot(self, snap, *, generation=None):
+    def apply_snapshot(self, snap: Snapshot, *, generation: int | None = None) -> None:
         if generation is not None and generation != self._refresh_generation:
             return
         received_at = time.monotonic()
@@ -5460,7 +4262,13 @@ class MainWindow(QMainWindow):
                 "Connected to " + snap.binary if available else "Select a Mutagen installation"
             )
 
-    def fill_table(self, table, sessions, kind, dashboard=False):
+    def fill_table(
+        self,
+        table: QTableView,
+        sessions: list[dict[str, Any]],
+        kind: str,
+        dashboard: bool = False,
+    ) -> None:
         """Reset one compact model while retaining the selected session and scroll."""
         model = table.model()
         current = table.currentIndex()
@@ -5492,7 +4300,7 @@ class MainWindow(QMainWindow):
         self.fit_table_to_rows(table)
 
     @staticmethod
-    def fit_table_to_rows(table):
+    def fit_table_to_rows(table: QTableView | QTableWidget) -> None:
         row_count = table.model().rowCount() if isinstance(table, QTableView) else table.rowCount()
         visible_rows = [row for row in range(row_count) if not table.isRowHidden(row)]
         rows_height = sum(table.rowHeight(row) for row in visible_rows)
@@ -5502,7 +4310,7 @@ class MainWindow(QMainWindow):
         height = min(520, max(160, header_height + rows_height + 2 * table.frameWidth() + 4))
         table.setFixedHeight(height)
 
-    def filter_table(self, kind, value=None):
+    def filter_table(self, kind: str, value: str | None = None) -> None:
         table = self.sync_table if kind == "sync" else self.forward_table
         search = self.sync_search if kind == "sync" else self.forward_search
         filters = self.sync_state_filter if kind == "sync" else self.forward_state_filter
@@ -5547,7 +4355,7 @@ class MainWindow(QMainWindow):
             )
         self.fit_table_to_rows(table)
 
-    def dashboard_select(self, row, col):
+    def dashboard_select(self, row: int, col: int) -> None:
         index = self.dashboard_table.model().index(row, 0)
         if index.isValid():
             self.current_id = index.data(Qt.ItemDataRole.UserRole) or ""
@@ -5558,7 +4366,7 @@ class MainWindow(QMainWindow):
             if match >= 0:
                 self.sync_table.selectRow(match)
 
-    def on_select(self, kind):
+    def on_select(self, kind: str) -> None:
         table = self.sync_table if kind == "sync" else self.forward_table
         current = table.currentIndex()
         if not current.isValid():
@@ -5569,7 +4377,7 @@ class MainWindow(QMainWindow):
             self.current_id = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole) or ""
         self.refresh_detail(kind)
 
-    def selected_session(self, kind):
+    def selected_session(self, kind: str) -> dict[str, Any] | None:
         table = self.sync_table if kind == "sync" else self.forward_table
         current = table.currentIndex()
         if not current.isValid():
@@ -5578,7 +4386,7 @@ class MainWindow(QMainWindow):
         sessions = self.snapshot.sync if kind == "sync" else self.snapshot.forward
         return next((s for s in sessions if s.get("identifier") == identifier), None)
 
-    def refresh_detail(self, kind):
+    def refresh_detail(self, kind: str) -> None:
         sess = self.selected_session(kind)
         details = self.sync_details if kind == "sync" else self.forward_details
         title = self.sync_title if kind == "sync" else self.forward_title
@@ -5710,7 +4518,7 @@ class MainWindow(QMainWindow):
                 else False
             )
 
-    def open_session_preferences(self, kind):
+    def open_session_preferences(self, kind: str) -> None:
         sess = self.selected_session(kind)
         if not sess:
             QMessageBox.information(
@@ -5749,13 +4557,17 @@ class MainWindow(QMainWindow):
         note = QLineEdit(str(prefs.get("note", "")))
         note.setMaxLength(180)
         box.addWidget(note)
+        fields_by_key: dict[str, SyncConfigField | ForwardConfigField]
+        config_rows: tuple[SyncConfigRow | ForwardConfigRow, ...]
+        row: SyncConfigRow | ForwardConfigRow
         if kind == "sync":
             box.addWidget(label("Actual Mutagen Sync Configuration", size=14, bold=True))
             proposals = prefs.get("configuration_proposal", {})
             if not isinstance(proposals, dict):
                 proposals = {}
             fields_by_key = {field.key: field for field in SYNC_CONFIG_FIELDS}
-            config_rows = session_configuration_rows(sess, proposals)
+            sync_rows = session_configuration_rows(sess, proposals)
+            config_rows = sync_rows
             config_table = QTableWidget(len(config_rows), 6)
             set_localized_accessible_name(config_table, "Project configuration table")
             config_table.setHorizontalHeaderLabels(
@@ -5788,9 +4600,11 @@ class MainWindow(QMainWindow):
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     config_table.setItem(row_index, column, item)
                 options_text = f"\nOptions: {', '.join(field.options)}" if field.options else ""
-                config_table.item(row_index, 0).setToolTip(
-                    f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
-                )
+                tooltip_item = config_table.item(row_index, 0)
+                if tooltip_item is not None:
+                    tooltip_item.setToolTip(
+                        f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
+                    )
                 set_localized_tooltip(
                     config_table.item(row_index, 5),
                     "Local proposal only. Installed Mutagen support must be verified before replacement.",
@@ -5819,11 +4633,11 @@ class MainWindow(QMainWindow):
                 )
                 performance_assistant.setEnabled(not self.demo and not self.snapshot.sessions_stale)
 
-                def open_performance_assistant():
+                def open_performance_assistant() -> None:
                     apply_performance_assistant(
                         sess,
                         config_table,
-                        config_rows,
+                        sync_rows,
                         stale=self.snapshot.sessions_stale,
                         parent=dialog,
                     )
@@ -5836,7 +4650,7 @@ class MainWindow(QMainWindow):
                 )
                 box.addWidget(performance_assistant)
 
-            def quick_ignore_selected_file():
+            def quick_ignore_selected_file() -> None:
                 local_roots = []
                 for side, endpoint_label in (("alpha", "ALPHA"), ("beta", "BETA")):
                     endpoint = sess.get(side)
@@ -5885,9 +4699,13 @@ class MainWindow(QMainWindow):
                 try:
                     pattern = path_aware_ignore_rule(root_path, selected)
                     ignore_row = next(
-                        index for index, row in enumerate(config_rows) if row.key == "ignore.paths"
+                        index
+                        for index, row_key in enumerate(config_row_keys)
+                        if row_key == "ignore.paths"
                     )
-                    draft_text = config_table.item(ignore_row, 5).text().strip()
+                    draft_item = config_table.item(ignore_row, 5)
+                    assert draft_item is not None
+                    draft_text = draft_item.text().strip()
                     if draft_text:
                         patterns = json.loads(draft_text)
                     else:
@@ -5903,9 +4721,7 @@ class MainWindow(QMainWindow):
                         raise ValueError("The current ignore paths are not a known list.")
                     if pattern not in patterns:
                         patterns.append(pattern)
-                    config_table.item(ignore_row, 5).setText(
-                        json.dumps(patterns, ensure_ascii=False)
-                    )
+                    draft_item.setText(json.dumps(patterns, ensure_ascii=False))
                     self.add_log(f"Quick Ignore drafted for {root_label}: {pattern}")
                 except (IgnorePresetError, OSError, ValueError, json.JSONDecodeError) as exc:
                     QMessageBox.warning(
@@ -5963,9 +4779,11 @@ class MainWindow(QMainWindow):
                         item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                     config_table.setItem(row_index, column, item)
                 options_text = f"\nOptions: {', '.join(field.options)}" if field.options else ""
-                config_table.item(row_index, 0).setToolTip(
-                    f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
-                )
+                tooltip_item = config_table.item(row_index, 0)
+                if tooltip_item is not None:
+                    tooltip_item.setToolTip(
+                        f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
+                    )
                 set_localized_tooltip(
                     config_table.item(row_index, 5),
                     "Local proposal only. CLI, endpoint and platform support must be verified before replacement.",
@@ -5978,34 +4796,22 @@ class MainWindow(QMainWindow):
             )
             explanation.setWordWrap(True)
             box.addWidget(explanation)
+        config_row_keys = tuple(row.key for row in config_rows)
         controls = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
 
-        def accept_dialog():
+        def accept_dialog() -> None:
             if kind in ("sync", "forward"):
-                draft = (
-                    SyncConfigurationDraft(sess)
-                    if kind == "sync"
-                    else ForwardConfigurationDraft(sess)
-                )
                 try:
-                    for row_index, row in enumerate(config_rows):
-                        text = config_table.item(row_index, 5).text().strip()
-                        if not text:
-                            continue
-                        field = fields_by_key[row.key]
-                        if field.validation in ("positive-int", "nonnegative-int"):
-                            value = int(text, 10)
-                        elif field.validation == "bool":
-                            if text.lower() not in ("true", "false"):
-                                raise ValueError(f"{field.label} must be true or false")
-                            value = text.lower() == "true"
-                        elif field.validation == "string-list":
-                            value = json.loads(text)
-                        else:
-                            value = text
-                        draft.propose(row.key, value)
+                    proposal_values = {}
+                    for row_index, row_key in enumerate(config_row_keys):
+                        draft_item = config_table.item(row_index, 5)
+                        assert draft_item is not None
+                        proposal_values[row_key] = draft_item.text()
+                    proposal = build_session_configuration_proposal(
+                        kind, sess, fields_by_key, proposal_values
+                    )
                 except (ValueError, TypeError, json.JSONDecodeError) as exc:
                     QMessageBox.warning(
                         dialog, translate_text("Invalid proposal", active_language()), str(exc)
@@ -6014,7 +4820,7 @@ class MainWindow(QMainWindow):
                 proposal_key = (
                     "configuration_proposal" if kind == "sync" else "forward_configuration_proposal"
                 )
-                prefs[proposal_key] = draft.proposals
+                prefs[proposal_key] = proposal
             dialog.accept()
 
         controls.accepted.connect(accept_dialog)
@@ -6044,7 +4850,9 @@ class MainWindow(QMainWindow):
         self.refresh_detail(kind)
         self.add_log("Session settings saved")
 
-    def show_raw_native_session_json(self, session, parent=None):
+    def show_raw_native_session_json(
+        self, session: dict[str, Any], parent: QWidget | None = None
+    ) -> None:
         dialog = QDialog(parent or self)
         set_localized_title(dialog, "Raw Mutagen session JSON")
         layout = QVBoxLayout(dialog)
@@ -6071,7 +4879,7 @@ class MainWindow(QMainWindow):
         dialog.resize(720, 560)
         dialog.exec()
 
-    def review_sync_replacement(self, session_identifier):
+    def review_sync_replacement(self, session_identifier: str) -> None:
         """Preview and, after explicit consent, replace one eligible sync session."""
         if self.demo or self.pending_action or self.snapshot.sessions_stale:
             QMessageBox.warning(
@@ -6210,8 +5018,8 @@ class MainWindow(QMainWindow):
         audit_path = settings_path().with_name("session-replacement-audit.jsonl")
         self.pending_action = True
 
-        def execute_replacement():
-            def audit(event):
+        def execute_replacement() -> Any:
+            def audit(event: Any) -> None:
                 record = {
                     "plan_id": event.plan_id,
                     "session_identifier": event.session_identifier,
@@ -6249,7 +5057,7 @@ class MainWindow(QMainWindow):
             )
             return receipt
 
-        def replaced(receipt):
+        def replaced(receipt: Any) -> None:
             if receipt.verified and receipt.new_session_identifier:
                 try:
                     self.session_provenance.record(receipt.new_session_identifier, new_arguments)
@@ -6267,7 +5075,7 @@ class MainWindow(QMainWindow):
                         self.conf["favorites"] = {
                             kind: sorted(ids) for kind, ids in self.favorites.items()
                         }
-                    save_settings_file(self.conf)
+                    write_settings(self.conf)
                 except (OSError, TypeError, ValueError) as exc:
                     self.add_log(
                         "Replacement verified; local note/favorite migration failed: " + str(exc)
@@ -6291,12 +5099,12 @@ class MainWindow(QMainWindow):
             lambda: setattr(self, "pending_action", False),
         )
 
-    def new_current_session(self):
+    def new_current_session(self) -> None:
         page = self.pages.currentIndex()
         if page in (1, 2):
             self.create_session("sync" if page == 1 else "forward")
 
-    def toggle_favorite(self, kind):
+    def toggle_favorite(self, kind: str) -> None:
         session = self.selected_session(kind)
         if not session:
             return
@@ -6324,13 +5132,13 @@ class MainWindow(QMainWindow):
         self.filter_table(kind)
         self.refresh_detail(kind)
 
-    def copy_session_id(self, kind):
+    def copy_session_id(self, kind: str) -> None:
         sess = self.selected_session(kind)
         if sess:
             QApplication.clipboard().setText(str(sess.get("identifier", "")))
             self.add_log("Session identifier copied to clipboard")
 
-    def export_session_json(self, kind):
+    def export_session_json(self, kind: str) -> None:
         sess = self.selected_session(kind)
         if not sess:
             return
@@ -6350,7 +5158,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc))
 
-    def session_context_menu(self, kind, point):
+    def session_context_menu(self, kind: str, point: QPoint) -> None:
         table = self.sync_table if kind == "sync" else self.forward_table
         item = table.itemAt(point)
         if not item:
@@ -6404,7 +5212,7 @@ class MainWindow(QMainWindow):
                 )
         menu.exec(table.viewport().mapToGlobal(point))
 
-    def endpoints_page(self):
+    def endpoints_page(self) -> QScrollArea:
         """Both endpoints as reported by Mutagen itself. Nover open an extra connection."""
         page = QScrollArea()
         page.setWidgetResizable(True)
@@ -6434,8 +5242,9 @@ class MainWindow(QMainWindow):
         set_localized_placeholder(
             self.endpoint_combo.lineEdit(), "Search name, status, server, or path…"
         )
-        self.endpoint_combo.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-        self.endpoint_combo.completer().setFilterMode(Qt.MatchFlag.MatchContains)
+        if completer := self.endpoint_combo.completer():
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.endpoint_combo.currentIndexChanged.connect(self.update_endpoint_details)
         set_localized_tooltip(
             self.endpoint_combo,
@@ -6454,7 +5263,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(intro)
         panes = QHBoxLayout()
         panes.setSpacing(14)
-        self.endpoint_cards = {}
+        self.endpoint_cards: dict[str, EndpointCardWidgets] = {}
         for side in ("left", "right"):
             f, l = card()
             title = label("ALPHA" if side == "left" else "BETA", size=18, bold=True)
@@ -6507,7 +5316,7 @@ class MainWindow(QMainWindow):
         page.setWidget(body)
         return page
 
-    def update_endpoint_sessions(self, snapshot):
+    def update_endpoint_sessions(self, snapshot: Snapshot) -> None:
         if not hasattr(self, "endpoint_combo"):
             return
         options = [("sync", x) for x in snapshot.sync] + [("forward", x) for x in snapshot.forward]
@@ -6540,7 +5349,7 @@ class MainWindow(QMainWindow):
         if self.pages.currentIndex() == 9 or keys != old or labels != old_labels:
             self.update_endpoint_details()
 
-    def update_endpoint_details(self, *_):
+    def update_endpoint_details(self, *_args: object) -> None:
         if not hasattr(self, "endpoint_combo"):
             return
         key = self.endpoint_combo.currentData()
@@ -6584,7 +5393,7 @@ class MainWindow(QMainWindow):
             )
             if kind == "sync":
 
-                def count(number):
+                def count(number: int | None) -> str:
                     return "—" if number is None else f"{number:,}".replace(",", " ")
 
                 scan = (
@@ -6638,7 +5447,7 @@ class MainWindow(QMainWindow):
             lines.append("Last error: " + data["last_error"][:1200])
         self.endpoint_session_info.setText("\n".join(lines))
 
-    def servers_page(self):
+    def servers_page(self) -> QScrollArea:
         """Server grouping is based exclusively on endpoint URLs in local Mutagen data."""
         page = QScrollArea()
         page.setWidgetResizable(True)
@@ -6756,14 +5565,14 @@ class MainWindow(QMainWindow):
         page.setWidget(root)
         return page
 
-    def pick_server_row(self, row, col):
+    def pick_server_row(self, row: int, col: int) -> None:
         item = self.server_overview.item(row, 0)
         if item:
             index = self.server_selector.findData(item.data(Qt.ItemDataRole.UserRole))
             if index >= 0:
                 self.server_selector.setCurrentIndex(index)
 
-    def update_server_groups(self):
+    def update_server_groups(self) -> None:
         if not hasattr(self, "server_selector"):
             return
         groups = group_servers(self.snapshot.sync, self.snapshot.forward)
@@ -6833,7 +5642,7 @@ class MainWindow(QMainWindow):
         if self.pages.currentIndex() == 10:
             self.update_server_details()
 
-    def server_targets(self, kind, scope):
+    def server_targets(self, kind: str, scope: str) -> list[dict[str, Any]]:
         sessions = self.snapshot.sync if kind == "sync" else self.snapshot.forward
         if scope == "all":
             return list(sessions)
@@ -6842,7 +5651,7 @@ class MainWindow(QMainWindow):
             return list(sessions)
         return [session for session in sessions if key in session_servers(session, kind)]
 
-    def update_server_details(self, *_):
+    def update_server_details(self, *_args: object) -> None:
         if not hasattr(self, "server_selector"):
             return
         selection_key = self.server_selector.currentData()
@@ -6886,7 +5695,7 @@ class MainWindow(QMainWindow):
                         item.setData(Qt.ItemDataRole.UserRole, sess.get("identifier"))
             self.fit_table_to_rows(table)
 
-    def open_group_session(self, kind, row):
+    def open_group_session(self, kind: str, row: int) -> None:
         listing = self.server_sync_table if kind == "sync" else self.server_forward_table
         item = listing.item(row, 0)
         if not item:
@@ -6910,7 +5719,7 @@ class MainWindow(QMainWindow):
                 table.scrollToItem(current)
                 break
 
-    def show_server_advanced_actions(self):
+    def show_server_advanced_actions(self) -> None:
         """Keep reset/termination out of the one-click toolbar."""
         menu = QMenu(self)
         menu.addAction(
@@ -6928,7 +5737,7 @@ class MainWindow(QMainWindow):
         )
         menu.exec(self.cursor().pos())
 
-    def bulk_action(self, kind: str, action: str, scope: str = "all"):
+    def bulk_action(self, kind: str, action: str, scope: str = "all") -> None:
         if self.demo or self.pending_action:
             return
         candidates = self.server_targets(kind, scope)
@@ -7008,12 +5817,12 @@ class MainWindow(QMainWindow):
         selected_records = [candidates_by_id[identifier] for identifier in ids]
         preflight_fingerprint = session_preflight_fingerprint(selected_records)
 
-        def success(output):
+        def success(output: str) -> None:
             self.add_log(f"Bulk action submitted: {action}, {len(ids)} sessions")
             if output:
                 self.add_log(output[:1000])
 
-        def done():
+        def done() -> None:
             self.pending_action = False
             self.refresh(force=True)
 
@@ -7030,7 +5839,7 @@ class MainWindow(QMainWindow):
             done,
         )
 
-    def toggle_sync_startup(self):
+    def toggle_sync_startup(self) -> None:
         """Native semantics: Mutagen persists paused/unpaused state across daemon restarts."""
         if self.demo or self.pending_action:
             return
@@ -7084,7 +5893,7 @@ class MainWindow(QMainWindow):
                 return
         self.run_command("sync", "resume", target=ident, register_before=needs_registration)
 
-    def monitoring_page(self):
+    def monitoring_page(self) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)
         page.setFrameShape(QFrame.Shape.NoFrame)
@@ -7210,7 +6019,7 @@ class MainWindow(QMainWindow):
         page.setWidget(body)
         return page
 
-    def toggle_charts(self):
+    def toggle_charts(self) -> None:
         self.chart_frozen = not self.chart_frozen
         self.monitor_live_button.setText(
             "▶ Resume Graph Updates" if self.chart_frozen else "⏸ Freeze Graphs"
@@ -7218,7 +6027,7 @@ class MainWindow(QMainWindow):
         if not self.chart_frozen:
             self.refresh_charts(force=True)
 
-    def export_monitor_png(self):
+    def export_monitor_png(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Save Current Graphs to PNG", active_language()),
@@ -7240,7 +6049,7 @@ class MainWindow(QMainWindow):
         else:
             self.add_log("Monitoring saved as PNG")
 
-    def export_metrics(self):
+    def export_metrics(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Export monitoringu", active_language()),
@@ -7255,7 +6064,7 @@ class MainWindow(QMainWindow):
         except (sqlite3.Error, OSError) as exc:
             self.report_error(str(exc))
 
-    def diagnostics_page(self):
+    def diagnostics_page(self) -> QWidget:
         root = QWidget()
         root.setObjectName("main")
         l = QVBoxLayout(root)
@@ -7315,7 +6124,7 @@ class MainWindow(QMainWindow):
         l.addWidget(problems, 1)
         return root
 
-    def open_conflict_inspector(self):
+    def open_conflict_inspector(self) -> None:
         sessions = []
         for raw in self.snapshot.sync:
             if not isinstance(raw, dict) or not isinstance(raw.get("identifier"), str):
@@ -7340,12 +6149,12 @@ class MainWindow(QMainWindow):
             recommendation_path=settings_path().with_name("conflict-recommendations.json"),
         ).exec()
 
-    def _start_initial_refresh(self):
+    def _start_initial_refresh(self) -> None:
         self._initial_refresh_pending = False
         if not self.pending_poll:
             self.refresh(force=True)
 
-    def _has_authoritative_session_lists(self):
+    def _has_authoritative_session_lists(self) -> bool:
         return self.demo or bool(
             self.snapshot.daemon
             and not self.snapshot.sessions_stale
@@ -7353,7 +6162,7 @@ class MainWindow(QMainWindow):
             and self.snapshot.forward_observed_at is not None
         )
 
-    def _complete_pending_launch_requests(self):
+    def _complete_pending_launch_requests(self) -> None:
         if not self._pending_launch_requests:
             return
         pending = self._pending_launch_requests
@@ -7370,7 +6179,7 @@ class MainWindow(QMainWindow):
         for request in pending:
             self.handle_launch_request(request)
 
-    def handle_launch_request(self, message):
+    def handle_launch_request(self, message: dict[str, Any]) -> None:
         """Route a validated local CLI or single-instance request in the UI thread."""
         command = message.get("command")
         self.showNormal()
@@ -7472,7 +6281,7 @@ class MainWindow(QMainWindow):
                 table.selectRow(row_index)
             self.refresh_detail(kind)
 
-    def update_diagnostics(self, snap):
+    def update_diagnostics(self, snap: Snapshot) -> None:
         summary = (
             f"Mutagen: {snap.binary or 'not found'}\nVersion: {snap.version or 'unknown'}\n"
             f"Daemon: {'online' if snap.daemon else 'offline'}\n"
@@ -7484,10 +6293,13 @@ class MainWindow(QMainWindow):
             summary += "\nCLI error: " + snap.error
         self.diag_summary.setText(summary)
         sessions = []
-        for kind, rows, observed_at in (
+        session_sources: tuple[
+            tuple[Literal["sync", "forward"], list[dict[str, Any]], datetime | None], ...
+        ] = (
             ("sync", snap.sync, snap.sync_observed_at),
             ("forward", snap.forward, snap.forward_observed_at),
-        ):
+        )
+        for kind, rows, observed_at in session_sources:
             for raw in rows:
                 if not isinstance(raw, dict) or not isinstance(raw.get("identifier"), str):
                     continue
@@ -7528,57 +6340,26 @@ class MainWindow(QMainWindow):
             and issue.certainty == "confirmed"
         }
         health_now = time.monotonic()
-        health_results = []
-        for session in sessions:
-            session_kind = session.identity.kind
-            source_timestamp = (
-                snap.sync_observed_at if session_kind == "sync" else snap.forward_observed_at
-            )
-            timestamp_age = (
-                (datetime.now().astimezone() - source_timestamp).total_seconds()
-                if source_timestamp is not None
-                else None
-            )
-            if (
-                session.stale_reason is not None
-                or timestamp_age is None
-                or not 0 <= timestamp_age <= FRESHNESS_SECONDS
-            ):
-                continue
-            observation_key = (
-                f"{session_kind}:{source_timestamp.isoformat()}"
-                if source_timestamp is not None
-                else f"{session_kind}:stale"
-            )
-            raw_status = session.native_config.get("status")
-            paused = session.native_config.get("paused") is True
-            scan_in_progress = raw_status in (7, "7") or "scan" in session.state.casefold()
-            health_results.append(
-                self.health_tracker.observe(
-                    HealthObservation(
-                        session_identifier=session.identity.identifier,
-                        observation_key=observation_key,
-                        observed_at=session.measured_at,
-                        state=session.state,
-                        confirmed_failure=session.identity.identifier in failed_sessions,
-                        intentional_pause=paused,
-                        scan_in_progress=scan_in_progress,
-                        command_duration_seconds=snap.command_durations.get(f"{session_kind} list"),
-                    ),
-                    now=health_now,
-                )
-            )
+        health_results = observe_session_health(
+            self.health_tracker,
+            sessions,
+            failed_sessions=failed_sessions,
+            sync_observed_at=snap.sync_observed_at,
+            forward_observed_at=snap.forward_observed_at,
+            command_durations=snap.command_durations,
+            now=health_now,
+        )
         notes = [
             "Authoritative snapshot: "
             + ("yes" if report.authoritative else "NO — refresh required"),
             f"Sessions assessed: {report.session_count}; findings: {report.issue_count}",
             f"Health mode: {self.health_tracker.policy.mode}",
         ]
-        observation_key = (snap.sync_observed_at, snap.forward_observed_at)
-        if report.authoritative and observation_key != self._doctor_observation_key:
+        snapshot_observation_key = (snap.sync_observed_at, snap.forward_observed_at)
+        if report.authoritative and snapshot_observation_key != self._doctor_observation_key:
             if self._doctor_observation_key is not None:
                 self._doctor_previous_issue_count = self._doctor_current_issue_count
-            self._doctor_observation_key = observation_key
+            self._doctor_observation_key = snapshot_observation_key
             self._doctor_current_issue_count = report.issue_count
         if not report.authoritative:
             notes.append("Trend: unavailable; snapshot is stale or incomplete")
@@ -7594,7 +6375,7 @@ class MainWindow(QMainWindow):
                 else "decreased"
             )
             notes.append(f"Trend: {trend} ({previous} → {report.issue_count} findings)")
-        severity_counts = {}
+        severity_counts: dict[str, int] = {}
         for issue in report.issues:
             severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
         notes.append(
@@ -7643,9 +6424,9 @@ class MainWindow(QMainWindow):
             if health.incident_id:
                 notes.append(f"  Incident: {health.incident_id}")
             for transition in health.transitions[-5:]:
-                previous = transition.from_state or "initial"
+                previous_state = transition.from_state or "initial"
                 notes.append(
-                    f"  Transition: {previous} → {transition.to_state} "
+                    f"  Transition: {previous_state} → {transition.to_state} "
                     f"({transition.observed_at.isoformat(timespec='seconds')})"
                 )
             if health.environment_event:
@@ -7688,7 +6469,7 @@ class MainWindow(QMainWindow):
                 set_localized_text(self.diag_problem_count, "✓  no findings in recent snapshot")
                 self.diag_problem_count.setStyleSheet(f"color:{TEAL};font-size:11px;")
 
-    def export_safe_report(self):
+    def export_safe_report(self) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Safe Diagnostics Report", active_language()),
@@ -7714,7 +6495,7 @@ class MainWindow(QMainWindow):
         except (OSError, sqlite3.Error) as exc:
             self.report_error(str(exc))
 
-    def open_support_bundle(self):
+    def open_support_bundle(self) -> None:
         try:
             events = self.history.events(limit=500)
             snapshot_payload = self._full_snapshot_payload()
@@ -7742,7 +6523,7 @@ class MainWindow(QMainWindow):
                 include_monitored_log_lines=dialog.include_monitored_log_lines.isChecked(),
             )
 
-    def run_local_self_check(self):
+    def run_local_self_check(self) -> None:
         try:
             mutagen_version = self.client.get_version()
         except Exception:
@@ -7786,7 +6567,7 @@ class MainWindow(QMainWindow):
         title = "Místní kontrola aplikace" if czech else "Local application self-check"
         QMessageBox.information(self, title, "\n".join(lines))
 
-    def _full_snapshot_payload(self):
+    def _full_snapshot_payload(self) -> dict[str, Any]:
         return {
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             "daemon": self.snapshot.daemon,
@@ -7801,9 +6582,9 @@ class MainWindow(QMainWindow):
     def export_session_log_snapshot(
         self,
         *,
-        include_event_messages=False,
-        include_monitored_log_lines=False,
-    ):
+        include_event_messages: bool = False,
+        include_monitored_log_lines: bool = False,
+    ) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Session Log Snapshot", active_language()),
@@ -7839,13 +6620,13 @@ class MainWindow(QMainWindow):
         except (OSError, sqlite3.Error) as exc:
             self.report_error(str(exc))
 
-    def copy_diagnostics(self):
+    def copy_diagnostics(self) -> None:
         QApplication.clipboard().setText(
             self.diag_summary.text() + "\n\n" + self.diagnostics_view.toPlainText()
         )
         self.add_log("Diagnostics summary copied")
 
-    def export_snapshot(self, *, snapshot_payload=None):
+    def export_snapshot(self, *, snapshot_payload: dict[str, Any] | None = None) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
             translate_text("Export diagnostiky", active_language()),
@@ -7875,7 +6656,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc))
 
-    def check_alerts(self, snap):
+    def check_alerts(self, snap: Snapshot) -> None:
         # Do not misclassify sessions as deleted during a temporary daemon outage.
         if self.previous_daemon is not None and self.previous_daemon != snap.daemon:
             self.add_log(
@@ -7889,11 +6670,13 @@ class MainWindow(QMainWindow):
             return
         from insights import state_transitions
 
-        new_states = {
-            (kind, sess.get("identifier")): classify(sess, kind)[0]
-            for kind, group in (("sync", snap.sync), ("forward", snap.forward))
-            for sess in group
-        }
+        session_groups = (("sync", snap.sync), ("forward", snap.forward))
+        new_states: dict[tuple[str, str], str] = {}
+        for kind, group in session_groups:
+            for sess in group:
+                identifier = sess.get("identifier")
+                if isinstance(identifier, str):
+                    new_states[(kind, identifier)] = classify(sess, kind)[0]
         updater = getattr(self, "update_tray_status", None)
         if updater is not None:
             updater(snap, new_states)
@@ -7902,8 +6685,10 @@ class MainWindow(QMainWindow):
                 self.previous_states, new_states
             ):
                 group = snap.sync if kind == "sync" else snap.forward
-                sess = next((s for s in group if s.get("identifier") == identifier), {})
-                title = sess.get("name") or str(identifier)[:14]
+                matched_session: dict[str, Any] = next(
+                    (s for s in group if s.get("identifier") == identifier), {}
+                )
+                title = matched_session.get("name") or str(identifier)[:14]
                 if state == "error":
                     message = f"WARNING: Session {title} needs attention"
                 elif previous == "error":
@@ -7915,18 +6700,20 @@ class MainWindow(QMainWindow):
                 else:
                     message = f"Session {title}: {previous} → {state}"
                 self.add_log(message)
-        eligible_errors = {}
+        eligible_errors: dict[tuple[str, str], str] = {}
         for kind, group in (("sync", snap.sync), ("forward", snap.forward)):
             for sess in group:
-                identifier = sess.get("identifier")
-                key = (kind, str(identifier))
+                session_identifier = sess.get("identifier")
+                if not isinstance(session_identifier, str):
+                    continue
+                key = (kind, session_identifier)
                 session_notifications = (
                     self.conf.get("session_prefs", {})
-                    .get(str(identifier), {})
+                    .get(session_identifier, {})
                     .get("notifications", True)
                 )
                 if new_states.get(key) == "error" and session_notifications:
-                    eligible_errors[key] = sess.get("name") or str(identifier)[:14]
+                    eligible_errors[key] = sess.get("name") or session_identifier[:14]
 
         notifications_allowed = bool(self.conf.get("alerts", True)) and self.tray.isVisible()
         if notifications_allowed:
@@ -7941,7 +6728,7 @@ class MainWindow(QMainWindow):
             gate = SessionNotificationGate()
             self.session_notification_gate = gate
         desktop_messages = []
-        desktop_keys = []
+        desktop_keys: list[tuple[str, str]] = []
         has_issue = False
         for notification in gate.update(
             eligible_errors,
@@ -7983,7 +6770,7 @@ class MainWindow(QMainWindow):
             )
         self.previous_states = new_states
 
-    def create_session(self, kind):
+    def create_session(self, kind: str) -> None:
         if self.demo:
             QMessageBox.information(
                 self,
@@ -8023,24 +6810,24 @@ class MainWindow(QMainWindow):
                 backup_choice=dlg.backup_choice,
             )
 
-    def session_action(self, kind, action):
+    def session_action(self, kind: str, action: str) -> None:
         sess = self.selected_session(kind)
         if not sess:
             return
         self.run_command(kind, action, target=sess.get("identifier", ""))
 
-    def daemon_action(self, action):
+    def daemon_action(self, action: str) -> None:
         self.run_command("daemon", action)
 
     def run_command(
         self,
-        kind,
-        action,
-        target="",
-        options=None,
-        register_before=False,
-        backup_choice=None,
-    ):
+        kind: str,
+        action: str,
+        target: str = "",
+        options: list[str] | None = None,
+        register_before: bool = False,
+        backup_choice: str | None = None,
+    ) -> None:
         if self.demo or self.pending_action:
             return
         client = MutagenClient(self.client.binary, action_planner=self.action_planner)
@@ -8248,7 +7035,7 @@ class MainWindow(QMainWindow):
         if create_plan is not None:
             self.add_log("Action preview approved: mutagen " + " ".join(create_plan.argv))
 
-        def do():
+        def do() -> Any:
             if register_plan is not None:
                 client.execute(
                     "daemon",
@@ -8266,7 +7053,7 @@ class MainWindow(QMainWindow):
                 action_plan=daemon_plan or create_plan,
             )
 
-        def success(output):
+        def success(output: Any) -> None:
             created = getattr(client, "last_created_session", None)
             if created is not None:
                 created_kind, created_id, create_arguments = created
@@ -8285,26 +7072,26 @@ class MainWindow(QMainWindow):
                 self.add_log(output[:1800])
             self.add_log(f"Completed: {kind} {action}")
 
-        def error(message):
+        def error(message: str) -> None:
             self.report_error(message)
 
-        def done():
+        def done() -> None:
             self.pending_action = False
             QTimer.singleShot(450, lambda: self.refresh(force=True))
 
         self.submit(do, success, error, done)
 
-    def report_error(self, message):
+    def report_error(self, message: str) -> None:
         self.add_log("ERROR: " + message)
         QMessageBox.critical(self, translate_text("Mutagen — Error", active_language()), message)
 
-    def show_window(self):
+    def show_window(self) -> None:
         self.showNormal()
         self.raise_()
         self.activateWindow()
         self.update_polling_mode()
 
-    def quit_app(self):
+    def quit_app(self) -> None:
         if self.pending_action:
             QMessageBox.information(
                 self,
@@ -8318,7 +7105,7 @@ class MainWindow(QMainWindow):
         self.tray.hide()
         self.close()
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self.pending_action and self._allow_exit:
             event.ignore()
             QMessageBox.information(
@@ -8359,7 +7146,7 @@ class MainWindow(QMainWindow):
             QApplication.instance().quit()
 
 
-def main():
+def main() -> int:
     from mutaui.services.command_line import parse_launch_command
 
     launch = parse_launch_command(sys.argv[1:])

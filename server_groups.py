@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 
 
-def _remote_key(endpoint: dict) -> tuple[str, str] | None:
+def _remote_key(endpoint: dict[str, Any]) -> tuple[str, str] | None:
     if not isinstance(endpoint, dict):
         return None
     protocol = endpoint.get("protocol", 0)
@@ -32,7 +33,7 @@ def _remote_key(endpoint: dict) -> tuple[str, str] | None:
     return (f"docker:{host}", f"Docker · {host}")
 
 
-def session_servers(session: dict, kind: str) -> set[str]:
+def session_servers(session: dict[str, Any], kind: str) -> set[str]:
     names = ("alpha", "beta") if kind == "sync" else ("source", "destination")
     return {
         key
@@ -56,7 +57,9 @@ class ServerGroup:
         return len(self.sync_ids) + len(self.forward_ids)
 
 
-def group_servers(sync: Iterable[dict], forward: Iterable[dict]) -> list[ServerGroup]:
+def group_servers(
+    sync: Iterable[dict[str, Any]], forward: Iterable[dict[str, Any]]
+) -> list[ServerGroup]:
     """Each session can be listed under two servers, but never twice under one."""
     from mutagen_client import classify
 

@@ -25,7 +25,7 @@ def main() -> int:
     commands = [
         [sys.executable, "-m", "ruff", "check", "."],
         [sys.executable, "-m", "ruff", "format", "--check", "."],
-        [sys.executable, "-m", "mypy", "src/mutaui"],
+        [sys.executable, "-m", "mypy"],
         [sys.executable, "scripts/generate_settings_reference.py", "--check"],
         [
             sys.executable,

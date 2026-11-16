@@ -22,6 +22,7 @@ quality = [
     "pip-audit==2.10.1",
     "pymarkdownlnt>=0.9.41,<1",
     "ruff>=0.11,<1",
+    "types-psutil==7.2.2.20261111",
     "yamllint==1.38.0",
 ]
 
@@ -61,15 +62,21 @@ source = [
     "app",
     "async_recorder",
     "benchmark",
+    "connection_profiles",
     "endpoint_inspector",
+    "forward_configuration",
     "gui_capture",
+    "ignore_presets",
     "insights",
     "log_stream",
     "monitoring",
     "mutagen_client",
     "performance",
+    "portable_bundle",
     "server_groups",
     "settings",
+    "ssh_profiles",
+    "sync_configuration",
     "sync_profiles",
     "mutaui",
 ]
@@ -97,8 +104,30 @@ pythonpath = ["src", "."]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src/mutaui"]
+files = [
+    "app.py",
+    "benchmark.py",
+    "gui_capture.py",
+    "src/mutaui",
+    "sync_configuration.py",
+    "forward_configuration.py",
+    "performance.py",
+    "async_recorder.py",
+    "mutagen_client.py",
+    "connection_profiles.py",
+    "settings.py",
+    "ignore_presets.py",
+    "portable_bundle.py",
+    "endpoint_inspector.py",
+    "server_groups.py",
+    "sync_profiles.py",
+    "ssh_profiles.py",
+    "log_stream.py",
+    "insights.py",
+    "monitoring.py",
+]
 follow_imports = "skip"
+mypy_path = "src"
 
 [[tool.mypy.overrides]]
 module = ["AppKit", "Foundation"]

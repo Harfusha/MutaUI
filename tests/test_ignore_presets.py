@@ -169,3 +169,31 @@ def test_quick_ignore_returns_root_relative_rule_and_blocks_unsafe_paths(tmp_pat
     for candidate in (outside, syntax_name, nested):
         with pytest.raises(IgnorePresetError):
             path_aware_ignore_rule(root, candidate)
+
+
+def test_ignore_conversion_explains_each_unsupported_syntax_and_format():
+    with pytest.raises(IgnorePresetError, match="Unsupported"):
+        parse_ignore_file("build", source_format="unsupported")
+
+    preview = parse_ignore_file(
+        "\n# comment\n build\n\\!literal\n*.{log,tmp}\n/absolute\nfolder/\n",
+        source_format="dockerignore",
+    )
+    assert [rule.supported for rule in preview.rules] == [
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert all(rule.reason for rule in preview.rules)
+
+
+def test_ignore_negation_matching_wildcard_and_unmatched_rule():
+    preview = parse_ignore_file("*\n!keep.txt\n!missing.txt\n", source_format="gitignore")
+
+    assert preview.rules[1].overrides == (1,)
+    assert preview.rules[2].overrides == (1,)
+    assert apply_converted_rules(preview, {1, 2, 3}) == ("*", "!keep.txt", "!missing.txt")

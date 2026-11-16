@@ -157,9 +157,15 @@ def test_onboarding_completion_updates_and_rolls_back_settings(
         raise OSError("read-only profile")
 
     monkeypatch.setattr(app_module, "write_settings", fail_save)
-    app_module.MainWindow.complete_onboarding(dialog)
-    assert dialog.conf["onboarding_completed"] is False
-    assert dialog.conf["check_updates_on_startup"] is False
+    failed_dialog = SimpleNamespace(
+        conf={"onboarding_completed": False, "check_updates_on_startup": False},
+        _onboarding_pending_client=None,
+        onboarding_update_check=SimpleNamespace(isChecked=lambda: True),
+        statusBar=lambda: messages,
+    )
+    app_module.MainWindow.complete_onboarding(failed_dialog)
+    assert failed_dialog.conf["onboarding_completed"] is False
+    assert failed_dialog.conf["check_updates_on_startup"] is False
     assert "Could not save onboarding" in messages.value
 
 
@@ -180,9 +186,7 @@ def test_log_tail_picker_cancel_selection_and_render_coalescing(
         _tail_render_pending=False,
         _render_pending_tail=lambda: None,
     )
-    monkeypatch.setattr(
-        app_module.QFileDialog, "getOpenFileName", lambda *_args: (selected[0], "")
-    )
+    monkeypatch.setattr(app_module.QFileDialog, "getOpenFileName", lambda *_args: (selected[0], ""))
     monkeypatch.setattr(app_module, "FileTail", lambda path: SimpleNamespace(path=path))
     app_module.MainWindow.choose_tail_file(dialog)
     assert dialog.tail_file is None
@@ -249,15 +253,13 @@ def test_session_dialog_directory_picker_preserves_cancel_and_platform_path(
     selected = [""]
     control = TextRecorder()
     dialog = SimpleNamespace(a=control)
-    monkeypatch.setattr(
-        app_module.QFileDialog, "getExistingDirectory", lambda *_args: selected[0]
-    )
+    monkeypatch.setattr(app_module.QFileDialog, "getExistingDirectory", lambda *_args: selected[0])
     app_module.SessionDialog.browse_alpha(dialog)
     assert control.calls == []
 
     selected[0] = "/alpha/beta"
     app_module.SessionDialog.browse_alpha(dialog)
-    expected = selected[0].replace("/", "\\\\") if os.name == "nt" else selected[0]
+    expected = os.path.normpath(selected[0]) if os.name == "nt" else selected[0]
     assert control.value == expected
 
 

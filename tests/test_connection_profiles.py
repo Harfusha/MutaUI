@@ -251,3 +251,69 @@ def test_duplicate_ids_unknown_fields_bad_defaults_and_duplicate_tags_are_reject
     )
 
     assert not load_profile_store(path).valid
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"id": ""},
+        {"name": "  "},
+        {"kind": "unknown"},
+        {"endpoint_a": ""},
+        {"endpoint_b": "bad\x00endpoint"},
+        {"favorite": 1},
+        {"tags": "not-a-list"},
+        {"tags": [""]},
+        {"defaults": []},
+        {"defaults": {1: "value"}},
+        {"created_at": 1},
+    ],
+)
+def test_profile_store_rejects_invalid_field_types_and_values(tmp_path, changes):
+    raw_profile = {
+        "id": "profile-1",
+        "name": "Profile",
+        "kind": "sync",
+        "endpoint_a": "./a",
+        "endpoint_b": "host:/b",
+    }
+    raw_profile.update(changes)
+    path = tmp_path / "profiles.json"
+    path.write_text(
+        json.dumps({"schema_version": CURRENT_SCHEMA_VERSION, "profiles": [raw_profile]}),
+        encoding="utf-8",
+    )
+
+    assert not load_profile_store(path).valid
+
+
+def test_profile_store_reports_read_errors_and_missing_store(tmp_path, monkeypatch):
+    missing = load_profile_store(tmp_path / "missing.json")
+    assert missing.valid and not missing.profiles
+
+    path = tmp_path / "unreadable.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def denied(_self, **_kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(type(path), "read_text", denied)
+    result = load_profile_store(path)
+    assert not result.valid and "PermissionError" in result.warnings[0]
+
+
+def test_profile_store_guards_identity_operations_and_rotates_backup(tmp_path):
+    store = ConnectionProfileStore(tmp_path / "profiles.json")
+    profile = store.create("A", "./a", "host:/a", kind="sync")
+    with pytest.raises(ProfileStoreError, match="already exists"):
+        store.add(profile)
+    with pytest.raises(KeyError):
+        store.update(profile.__class__("missing", "B", "sync", "./b", "host:/b"))
+    with pytest.raises(KeyError):
+        store.delete("missing")
+
+    store.create("B", "./b", "host:/b", kind="sync")
+    store.create("C", "./c", "host:/c", kind="sync")
+    backups = list(tmp_path.glob("profiles.json.*.bak"))
+    assert (tmp_path / "profiles.json.bak").exists()
+    assert backups

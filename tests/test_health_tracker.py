@@ -8,6 +8,7 @@ from mutaui.services.health_tracker import (
     HealthObservation,
     HealthPolicy,
     HealthTracker,
+    health_policy_from_settings,
 )
 
 BASE = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
@@ -31,6 +32,29 @@ def _observation(
         intentional_pause=paused,
         scan_in_progress=scanning,
         command_duration_seconds=duration,
+    )
+
+
+def test_health_policy_from_settings_preserves_defaults_and_values():
+    assert health_policy_from_settings({}) == HealthPolicy()
+    assert health_policy_from_settings(
+        {
+            "health_mode": "assisted",
+            "health_failure_count": "5",
+            "health_failure_elapsed": "9",
+            "health_cooldown": "61",
+            "health_max_attempts": "1",
+            "health_attempt_window": "1801",
+            "health_environment_grace": "7",
+        }
+    ) == HealthPolicy(
+        mode="assisted",
+        failure_count_threshold=5,
+        failure_elapsed_seconds=9,
+        cooldown_seconds=61,
+        max_attempts=1,
+        attempt_window_seconds=1801,
+        environment_grace_seconds=7,
     )
 
 

@@ -3,9 +3,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from insights import (
-    AlertEngine,
     _measured_number,
-    _number,
     _safe_age_seconds,
     local_self_check,
     measurement_summary,
@@ -14,6 +12,7 @@ from insights import (
     state_transitions,
 )
 from monitoring import HistoryStore, Sample
+from mutaui.services.alert_engine import AlertEngine, _number
 
 
 def test_local_self_check_checks_paths_database_and_runtime_without_writes(tmp_path):

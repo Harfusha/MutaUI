@@ -71,7 +71,7 @@ def _create_action_key(area: str, options: list[str]) -> str:
     return f"{area}_create"
 
 
-def session_preflight_fingerprint(sessions: list[dict]) -> str:
+def session_preflight_fingerprint(sessions: list[dict[str, Any]]) -> str:
     """Fingerprint exact native rows for consent-to-execution freshness checks."""
     volatile_fields = {
         "status",
@@ -99,7 +99,7 @@ def session_preflight_fingerprint(sessions: list[dict]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def native_sync_startup_state(session: dict, daemon_registration: str) -> str:
+def native_sync_startup_state(session: dict[str, Any], daemon_registration: str) -> str:
     """State under Mutagen's own persistent pause + Windows daemon registration.
 
     There is no separate per-session auto-run flag in Mutagen.
@@ -171,7 +171,7 @@ def _known_mutagen_locations() -> tuple[Path, ...]:
     )
 
 
-def parse_sessions(output: str) -> list[dict]:
+def parse_sessions(output: str) -> list[dict[str, Any]]:
     """JSON Go-template output; returns [] for an empty daemon."""
     try:
         payload = json.loads(output.strip())
@@ -206,7 +206,7 @@ def endpoint_text(endpoint: Any, kind: str = "sync") -> str:
     return path or "—"
 
 
-def classify(session: dict, kind: str) -> tuple[str, str]:
+def classify(session: dict[str, Any], kind: str) -> tuple[str, str]:
     if session.get("paused"):
         return "paused", "Paused"
     endpoints = (session.get("alpha") or {}, session.get("beta") or {})
@@ -246,11 +246,11 @@ def classify(session: dict, kind: str) -> tuple[str, str]:
     return ("active" if status == 3 else "busy" if status in (1, 2) else "idle", text)
 
 
-def conflict_count(session: dict) -> int:
+def conflict_count(session: dict[str, Any]) -> int:
     return len(session.get("conflicts") or []) + int(session.get("excludedConflicts") or 0)
 
 
-def problem_count(session: dict) -> int:
+def problem_count(session: dict[str, Any]) -> int:
     total = 0
     for endpoint in (session.get("alpha") or {}, session.get("beta") or {}):
         for name in ("scanProblems", "transitionProblems"):
@@ -281,8 +281,8 @@ def human_bytes(number: float | int) -> str:
 class Snapshot:
     binary: str = ""
     daemon: bool = False
-    sync: list[dict] = field(default_factory=list)
-    forward: list[dict] = field(default_factory=list)
+    sync: list[dict[str, Any]] = field(default_factory=list)
+    forward: list[dict[str, Any]] = field(default_factory=list)
     cpu: float = 0.0
     memory: int = 0
     processes: int = 0
@@ -344,7 +344,7 @@ class MutagenClient:
         self.last_created_session: tuple[str, str, tuple[str, ...]] | None = None
 
     @staticmethod
-    def session_preflight_fingerprint(sessions: list[dict]) -> str:
+    def session_preflight_fingerprint(sessions: list[dict[str, Any]]) -> str:
         return session_preflight_fingerprint(sessions)
 
     def _daemon_target_id(self) -> str:
@@ -723,7 +723,7 @@ class MutagenClient:
             raise MutagenCommandError(detail[:1600])
         return (result.stdout or "").strip()
 
-    def list_sessions(self, kind: str) -> list[dict]:
+    def list_sessions(self, kind: str) -> list[dict[str, Any]]:
         if kind not in ("sync", "forward"):
             raise ValueError("Unknown session type")
         return parse_sessions(
@@ -848,9 +848,9 @@ class ProcessSampler:
     physical disk throughput. CPU percentage can exceed 100 on multi-core PCs.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._previous: dict[int, tuple[float, float, float, int, int]] = {}
-        self.last_processes: list[dict] = []
+        self.last_processes: list[dict[str, Any]] = []
         self._gui_process = psutil.Process(os.getpid())
 
     def sample_detailed(self) -> dict[str, float | int]:

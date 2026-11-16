@@ -1,3 +1,7 @@
+import stat
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from forward_configuration import (
@@ -111,3 +115,42 @@ def test_forward_proposal_validation_does_not_mutate_native_session():
         "destination.socket.permissionMode": "0660",
     }
     assert session["configurationDestination"]["socket"]["overwriteMode"] == "leave"
+
+
+def test_local_unix_socket_inspector_handles_relative_paths_and_entry_types(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert local_unix_socket_entry_type("unix:missing.sock") == "absent"
+
+    for mode, expected in (
+        (stat.S_IFLNK, "symbolic link"),
+        (stat.S_IFSOCK, "socket"),
+        (stat.S_IFIFO, "special filesystem entry"),
+    ):
+        monkeypatch.setattr(
+            Path,
+            "lstat",
+            lambda _path, mode=mode: SimpleNamespace(st_mode=mode),
+        )
+        assert local_unix_socket_entry_type("unix:/tmp/entry") == expected
+
+    def deny_lstat(_path):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(Path, "lstat", deny_lstat)
+    assert local_unix_socket_entry_type("unix:/tmp/entry") == "unavailable"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("destination.socket.overwriteMode", "replace"),
+        ("destination.socket.permissionMode", 600),
+        ("destination.socket.permissionMode", "09xx"),
+        ("destination.socket.owner", "  "),
+    ],
+)
+def test_forward_draft_rejects_invalid_choice_octal_and_string_values(key, value):
+    draft = ForwardConfigurationDraft({"identifier": "forward-id"})
+
+    with pytest.raises(ValueError):
+        draft.propose(key, value)

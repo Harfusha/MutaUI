@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
 
 import app as app_module
 import mutaui.services.instance_lifecycle as instance_lifecycle
+import mutaui.ui.session_dialog as session_dialog_module
+import mutaui.ui.ssh_profile_dialog as ssh_dialog_module
 
 
 @pytest.fixture
@@ -838,10 +840,10 @@ def test_apply_resource_metrics_shows_alerts_only_when_enabled_and_tray_visible(
 def test_ssh_profile_manager_resolves_alias_safely(window, monkeypatch, tmp_path):
     profile = SimpleNamespace(alias="deploy", unsupported=("Match exec",))
     parsed = SimpleNamespace(valid=True, profiles=(profile,), warnings=("Wildcard ignored",))
-    monkeypatch.setattr(app_module, "parse_ssh_config", lambda _path: parsed)
+    monkeypatch.setattr(ssh_dialog_module, "parse_ssh_config", lambda _path: parsed)
     manager = app_module.SSHProfileManagerDialog(window, tmp_path / "config")
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "resolve_ssh_options",
         lambda _alias: SimpleNamespace(
             success=True,
@@ -884,7 +886,7 @@ def test_ssh_profile_manager_reload_gates_aliases(
     window, monkeypatch, tmp_path, valid, profiles, enabled
 ):
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "parse_ssh_config",
         lambda _path: SimpleNamespace(valid=valid, profiles=profiles, warnings=("read notice",)),
     )
@@ -903,13 +905,13 @@ def test_ssh_profile_manager_reports_failed_resolution_and_connection(
 ):
     profile = SimpleNamespace(alias="deploy", unsupported=())
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "parse_ssh_config",
         lambda _path: SimpleNamespace(valid=True, profiles=(profile,), warnings=()),
     )
     manager = app_module.SSHProfileManagerDialog(window, tmp_path / "config")
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "resolve_ssh_options",
         lambda _alias: SimpleNamespace(success=False, message="ssh -G failed", stderr="bad config"),
     )
@@ -924,7 +926,9 @@ def test_ssh_profile_manager_reports_failed_resolution_and_connection(
         "question",
         lambda *_args: app_module.QMessageBox.StandardButton.Cancel,
     )
-    monkeypatch.setattr(app_module, "test_ssh_connection", lambda _alias: prompts.append("called"))
+    monkeypatch.setattr(
+        ssh_dialog_module, "test_ssh_connection", lambda _alias: prompts.append("called")
+    )
     manager.test_selected()
     assert prompts == []
 
@@ -935,7 +939,7 @@ def test_ssh_profile_manager_reports_failed_resolution_and_connection(
         lambda *_args: app_module.QMessageBox.StandardButton.Yes,
     )
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "test_ssh_connection",
         lambda _alias: SimpleNamespace(
             success=False, message="connection failed", stderr="host key rejected"
@@ -958,7 +962,7 @@ def test_ssh_profile_manager_reports_failed_resolution_and_connection(
 def test_ssh_profile_manager_reports_successful_connection(window, monkeypatch, tmp_path):
     profile = SimpleNamespace(alias="deploy", unsupported=())
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "parse_ssh_config",
         lambda _path: SimpleNamespace(valid=True, profiles=(profile,), warnings=()),
     )
@@ -975,7 +979,7 @@ def test_ssh_profile_manager_reports_successful_connection(window, monkeypatch, 
         lambda _parent, _title, message: messages.append(message),
     )
     monkeypatch.setattr(
-        app_module,
+        ssh_dialog_module,
         "test_ssh_connection",
         lambda _alias: SimpleNamespace(success=True, message="Connected", stderr=""),
     )
@@ -1593,6 +1597,43 @@ def test_advanced_session_settings_show_full_raw_native_json(window, monkeypatch
     window.set_ui_mode("basic")
     window.open_session_preferences("sync")
     assert dialogs[-1].findChild(QPushButton, "rawNativeSessionJson") is None
+
+
+def test_session_settings_save_uses_controller_for_typed_proposal(window, monkeypatch):
+    session = {
+        "identifier": "sync-1",
+        "name": "Example",
+        "watch": {"pollingInterval": 20},
+    }
+    window.conf = {"session_prefs": {}}
+    monkeypatch.setattr(window, "selected_session", lambda _kind: session)
+    monkeypatch.setattr(window, "refresh_detail", lambda _kind: None)
+    monkeypatch.setattr(window, "add_log", lambda _message: None)
+    monkeypatch.setattr(app_module, "write_settings", lambda _settings: None)
+
+    def save(dialog):
+        table = next(
+            item
+            for item in dialog.findChildren(QTableWidget)
+            if item.accessibleName() == "Project configuration table"
+        )
+        row = next(
+            index
+            for index in range(table.rowCount())
+            if table.item(index, 0).text() == "Polling interval"
+        )
+        table.setItem(row, 5, QTableWidgetItem("30"))
+        controls = dialog.findChild(QDialogButtonBox)
+        controls.button(QDialogButtonBox.StandardButton.Save).click()
+        return int(dialog.result())
+
+    monkeypatch.setattr(app_module.QDialog, "exec", save)
+
+    window.open_session_preferences("sync")
+
+    assert window.conf["session_prefs"]["sync-1"]["configuration_proposal"] == {
+        "watch.pollingInterval": 30
+    }
 
 
 def test_basic_advanced_switch_preserves_in_progress_settings_drafts(window):
@@ -2763,6 +2804,7 @@ def test_connection_profile_manager_filters_and_session_wizard_applies_profile(t
         ("force-poll", 60, "eco_poll"),
         ("no-watch", None, "manual"),
         ("unrecognized", 12, "default"),
+        (["unhashable"], None, "default"),
     ],
 )
 def test_sync_connection_profile_maps_supported_watch_defaults(
@@ -3051,7 +3093,7 @@ def test_session_dialog_forward_endpoint_validation_matrix(window, monkeypatch):
         "local_unix_socket_supported",
         staticmethod(lambda: False),
     )
-    monkeypatch.setattr(app_module, "os", SimpleNamespace(name="posix"))
+    monkeypatch.setattr(session_dialog_module, "os", SimpleNamespace(name="posix"))
 
     invalid = {
         "tcp:localhost": "host and port",
@@ -3088,8 +3130,8 @@ def test_session_dialog_local_unix_socket_capability_is_platform_gated(
     system = SimpleNamespace(platform=platform)
     if win is not None:
         system.getwindowsversion = lambda: win
-    monkeypatch.setattr(app_module, "os", SimpleNamespace(name=os_name))
-    monkeypatch.setattr(app_module, "sys", system)
+    monkeypatch.setattr(session_dialog_module, "os", SimpleNamespace(name=os_name))
+    monkeypatch.setattr(session_dialog_module, "sys", system)
 
     assert app_module.SessionDialog.local_unix_socket_supported() is expected
 
@@ -3189,7 +3231,7 @@ def test_ignore_import_is_cancel_safe_and_merges_previewed_rules(window, tmp_pat
     )
     formats = []
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "parse_ignore_file",
         lambda content, *, source_format: formats.append((content, source_format)) or object(),
     )
@@ -3204,7 +3246,7 @@ def test_ignore_import_is_cancel_safe_and_merges_previewed_rules(window, tmp_pat
         def selected_patterns(self):
             return ["existing/", "new/", "!new/keep"]
 
-    monkeypatch.setattr(app_module, "IgnoreConversionDialog", AcceptedPreview)
+    monkeypatch.setattr(session_dialog_module, "IgnoreConversionDialog", AcceptedPreview)
     wizard.import_ignore_file()
 
     assert formats == [(b"ignored/\n", "dockerignore")]
@@ -3234,7 +3276,7 @@ def test_ignore_import_reports_oversized_source_and_cancelled_conversion(
 
     path.write_text("new/\n", encoding="utf-8")
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "parse_ignore_file",
         lambda *_args, **_kwargs: object(),
     )
@@ -3246,7 +3288,7 @@ def test_ignore_import_reports_oversized_source_and_cancelled_conversion(
         def exec(self):
             return app_module.QDialog.DialogCode.Rejected
 
-    monkeypatch.setattr(app_module, "IgnoreConversionDialog", RejectedPreview)
+    monkeypatch.setattr(session_dialog_module, "IgnoreConversionDialog", RejectedPreview)
     wizard.ignore.setPlainText("existing/")
     wizard.import_ignore_file()
     assert wizard.ignore.toPlainText() == "existing/"
@@ -3257,7 +3299,7 @@ def test_explain_ignore_dialog_cancel_does_not_read_configuration(window, monkey
     wizard = app_module.SessionDialog("sync", window, executable="mutagen")
     monkeypatch.setattr(app_module.QInputDialog, "getText", lambda *_args: ("", False))
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "load_effective_sync_configuration",
         lambda *_args: pytest.fail("cancel must not read configuration"),
     )
@@ -3313,20 +3355,22 @@ def test_explain_ignore_respects_known_global_and_session_provenance(
         ]
     )
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "load_effective_sync_configuration",
         lambda *_args: next(previews),
     )
     calls = []
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "explain_ignore_path",
         lambda path, **layers: (
             calls.append((path, layers))
             or SimpleNamespace(ignored=True, matched_rule="cache/", scope="global", note="known")
         ),
     )
-    monkeypatch.setattr(app_module, "format_ignore_layers", lambda **_layers: "layer preview")
+    monkeypatch.setattr(
+        session_dialog_module, "format_ignore_layers", lambda **_layers: "layer preview"
+    )
     messages = []
     monkeypatch.setattr(
         app_module.QMessageBox,
@@ -3355,7 +3399,7 @@ def test_explain_ignore_shows_warning_when_effective_configuration_is_invalid(wi
     valid = SimpleNamespace(valid=True, error="", as_mapping=lambda: {}, origin_for=lambda _key: "")
     previews = iter([invalid, valid])
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "load_effective_sync_configuration",
         lambda *_args: next(previews),
     )
@@ -3387,7 +3431,7 @@ def test_effective_session_preview_explains_empty_configuration(window, monkeypa
         if kind == "sync"
         else "load_effective_forward_configuration"
     )
-    monkeypatch.setattr(app_module, loader, load)
+    monkeypatch.setattr(session_dialog_module, loader, load)
     messages = []
     monkeypatch.setattr(
         app_module.QMessageBox,
@@ -3408,7 +3452,7 @@ def test_effective_session_preview_explains_empty_configuration(window, monkeypa
 def test_effective_session_preview_warns_when_native_configuration_is_invalid(window, monkeypatch):
     wizard = app_module.SessionDialog("sync", window, executable="mutagen")
     monkeypatch.setattr(
-        app_module,
+        session_dialog_module,
         "load_effective_sync_configuration",
         lambda *_args: SimpleNamespace(
             valid=False,
@@ -7609,6 +7653,10 @@ def test_sync_replacement_migrates_verified_provenance_preferences_and_favorite(
         lambda *_args, **_kwargs: receipt,
     )
     logs = []
+    saved_settings = []
+    monkeypatch.setattr(
+        app_module, "write_settings", lambda data: saved_settings.append(data.copy())
+    )
     monkeypatch.setattr(window, "add_log", logs.append)
     monkeypatch.setattr(window, "report_error", lambda message: pytest.fail(message))
     errors = []
@@ -7627,12 +7675,14 @@ def test_sync_replacement_migrates_verified_provenance_preferences_and_favorite(
         assert provenance == [("sync-new", new_arguments)]
         assert window.conf["session_prefs"] == {"sync-new": {"note": "retain"}}
         assert window.favorites["sync"] == {"sync-new"}
+        assert saved_settings == [window.conf]
         assert finishes[0][1]["verified_target_ids"] == (identifier,)
         assert any("Replaced exact session" in message for message in logs)
     else:
         assert provenance == []
         assert window.conf["session_prefs"][identifier]["configuration_proposal"]
         assert window.favorites["sync"] == {identifier}
+        assert saved_settings == []
         assert finishes[0][1]["verified_target_ids"] == ()
         assert any("Restore session: sync-restored" in message for message in logs)
     assert refreshes == [{"force": True}]

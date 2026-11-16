@@ -39,13 +39,13 @@ def _nonnegative(value: Any) -> int | None:
         return None
 
 
-def _problems(endpoint: dict, name: str) -> int:
+def _problems(endpoint: dict[str, Any], name: str) -> int:
     return len(endpoint.get(name) or []) + int(
         _nonnegative(endpoint.get("excluded" + name[0].upper() + name[1:])) or 0
     )
 
 
-def endpoint_view(endpoint: dict | None, side: str, kind: str = "sync") -> EndpointView:
+def endpoint_view(endpoint: dict[str, Any] | None, side: str, kind: str = "sync") -> EndpointView:
     endpoint = endpoint if isinstance(endpoint, dict) else {}
     staging = endpoint.get("stagingProgress") or {}
     if not isinstance(staging, dict):
@@ -82,7 +82,7 @@ def endpoint_view(endpoint: dict | None, side: str, kind: str = "sync") -> Endpo
     )
 
 
-def session_views(session: dict, kind: str) -> tuple[EndpointView, EndpointView]:
+def session_views(session: dict[str, Any], kind: str) -> tuple[EndpointView, EndpointView]:
     if kind == "sync":
         return endpoint_view(session.get("alpha"), "ALPHA", kind), endpoint_view(
             session.get("beta"), "BETA", kind
@@ -94,7 +94,7 @@ def session_views(session: dict, kind: str) -> tuple[EndpointView, EndpointView]
     raise ValueError("Unknown session type")
 
 
-def summary(session: dict, kind: str) -> dict:
+def summary(session: dict[str, Any], kind: str) -> dict[str, Any]:
     left, right = session_views(session, kind)
     state, text = classify(session, kind)
     base = {

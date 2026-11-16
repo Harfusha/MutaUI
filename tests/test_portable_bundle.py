@@ -262,3 +262,65 @@ def test_failed_settings_migration_restores_exact_original(tmp_path, monkeypatch
     with pytest.raises(OSError, match="simulated failed migration"):
         migrate_settings_file(path)
     assert path.read_bytes() == original
+
+
+def test_bundle_sanitizes_nested_metadata_and_rejects_unsupported_values():
+    built = build_bundle(
+        [],
+        {},
+        app_version="8.2",
+        project_references=[
+            {
+                "id": "project-1",
+                "token_value": "private",
+                "nested": ["https://alice:secret@example.test/repo", "/home/adam/project", 3],
+            }
+        ],
+    )
+
+    assert built.valid
+    assert "token_value" not in built.text
+    assert "alice:secret@" not in built.text
+    assert "/home/adam/project" not in built.text
+    assert len(built.warnings) >= 2
+
+    unsupported = build_bundle([], {}, app_version="8.2", project_references=[{"value": {1, 2}}])
+    assert not unsupported.valid and "unsupported value" in unsupported.warnings[0]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update(extra=True),
+        lambda payload: payload.update(schema_version=True),
+        lambda payload: payload.update(machine_paths_included="false"),
+        lambda payload: payload.update(checksum="x"),
+        lambda payload: payload["items"].update(unexpected=[]),
+        lambda payload: payload["items"].update(project_references=["not-an-object"]),
+        lambda payload: payload["items"].update(preferences={"unknown": True}),
+    ],
+)
+def test_bundle_import_rejects_invalid_structures_and_field_types(mutate):
+    payload = json.loads(build_bundle([], {}, app_version="8.2").text)
+    mutate(payload)
+    if isinstance(payload.get("checksum"), str) and len(payload["checksum"]) == 64:
+        unsigned = {key: value for key, value in payload.items() if key != "checksum"}
+        payload["checksum"] = hashlib.sha256(_canonical(unsigned)).hexdigest()
+
+    result = load_bundle(json.dumps(payload))
+    assert not result.valid
+
+
+def test_bundle_import_rejects_invalid_json_encoding_and_oversized_input():
+    assert not load_bundle(b"\xff").valid
+    assert not load_bundle("not json").valid
+    assert not load_bundle(" " * (16 * 1024 * 1024 + 1)).valid
+
+
+def test_selected_preferences_skips_missing_values_and_rejects_unknown_selection():
+    current = {"theme": "system", "language": "en"}
+    merged = selected_preferences(current, {"theme": "dark"}, {"theme", "language"})
+    assert merged["theme"] == "dark" and merged["language"] == "en"
+
+    with pytest.raises(ValueError, match="Only listed"):
+        selected_preferences(current, {}, {"unknown"})

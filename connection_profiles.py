@@ -108,8 +108,12 @@ def _parse_profile(raw: Any) -> ConnectionProfile:
         raise ProfileStoreError("Profile name must be 1–120 characters.")
     if kind not in ("sync", "forward"):
         raise ProfileStoreError("Profile kind must be sync or forward.")
+    if not isinstance(endpoint_a, str) or not isinstance(endpoint_b, str):
+        raise ProfileStoreError(
+            "Profile endpoints must be non-empty strings of at most 4096 characters."
+        )
     for endpoint in (endpoint_a, endpoint_b):
-        if not isinstance(endpoint, str) or not endpoint.strip() or len(endpoint) > 4096:
+        if not endpoint.strip() or len(endpoint) > 4096:
             raise ProfileStoreError(
                 "Profile endpoints must be non-empty strings of at most 4096 characters."
             )

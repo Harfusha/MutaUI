@@ -7,7 +7,12 @@ Mutagen sync CLI. Profiles here are ONLY applied at session creation.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from mutagen_client import Snapshot
 
 PROFILES = {
     "default": ("Default Mutagen configuration", ()),
@@ -34,7 +39,7 @@ def profile_flags(profile: str) -> list[str]:
     return list(PROFILES[profile][1])
 
 
-def native_config_text(session: dict) -> str:
+def native_config_text(session: dict[str, Any]) -> str:
     watch = session.get("watch") or {}
     config = {
         "Watch mode": watch.get("mode", "default"),
@@ -52,14 +57,14 @@ class AdaptivePolling:
     fast: int = 2
     idle: int = 20
     quiet_after: int = 90
-    clock: object = time.monotonic
+    clock: Callable[[], float] = time.monotonic
     last_activity: float | None = None
-    previous_signature: tuple | None = None
+    previous_signature: tuple[tuple[str, str, bool, str, int, int, str, int], ...] | None = None
     busy: bool = False
 
-    def observe(self, snapshot) -> None:
+    def observe(self, snapshot: Snapshot) -> None:
         now = self.clock()
-        signature_items = []
+        signature_items: list[tuple[str, str, bool, str, int, int, str, int]] = []
         self.busy = False
         for kind, group in (("sync", snapshot.sync), ("forward", snapshot.forward)):
             busy_statuses = (

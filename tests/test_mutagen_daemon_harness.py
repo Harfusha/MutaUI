@@ -43,11 +43,12 @@ def test_isolated_daemon_repeat_cycles(tmp_path: Path) -> None:
     binary = _mutagen_binary()
     assert binary is not None
 
-    # Verify 3 consecutive start/stop cycles without state corruption
-    for i in range(3):
+    # Exercise repeated readiness, listing, and acknowledged shutdown on the native CLI.
+    for i in range(10):
         cycle_dir = tmp_path / f"cycle-{i}"
         with IsolatedMutagenDaemon(binary, cycle_dir) as daemon:
             assert daemon.phase == "ready"
+            assert isinstance(daemon.client.list_sessions("sync"), list)
         assert daemon.phase == "stopped"
 
 
@@ -180,9 +181,14 @@ def test_still_running_child_prevents_destructive_cleanup(tmp_path: Path, monkey
     assert daemon.phase == "stop_failed"
     assert daemon.data_dir.exists()
     shutil.rmtree(daemon._owned_root)
+
+
 def test_isolated_daemon_uses_compact_private_paths(tmp_path: Path) -> None:
     """Unix-domain daemon IPC must not inherit verbose test helper paths."""
     daemon = IsolatedMutagenDaemon("mutagen", tmp_path / "lifecycle-test")
-    assert daemon.data_dir == tmp_path / "lifecycle-test" / "d"
-    assert daemon.home_dir == tmp_path / "lifecycle-test" / "h"
+    assert daemon.data_dir.parent == daemon.home_dir.parent
+    assert daemon.data_dir.parent.name.startswith("mu-")
+    assert daemon.data_dir.name == "data"
+    assert daemon.home_dir.name == "home"
+    assert max(len(str(daemon.data_dir)), len(str(daemon.home_dir))) < 100
     assert daemon.data_dir != Path.home() / ".mutagen"

@@ -1,3 +1,6 @@
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtWidgets import QApplication
+
 from benchmarks.session_table_benchmark import (
     SESSION_SIZES,
     measure,
@@ -7,6 +10,18 @@ from benchmarks.session_table_benchmark import (
     percentile,
     session_fixtures,
 )
+
+
+def _forbid_global_qt_pumps(monkeypatch):
+    def reject_process_events(*_args, **_kwargs):
+        raise AssertionError("Benchmark must not process the global Qt event queue")
+
+    def reject_unscoped_posted_events(receiver=None, *_args, **_kwargs):
+        if receiver is None:
+            raise AssertionError("Benchmark must not send posted events to every Qt object")
+
+    monkeypatch.setattr(QApplication, "processEvents", reject_process_events)
+    monkeypatch.setattr(QCoreApplication, "sendPostedEvents", reject_unscoped_posted_events)
 
 
 def test_fixtures_cover_requested_sizes_without_external_paths():
@@ -29,7 +44,8 @@ def test_model_benchmark_reports_latency_distribution():
     assert result["p50_ms"] <= result["p95_ms"] <= result["max_ms"]
 
 
-def test_qt_view_benchmark_filters_and_renders_the_session_model():
+def test_qt_view_benchmark_filters_and_renders_the_session_model(monkeypatch):
+    _forbid_global_qt_pumps(monkeypatch)
     result = measure_qt_view(1000, repetitions=3)
 
     assert result["rows"] == 1000
@@ -39,7 +55,8 @@ def test_qt_view_benchmark_filters_and_renders_the_session_model():
     assert 0 <= result["p50_ms"] <= result["p95_ms"] <= result["max_ms"]
 
 
-def test_main_window_benchmark_uses_demo_data_and_isolated_settings():
+def test_main_window_benchmark_uses_demo_data_and_isolated_settings(monkeypatch):
+    _forbid_global_qt_pumps(monkeypatch)
     result = measure_main_window(5, repetitions=2)
 
     assert result["rows"] == 5

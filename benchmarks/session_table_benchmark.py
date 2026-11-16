@@ -16,7 +16,7 @@ import psutil
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6 import __version__ as pyside_version  # noqa: E402
-from PySide6.QtCore import QEvent, QSortFilterProxyModel, Qt  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEvent, QSortFilterProxyModel, Qt  # noqa: E402
 from PySide6.QtTest import QSignalSpy  # noqa: E402
 from PySide6.QtWidgets import QApplication, QTableView  # noqa: E402
 
@@ -152,7 +152,7 @@ def measure_refresh_cases(count: int, repetitions: int = REPETITIONS) -> dict[st
 
 def measure_qt_view(count: int, repetitions: int = REPETITIONS) -> dict[str, object]:
     """Measure filtering and viewport rendering with the production session model."""
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     sessions = session_fixtures(count)
     model = SessionTableModel(["NAME", "STATUS", "ALPHA", "BETA", "CONFLICTS"], "sync")
     proxy = QSortFilterProxyModel()
@@ -162,7 +162,7 @@ def measure_qt_view(count: int, repetitions: int = REPETITIONS) -> dict[str, obj
     view.setModel(proxy)
     view.resize(900, 520)
     view.show()
-    app.processEvents()
+    view.grab()
 
     filter_text = f"Synthetic {count - 1:04d}" if count else "Synthetic"
     durations = []
@@ -172,14 +172,14 @@ def measure_qt_view(count: int, repetitions: int = REPETITIONS) -> dict[str, obj
         start = time.perf_counter()
         model.set_sessions(sessions)
         proxy.setFilterFixedString(filter_text)
-        app.processEvents()
         rendered = view.viewport().grab()
         durations.append((time.perf_counter() - start) * 1000)
         filtered_rows = proxy.rowCount()
         viewport_rendered = not rendered.isNull()
 
     view.close()
-    app.processEvents()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(view, QEvent.Type.DeferredDelete)
     return {
         "rows": count,
         "repetitions": repetitions,
@@ -193,7 +193,7 @@ def measure_qt_view(count: int, repetitions: int = REPETITIONS) -> dict[str, obj
 
 def measure_main_window(count: int, repetitions: int = 5) -> dict[str, object]:
     """Measure visible offscreen MainWindow startup with isolated demo data."""
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     sessions = session_fixtures(count)
     startup_durations = []
     filter_render_durations = []
@@ -220,13 +220,12 @@ def measure_main_window(count: int, repetitions: int = 5) -> dict[str, object]:
                         app_module.Snapshot(binary=window.client.binary, sync=sessions)
                     )
                     window.show()
-                    app.processEvents()
+                    window.grab()
                     startup_durations.append((time.perf_counter() - start) * 1000)
                     visible = window.isVisible()
                     filter_text = f"Synthetic {count - 1:04d}" if count else "Synthetic"
                     filter_start = time.perf_counter()
                     window.sync_search.setText(filter_text)
-                    app.processEvents()
                     filtered_rows = sum(
                         not window.sync_table.isRowHidden(row)
                         for row in range(window.sync_table.model().rowCount())
@@ -239,8 +238,7 @@ def measure_main_window(count: int, repetitions: int = 5) -> dict[str, object]:
                         window.close()
                         window.history.close()
                         window.deleteLater()
-                        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-                        app.processEvents()
+                        QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
         finally:
             app_module.settings_path = original_settings_path
 

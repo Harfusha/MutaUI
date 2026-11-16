@@ -75,7 +75,7 @@ class AsyncRecorder:
     def add_event(self, message: str, severity: str = "info", now: float | None = None) -> bool:
         return self._submit("event", (time.time() if now is None else now, severity, message))
 
-    def add_remote(self, host: str, ts: float, data: dict) -> bool:
+    def add_remote(self, host: str, ts: float, data: dict[str, Any]) -> bool:
         return self._submit("remote", (host, float(ts), dict(data)))
 
     def clear_events(self) -> bool:
@@ -99,7 +99,7 @@ class AsyncRecorder:
         self._thread.join(timeout)
         return not self._thread.is_alive()
 
-    def _run(self):
+    def _run(self) -> None:
         store = None
         try:
             store = HistoryStore(self.path, retention_hours=self.retention_hours)

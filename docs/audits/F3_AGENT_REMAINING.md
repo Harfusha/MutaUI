@@ -52,6 +52,12 @@ As of the latest source inspection, GitHub Actions had not completed checks for 
 
 The remaining F3 task table below is an acceptance worklist. Several tasks now have code written; they still require real-OS/signing verification and therefore remain open.
 
+### Status after local verification — 2026-11-15
+
+Fetched `origin` without changing the working tree. The PR ref `origin/audit/f3-hardening-2026-11-15` is at `7715f64f7fafc14d8d8707229f58e0a2798011b9`; the local working copy is on `master` at `f94e63c39b21abcd589b45709466a9c4670dfa21`, six commits ahead with no remote-only commits. The latest hosted run inspected (`43738015537`, SHA `7715f64`) failed its `Run static checks` step on `macos-15-intel`; the run showed 1/4 jobs completed and no test artifacts. Remaining jobs are not a PASS.
+
+On the local dirty tree after the dialog extractions, `run_static_checks.py` passed; `run_tests.py` passed 1,492 tests, zero skips, 96.80% total coverage and 3,089/3,226 = 95.75% branch coverage. The secret probe rejected its synthetic credential, and the targeted release/security/model test files passed 41 tests. These local results do not certify the hosted PR SHA.
+
 ## Implementation continuation — CI evidence and performance (2026-11-15)
 
 Since the preceding handoff, **six additional implementation commits** were added to this draft PR. They have not been certified by a full hosted matrix.
@@ -90,18 +96,18 @@ Since the preceding handoff, **six additional implementation commits** were adde
 
 | ID | Priority | Required implementation and tests |
 | --- | --- | --- |
-| F3-008 | P1 | **Code added.** Validate a truly signed old-to-new Windows upgrade with the real selected release asset and verify user data, migrations, rollback and no untrusted signed publisher |
-| F3-009 | P1 | macOS signed app + DMG notarization and Gatekeeper launch, Intel and ARM; test on real runner with owner-supplied certificates |
-| F3-010 | P1 | Clean Linux AppImage/deb GUI install, run, uninstall, retained user files, file-manager integration; include supported Ubuntu and target Fedora |
-| F3-011 | P1 | Windows Authenticode installer, verified signature, fresh install and upgrade profile retention with owner-supplied certificate |
-| F3-012 | P1 | Release tag/version checks, checksums, SBOM, provenance, signatures, post-install smoke and all required matrix checks as mandatory publish gates |
-| F3-013 | P1 | Audit production module inventory. Incrementally extend strict mypy and coverage beyond `src/mutaui` to root modules without hiding error classes |
-| F3-014 | P1 | Split sync/forward creation dialogs and session settings controllers out of the remaining large `app.py` into testable typed UI/services |
-| F3-015 | P1 | Split YAML/global preferences, native projects, profiles and SSH controllers from GUI while retaining lossless precedence and read-only SSH inspections |
-| F3-016 | P1 | Split monitoring, health, alerts, doctor, tray and background status into focused controllers; verify no cross-thread QObject mutations |
-| F3-017 | P1 | Fault-inject action planner/replacement/backup/YAML/conflict paths: stale IDs, fsync/rename errors, disk full, cancelled prompts, daemon crash, SSH flap, rollback failure. Preserve fail-closed behavior |
-| F3-018 | P1 | Native SSH acceptance with isolated host-key fixtures, rotation rejection, IPv6, Unicode, symlinks, latency and native project hook consent |
-| F3-019 | P1 | **Partial implementation.** Stable-row updates and persistent-index-safe sorting are coded; still benchmark 1k/5k rows, inserts/removes and accessibility/scroll selection |
+| F3-008 | P1 | **Code added.** Release workflow selects a genuine prior stable Windows release and verifies provenance, SHA-256 and Authenticode. Still validate signed old-to-new upgrade, retained user data, migrations and rollback on a real Windows runner |
+| F3-009 | P1 | **Pipeline added.** Release workflow signs the macOS app and DMG and submits them for notarization. Still verify Gatekeeper launch on Intel and ARM with owner credentials |
+| F3-010 | P1 | **Package smoke added.** Release workflow launches the AppImage and installs the deb. Still validate clean GUI install/run/uninstall, retained user files and file-manager integration on Ubuntu and target Fedora |
+| F3-011 | P1 | **Pipeline added.** Release workflow signs and verifies Windows binaries/installer and checks publisher identity during upgrade. Still validate fresh install and upgrade retention with owner certificate on native Windows |
+| F3-012 | P1 | **Release gates added.** Tag/version check, source/security gates, per-OS tests, checksums, CycloneDX SBOMs, attestations, signing/notarization, package smoke and publish dependency are in `release.yml`. Still require a successful exact-tag pipeline and verify published assets |
+| F3-013 | P1 | **Implemented and locally verified.** `app.py` is now included in configured strict mypy; all 78 source files pass without disabling strict checks. Keep hosted validation tied to the final exact SHA. |
+| F3-014 | P1 | **Partial.** Extracted typed `SessionDialog` and shared dialog helpers to `src/mutaui/ui/`, preserving `app.SessionDialog` and settings-path injection. Full test and static results below include the latest SSH-dialog refactor. Further sync/forward controller splitting remains |
+| F3-015 | P1 | **Partial.** Extracted SSH inspection, connection-profile management, and portable import preview dialogs to `src/mutaui/ui/`, preserving their `app.py` aliases. Targeted SSH/profile/portable tests and full local CI pass. YAML/global preference controllers and further native-project boundaries remain |
+| F3-016 | P1 | **Partial.** Health policy construction lives in `mutaui.services.health_tracker`; sustained `AlertEngine` now lives in `mutaui.services.alert_engine`. MainWindow health method and callers remain compatible. Focused health and alert/GUI tests pass (36 and 16). Network monitor, alert UI, doctor, tray/background controllers and Qt thread-safety acceptance remain open |
+| F3-017 | P1 | **Partial tests exist.** Existing tests cover stale snapshots, fsync/disk-full, canceled plans, replacement failures, conflict restore and rollback uncertainty. Local Windows with Mutagen 0.18.1 passed 10 isolated daemon start/list/stop cycles; add remaining daemon-crash/SSH-flap cases and repeat on supported OS runners |
+| F3-018 | P1 | **Partial tests exist.** Strict host-key and changed-key checks plus isolated OpenSSH integration are present. The native Windows `leave`/`overwrite` forward test passed with Mutagen 0.18.1; IPv6, Unicode, symlink, latency, live SSH-host and native project-hook consent remain unverified |
+| F3-019 | P1 | **Partial.** Qt tests cover persistent indexes through sorting (including duplicate IDs) and insert/remove selection; the latest full suite passes. The offscreen benchmark covers 1k/5k rows and inserts/removes; no-op refresh had 0 model resets. Physical GUI/a11y, viewport scroll retention and cross-OS acceptance remain open |
 | F3-020 | P2 | Beginner Basic wizard: initial setup, safe local sync, understandable defaults/errors, help text, no accidental destructive action |
 | F3-021 | P2 | Critical-path Czech/English translation audit, dynamic message interpolation, live language switching and correct keyboard mnemonics |
 | F3-022 | P2 | Real visual/a11y QA on each OS across DPI 100/125/150/200, themes, language modes, screen readers and keyboard-only navigation |
@@ -132,3 +138,127 @@ Run on Python 3.12 and inspect the **hosted** workflow run for the exact resulti
 ## Next action for the agent
 
 Continue on PR #1; verify the latest Actions logs first, fix confirmed P0 regressions without masking checks, then proceed through F3-008 to F3-026. Update this file with new SHA, evidence URL, actual pass/fail state and any owner blockers; never mark a task done solely because source code or a synthetic test exists.
+
+## Local continuation evidence — 2026-11-15
+
+**Remote HEAD checked:** `7715f64f7fafc14d8d8707229f58e0a2798011b9`; branch fetched and fast-forwarded. The following edits are local and uncommitted, so they have no hosted CI run yet.
+
+- GitHub run [43738015537](https://github.com/Harfusha/MutaUI/actions/runs/43738015537) is for this SHA. Public annotations show `checks (macos-15-intel)` failed in **Run static checks** and no test artifacts were produced; other matrix jobs are not shown complete. `gh run view --log-failed` could not retrieve logs because this environment is not authenticated to GitHub. Do not infer the hidden log's exact failure.
+- `uv sync --locked --python 3.12 --group build --group test --group quality`: PASS; Python 3.12.10.
+- `uv run python scripts/ci/run_static_checks.py`: PASS after applying Ruff's exact formatting to `tests/test_gui_branch_coverage.py`; Ruff, formatter, mypy, generated settings docs, Markdown, MkDocs strict build and source audit passed. MkDocs reports the audit and secret-triage pages are outside `nav`, but exits successfully.
+- `uv run python scripts/ci/verify_secret_detection.py`: PASS; synthetic high-entropy credential rejected.
+- `uv run pytest -x -q --tb=short tests`: PASS, 1,489 passed, 0 failed. Targeted CI, acceptance-report, session-table, Mutagen integration/daemon and GUI branch tests: PASS, 76 passed.
+- `uv run python scripts/ci/run_tests.py`: FAIL locally twice on Windows/Python 3.12.10. Pytest terminates with access violation `3221225477` in `tests/test_page_shell.py::test_lazy_page_is_created_on_first_navigation_and_reused`; runner reports JUnit has 0 executed tests. The affected test passes alone and the full suite passes without coverage. Coverage acceptance remains **UNVERIFIED**; no skip or threshold change was made.
+- Fixed two assertions in the new GUI branch tests: rollback now starts from an independent original settings state; Windows path expectation now uses `os.path.normpath`. Both targeted tests pass.
+- No current five-job hosted matrix, native four-OS Mutagen loops, signed installers, notarization, physical GUI/a11y evidence, or owner license/certificates were obtained. F3-008—026 remain open as applicable; no merge, tag or release.
+
+## Local continuation after branch integration — 2026-11-15
+
+The active checkout is now the local integration commit `f94e63c39b21abcd589b45709466a9c4670dfa21` on `master`, 52 commits ahead of `origin/master`; `origin/audit/f3-hardening-2026-11-15` remains at `7715f64f7fafc14d8d8707229f58e0a2798011b9`. The working tree is dirty. No hosted run exists for the integrated commit or these uncommitted edits; the older hosted run above does not validate this state.
+
+- Removed release signing/notarization secrets and the duplicated release-only signing step from `.github/workflows/ci.yml`; release signing remains in the tag workflow.
+- Corrected `.secrets.baseline`: removed the stale build-script finding and updated actionlint checksum locations after source lines moved. Updated the triage to distinguish the stale finding from real public digests.
+- Updated the compact daemon-path test to assert the actual isolated `mu-*` root, private `data`/`home` paths and compact path lengths. The production daemon path behavior is unchanged.
+- Targeted release-separation, daemon-harness and secret-baseline tests: **13 passed**. `scripts/ci/run_static_checks.py`: **PASS**, including Ruff, format, mypy (59 files, now including `performance.py` and `async_recorder.py`), generated settings docs, Markdown, strict MkDocs and source audit. MkDocs still warns that three audit/security pages are outside `nav`.
+- `scripts/ci/verify_secret_detection.py`: **PASS**; synthetic high-entropy credential rejected. Final `scripts/ci/run_tests.py`: **PASS**, 1,492 passed, 0 failed/skipped; branch coverage 3,111/3,252 (**95.66%**) and total coverage **96.75%**. `test-results/evidence.json` binds JUnit/coverage hashes to commit `f94e63c...`, with `ci_run_id=local`; this is local evidence only.
+- `benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json`: **PASS**, 30 repetitions at 1k/5k rows; unchanged refresh had 0 model resets. Offscreen unchanged p95: 4.173 ms (1k), 25.344 ms (5k). Structural-change p95: 9.419 ms (1k), 49.174 ms (5k). This is synthetic Windows 11/offscreen evidence, not installed-GUI or hosted/reference-hardware acceptance.
+- Focused F3-017/018 unit coverage across action planning, replacement, conflicts, remote inspection, Mutagen client/daemon, SSH profiles and project consent: **286 passed**. The real OpenSSH acceptance integration was not run locally because this Windows host has no `sshd`.
+- `git diff --check`: **PASS**. Incremental strict mypy coverage includes `sync_configuration.py`, `forward_configuration.py`, `performance.py` and `async_recorder.py`; strict typing of the large root modules remains open under F3-013.
+- No hosted five-job matrix for this final state, native four-OS Mutagen lifecycle runs, signed Windows upgrade/installers, macOS notarization, Linux GUI install, physical visual/a11y/performance evidence, or owner license/certificate decisions. Keep F3-008—026 open where those gates apply. Do not merge, tag or release from this local result.
+
+## Local continuation after typing expansion — 2026-11-15
+
+The current checkout is still `f94e63c39b21abcd589b45709466a9c4670dfa21` on `master`. `git fetch origin` showed no remote-only commit on `origin/audit/f3-hardening-2026-11-15` (local/remote divergence: 6/0); no pull, merge, or push was performed. The working tree has local uncommitted changes.
+
+- Expanded strict mypy to 76 source files and fixed the discovered annotations; `app.py` remains excluded and its prior strict run reported substantial typing debt. Static checks and synthetic secret detection pass for the current working tree. Focused changed-area tests passed (72 tests, plus 6 watch-default cases); `git diff --check` passes.
+- Current `uv run python scripts/ci/run_tests.py`: **FAIL**, exit `3221225477`, Windows access violation at `tests/test_page_shell.py:42` while calling `app.processEvents()` in `test_lazy_page_is_created_on_first_navigation_and_reused`; runner reports zero completed tests in JUnit. That test passed alone (1 passed). Do not treat the earlier 1,492-test report as validation of this dirty tree; full-suite/coverage acceptance is unverified.
+- No current hosted matrix validates this checkout. Keep F3-013 partial and F3-008—026 open where applicable; no merge, tag, or release.
+
+## Local continuation after Qt event-pump hardening — 2026-11-15
+
+The following evidence supersedes the previous local test failure, but covers only the dirty Windows checkout at `f94e63c39b21abcd589b45709466a9c4670dfa21` on `master`.
+
+- `uv run python scripts/ci/run_static_checks.py`: **PASS**; Ruff, formatting, configured mypy (76 files), generated settings docs, Markdown, strict MkDocs and source audit. MkDocs still notes three audit/security pages outside navigation.
+- `uv run python scripts/ci/verify_secret_detection.py`: **PASS**; disposable high-entropy credential rejected.
+- `uv run python scripts/ci/run_tests.py` with isolated temporary report paths: **PASS**, 1,493 passed, 0 failed, 0 skipped; branch coverage 3,091/3,228 (**95.76%**), total coverage **96.81%**. Local manifest reports commit `f94e63c39b21abcd589b45709466a9c4670dfa21`, `ci_run_id=local`, JUnit SHA-256 `1f68c7dc44fcbfb8578b01014f5e8b20a6724feafda61cb2148e02f3e98dbf7e`, coverage SHA-256 `bf9a8c9901a3fb2a5f2e85c42d20ff516fba261ec3fb4b2b159681e64d0fde06`. These hashes cover local artifacts; they do not attest to the uncommitted diff or a hosted run.
+- Removed suite-wide Qt event pumping from lazy-page tests, session-table benchmarks and SSH-dialog teardown; deferred deletion now targets the owned widget. The full suite passed after these changes. The benchmark still synchronously grabs the view/window to measure rendering.
+- `benchmarks/session_table_benchmark.py` (30 repetitions): refresh canary had 0 model resets and expected insert/remove/data-change signals. At 1,000 rows, unchanged p95 was 6.625 ms and structural-change p95 14.009 ms. At 5,000 rows, unchanged p95 was 39.342 ms and structural-change p95 86.065 ms. Synthetic Windows/offscreen evidence only.
+- Strict mypy configured inventory remains clean; `uv run mypy --strict app.py` still reports 385 errors. Keep F3-013 partial.
+- Hosted PR run [43738015537](https://github.com/Harfusha/MutaUI/actions/runs/43738015537) is for PR HEAD `7715f64f7fafc14d8d8707229f58e0a2798011b9`; public annotations show `checks (macos-15-intel)` failed at **Run static checks**, no test artifacts, and the remaining platform jobs are not proven green. Exact failure logs require GitHub sign-in. No local result validates that PR SHA.
+- No four-OS native Mutagen lifecycle runs, signed installs/upgrades, macOS notarization, Linux installed-GUI run, visual/a11y acceptance, owner license/certificate decisions, or five-job hosted PASS. F3-008—026 remain open where applicable; do not merge, tag or release.
+
+## Local continuation after benchmark render adjustment — 2026-11-15
+
+This section supersedes the earlier local full-suite counts and covers the current dirty Windows checkout at `f94e63c39b21abcd589b45709466a9c4670dfa21`. Reports were written under `%TEMP%\mutaui-f3-20261115211156` to preserve repository reports.
+
+- `uv run python scripts/ci/run_tests.py`: **PASS**, 1,493 passed, 0 failed, 0 skipped; branch coverage 3,091/3,228 (**95.76%**), total coverage **96.81%**. Evidence manifest records `ci_run_id=local`, JUnit SHA-256 `73f35f6a1cfdb9f9a0b150d6df33ec49ff02ca520f54eaee7e9d15534326ed04`, coverage SHA-256 `f6954652bb8f4143078f4ffcf87dcf81e337af77523dfae89c96f8234b50a49d`. These are local artifacts, not hosted attestations.
+- `uv run python scripts/ci/run_static_checks.py`: **PASS** on the current tree, including Ruff, formatting, configured mypy (76 files), docs and source audit. MkDocs warns three audit/security pages are outside navigation.
+- `uv run python scripts/ci/verify_secret_detection.py`: **PASS**; synthetic high-entropy credential rejected. `git diff --check`: **PASS**; Git only reports existing LF-to-CRLF normalization warnings.
+- After the final synchronous `grab()` benchmark change, the 30-repetition offscreen benchmark passed: unchanged refresh p95 6.625 ms (1k rows) and 39.342 ms (5k); structural refresh p95 14.009 ms (1k) and 86.065 ms (5k). This is synthetic Windows/offscreen evidence only.
+- `uv run mypy --strict app.py` remains at 385 errors; F3-013 stays partial. Configured mypy for 76 source files passes.
+- No pull, merge, push, hosted workflow rerun, four-OS native Mutagen run, signing/notarization, Linux installed-GUI, visual/a11y acceptance, or owner license/certificate decision was performed in this continuation. Keep hosted/platform/owner gates open; do not merge, tag or release.
+
+## Local continuation after strict root typing — 2026-11-15
+
+The active checkout remains `f94e63c39b21abcd589b45709466a9c4670dfa21` on `master`. This continuation did not fetch, pull, merge, or push. Local edits remain uncommitted; no merge or release is authorized by these local checks.
+
+- Added `app.py` to the existing strict mypy file inventory. `uv run mypy` now passes all **78 source files** without disabling strict checks. Annotated the remaining root GUI callbacks and typed the endpoint card mapping and session notification paths.
+- Fixed the verified-session replacement success path to call the existing settings persistence wrapper with the settings data. No session replacement itself was executed; this was code-path validation only.
+- Extended the existing verified-replacement test to assert that settings are persisted only on verified success. The focused replacement set passed (**17 passed** before this assertion; the updated persistence test passed **2/2**).
+- Extracted the sustained `AlertEngine`/`ResourceAlert` and metric coercion into `src/mutaui/services/alert_engine.py`; `app.py` imports the service directly. Existing alert tests and GUI smoke pass (16 total).
+- `uv run python scripts/ci/run_static_checks.py`: **PASS**, including Ruff, formatting, strict mypy for 78 files, generated docs, Markdown, strict MkDocs build, and source audit. MkDocs still reports three audit/security pages outside the configured navigation.
+- The project gate is `uv run mypy` with `strict = true` and `app.py` among its 78 explicit source roots. Diagnostic single-file `uv run mypy --strict app.py` is not equivalent under `follow_imports = "skip"`: it reports five imported-`Any` errors; forcing normal import traversal reports 41 errors across six files. No strictness setting was changed.
+- `uv run python scripts/ci/run_tests.py`: **PASS**, 1,494 passed, 0 failed, 0 skipped; branch coverage 3,101/3,244 (**95.59%**) and total coverage **96.76%**. Latest local `test-results/evidence.json` (`2026-11-15T21:38:19.427003+00:00`, schema 1) binds commit `f94e63c39b21abcd589b45709466a9c4670dfa21`, `ci_run_id=local`, JUnit SHA-256 `cd37606c20a7469323fcc43e64e6db6013bd0eff9418be8051fb72696847cf8e`, and coverage SHA-256 `a714c494b7c7ad1b6368ae72af812234d8df96fbd93149f47c0105b5438be548`. These are local results, not hosted attestations.
+- `uv run python scripts/ci/verify_secret_detection.py`: **PASS**; synthetic high-entropy credential rejected. `git diff --check`: **PASS**; Git reports LF-to-CRLF normalization warnings for existing modified files.
+- Opened the failed [hosted run #66](https://github.com/Harfusha/MutaUI/actions/runs/43738015537) log for `macos-15-intel`: `ruff format --check .` failed because `tests/test_gui_branch_coverage.py` would be reformatted. The local dirty-tree diff contains that formatting correction and the local static-check run above passes, but neither is present in the hosted PR SHA `7715f64f7fafc14d8d8707229f58e0a2798011b9`; a new exact-SHA hosted run is still required.
+- No hosted five-job PASS exists for this same final source state. The known public PR run remains failed on macOS Intel at static checks and is for PR head `7715f64f7fafc14d8d8707229f58e0a2798011b9`. Four-OS native Mutagen lifecycle runs, signed Windows upgrade/installers, macOS notarization, Linux installed-GUI, physical visual/accessibility acceptance, and owner license/certificate decisions remain unverified. Keep F3-008—026 open where applicable; do not merge, tag, or release.
+
+## Local continuation after health network monitor extraction — 2026-11-15
+
+The active checkout remains dirty `master` at `f94e63c39b21abcd589b45709466a9c4670dfa21`. This continuation did not fetch, pull, merge, or push.
+
+- Read-only check of [PR #1 checks](https://github.com/Harfusha/MutaUI/pull/1/checks) still shows hosted head `7715f64`; run #66 has an Intel macOS error annotation and only 1/4 matrix jobs completed on the run page. No hosted run validates dirty `f94e63c`.
+
+- Extracted optional `QNetworkInformation` backend setup into `src/mutaui/services/health_network_monitor.py`. `MainWindow` retains its QObject-bound signal callback and only retains the information object when the backend is supported; missing Qt/backend and `ImportError`/`RuntimeError` remain safe fallbacks.
+- Added service tests for callback wiring, backend unavailability, and missing `QtNetwork`. `uv run pytest -q tests/test_health_network_monitor.py tests/test_mainwindow_flows.py -k health_network`: **9 passed**, 344 deselected. An initial run found that unsupported backends must not create MainWindow attributes; the conditional assignment now preserves that contract.
+- `uv run python scripts/ci/run_static_checks.py`: **PASS**; Ruff, formatting, strict mypy for **79 source files**, generated settings docs, Markdown, strict MkDocs, and source audit. MkDocs still warns three audit/security pages are outside `nav`.
+- `uv run python scripts/ci/run_tests.py`: **PASS**, **1,497 passed**, 0 failed/skipped; branch coverage **3,103/3,246 (95.59%)**, total coverage **96.76%**. Local manifest is not a hosted attestation and does not make the dirty diff a committed SHA.
+- `uv run pytest -q tests/test_mutagen_integration.py tests/test_mutagen_daemon_harness.py`: **PASS**, 21 passed on local Windows/Python 3.12. This does not establish the required macOS ARM/Intel or Linux daemon cycles.
+- `uv run pytest -q tests -k test_local_unix_forward_leave_preserves_entry_and_overwrite_is_explicit`: **PASS**, 1 passed on local Windows/Python 3.12. Native Mutagen 0.18.1 capability and other-OS behavior still need hosted/native evidence.
+- `uv run pytest -q tests/test_ci_runner.py tests/test_generate_acceptance_report.py tests/test_session_table_benchmark.py`: **PASS**, 42 passed locally. Hosted evidence-manifest SHA/run binding remains unverified.
+- GitHub run #66 remains failed on older PR SHA `7715f64f7fafc14d8d8707229f58e0a2798011b9`. No exact-SHA hosted rerun, four-OS Mutagen lifecycle, signed install, notarization, Linux installed-GUI, physical visual/accessibility acceptance, or owner license/certificate decision. P0 and F3-008—026 remain open where applicable; do not merge, tag, or release.
+
+## Local continuation after session health observer extraction — 2026-11-15
+
+This remains a dirty Windows checkout on `master` at `f94e63c39b21abcd589b45709466a9c4670dfa21`; no fetch, pull, merge, or push was performed.
+
+- Extracted the fresh-session health observation loop from `MainWindow.update_diagnostics` into `src/mutaui/services/session_health_observer.py`. It retains the 60-second freshness check, stale/missing/future timestamp rejection, confirmed-failure and pause flags, scan detection, command duration, and the shared monotonic observation time.
+- Added `tests/test_session_health_observer.py`; focused check: **3 passed**. The full suite also exercised these tests and the existing MainWindow flows.
+- `uv run python scripts/ci/run_tests.py`: **PASS**, **1,500 passed**, 0 failed/skipped; branch coverage **3,131/3,246 (96.46%)**, total coverage **96.76%**.
+- `uv run python scripts/ci/run_static_checks.py`: **PASS**; Ruff, formatting, strict mypy for **80 source files**, generated docs, Markdown, strict MkDocs, and source audit. MkDocs continues to note three audit/security pages outside `nav`.
+- `git diff --check`: **PASS** after the final test and audit updates; Git reports only its normal LF-to-CRLF warnings for existing modified files.
+- Hub could not create a separate task contract for this slice (terminal HTTP 500). The existing plan/task remains the durable record; the remote, platform, signed-install, notarization, installed-GUI, visual/accessibility, and owner-license gates remain open. No hosted job validates this dirty tree.
+
+## Coverage inventory expansion and branch gate — 2026-11-16
+
+Expanded `[tool.coverage.run].source` to include `connection_profiles.py`, `forward_configuration.py`, `ignore_presets.py`, `portable_bundle.py`, `ssh_profiles.py`, and `sync_configuration.py`; added these root modules to the strict mypy file inventory alongside `benchmark.py` and `gui_capture.py`. Coverage threshold remains 95% branch coverage.
+
+Added validation tests for profile-store input and identity guards, ignore conversion syntax, portable-bundle sanitization/import validation, SSH config and command failures, and sync/forward configuration parsing and proposal validation. No production behavior was changed in this continuation.
+
+Verified on Windows/Python 3.12: `uv run python scripts/ci/run_tests.py` passed, 1,564 tests, zero failed/errors/skipped; branch coverage 3,419/3,598 (95.03%). `uv run python scripts/ci/run_static_checks.py` passed: Ruff, formatting, mypy across 82 source files, generated references, Markdown/MkDocs, and source checks. `git diff --check` passed (Git emitted only existing LF-to-CRLF notices).
+
+The Hub impact and secret-scan actions were blocked because preprocessing mode was active (`retryable=true`); they were not retried. No hosted CI or cross-platform native Mutagen lifecycle evidence was created by this local run.
+
+## Hosted CI recheck — 2026-11-16
+
+Read-only GitHub recheck: [PR #1 checks](https://github.com/Harfusha/MutaUI/pull/1/checks) remains a draft at head `7715f64`. The security/dependency/workflow/YAML/secret job succeeded on Nov 15. [Checks run #66](https://github.com/Harfusha/MutaUI/actions/runs/43738015537) still reports only 1 of 4 matrix jobs completed, `checks (macos-15-intel)` exited 1, and test-report artifacts were not found. Detailed logs require GitHub sign-in and were not available. This run does not validate the current dirty local `f94e63c` worktree.
+
+## Session configuration proposal extraction — 2026-11-18
+
+For F3-014—016, extracted typed form-text parsing and draft validation from `MainWindow.open_session_preferences` into `src/mutaui/services/session_configuration.py`. The Qt dialog still owns layout, save/cancel flow, and user-facing error reporting; proposal parsing still uses the existing `SyncConfigurationDraft` / `ForwardConfigurationDraft` validators. Added pure sync/forward service tests and a MainWindow save-path test.
+
+Verification on Windows/Python 3.12: `uv run python scripts/ci/run_tests.py` passed, 1,570 passed, zero failures/errors/skips; branch coverage 3,422/3,600 = 95.06%. `uv run python scripts/ci/run_static_checks.py` passed, including Ruff, formatting, mypy for 83 source files, references, Markdown/MkDocs and source/layout checks. Focused secret scans completed clean for `app.py`, the new service, and both touched test files; scans were file-scoped and did not include Git history.
+
+Current worktree remains on `master` at `f94e63c39b21abcd589b45709466a9c4670dfa21`, with 37 modified tracked files and 13 untracked files, no staged paths or conflicts. The new service and tests are among the untracked files. Hub impact reported a high-risk broad baseline diff because this task shares the existing dirty tree; the F3 work remains uncommitted and unpushed. The Agent OS task `task_70dd39449867` now has an implementation/verification checkpoint; existing plan board still has no task items.
+
+Read-only GitHub recheck still shows draft PR #1 at `7715f64` and run #66 as the latest failed check, with only 1/4 matrix jobs completed and macOS Intel exiting 1. Detailed job logs require sign-in. Local tests do not validate the dirty `f94e63c` tree on hosted CI or on other operating systems.

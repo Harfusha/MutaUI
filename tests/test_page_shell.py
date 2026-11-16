@@ -3,6 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QCoreApplication, QEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
 from mutaui.ui.page_shell import PAGE_ROUTES, LazyStackedWidget
@@ -22,7 +23,7 @@ def test_page_routes_have_stable_unique_ids_and_current_order():
 
 
 def test_lazy_page_is_created_on_first_navigation_and_reused():
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     shell = LazyStackedWidget()
     created = []
 
@@ -39,7 +40,6 @@ def test_lazy_page_is_created_on_first_navigation_and_reused():
     assert created == []
 
     shell.setCurrentIndex(1)
-    app.processEvents()
     assert shell.is_page_built(1)
     assert len(created) == 1
 
@@ -49,11 +49,11 @@ def test_lazy_page_is_created_on_first_navigation_and_reused():
     assert shell.widget(1) is created[0]
 
     shell.deleteLater()
-    app.processEvents()
+    QCoreApplication.sendPostedEvents(shell, QEvent.Type.DeferredDelete)
 
 
 def test_lazy_page_factory_failure_is_retryable_and_invalid_index_is_rejected():
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     shell = LazyStackedWidget()
     attempts = []
 
@@ -76,11 +76,11 @@ def test_lazy_page_factory_failure_is_retryable_and_invalid_index_is_rejected():
         shell.ensure_page(50)
     shell.setCurrentIndex(-1)
     shell.deleteLater()
-    app.processEvents()
+    QCoreApplication.sendPostedEvents(shell, QEvent.Type.DeferredDelete)
 
 
 def test_lazy_page_retries_when_placeholder_disappears(monkeypatch):
-    app = QApplication.instance() or QApplication([])
+    _app = QApplication.instance() or QApplication([])
     shell = LazyStackedWidget()
     attempts = []
 
@@ -105,4 +105,4 @@ def test_lazy_page_retries_when_placeholder_disappears(monkeypatch):
     assert isinstance(shell.ensure_page(index), QWidget)
     assert shell.is_page_built(index)
     shell.deleteLater()
-    app.processEvents()
+    QCoreApplication.sendPostedEvents(shell, QEvent.Type.DeferredDelete)

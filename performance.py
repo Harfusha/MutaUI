@@ -9,10 +9,14 @@ from __future__ import annotations
 import bisect
 import math
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
+
+type PerformanceRow = tuple[float, float | None, float | None]
 
 
-def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tuple]:
+def envelope_downsample(
+    rows: Iterable[PerformanceRow], max_points: int = 600
+) -> list[PerformanceRow]:
     """Return time-ordered rows while preserving peaks and troughs.
 
     For each bucket retain max/min of each *present* numeric metric, plus the
@@ -38,11 +42,11 @@ def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tu
             continue
         selected = {0, len(chunk) - 1}
         for j in range(1, columns + 1):
-            valid = [
-                (idx, row[j])
-                for idx, row in enumerate(chunk)
-                if isinstance(row[j], (int, float)) and math.isfinite(row[j])
-            ]
+            valid: list[tuple[int, float]] = []
+            for idx, row in enumerate(chunk):
+                value = row[j]
+                if isinstance(value, (int, float)) and math.isfinite(value):
+                    valid.append((idx, float(value)))
             if valid:
                 selected.add(min(valid, key=lambda pair: pair[1])[0])
                 selected.add(max(valid, key=lambda pair: pair[1])[0])
@@ -58,7 +62,7 @@ def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tu
     return output
 
 
-def nearest_time_index(timestamps: list[float], target: float) -> int:
+def nearest_time_index(timestamps: Sequence[float], target: float) -> int:
     """Binary-search the nearest sample in O(log n) (for graph tooltips)."""
     if not timestamps:
         return -1
@@ -73,7 +77,7 @@ def nearest_time_index(timestamps: list[float], target: float) -> int:
 class RefreshGate:
     """Coalesce UI refreshes; forcing bypasses limit, but updates the clock."""
 
-    def __init__(self, min_seconds: float, clock=time.monotonic):
+    def __init__(self, min_seconds: float, clock: Callable[[], float] = time.monotonic) -> None:
         if min_seconds < 0:
             raise ValueError("Interval must be non-negative")
         self.min_seconds = float(min_seconds)
@@ -87,7 +91,7 @@ class RefreshGate:
             return True
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         self.last = float("-inf")
 
 
@@ -99,7 +103,12 @@ class PollBackoff:
     is injected so retry logic can be tested without sleeping.
     """
 
-    def __init__(self, base: float = 4.0, maximum: float = 60.0, clock=time.monotonic):
+    def __init__(
+        self,
+        base: float = 4.0,
+        maximum: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         if base <= 0 or maximum < base:
             raise ValueError("Invalid polling backoff interval")
         self.base = base
