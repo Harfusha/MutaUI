@@ -10,7 +10,7 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QEvent, QPoint
 from PySide6.QtGui import QCloseEvent, QFontDatabase, QTextDocument
 from PySide6.QtWidgets import (
     QApplication,
@@ -2419,6 +2419,15 @@ def test_onboarding_release_check_requires_explicit_opt_in(window):
     assert settings["onboarding_completed"] is True
     assert settings["check_updates_on_startup"] is True
     wizard.close()
+
+
+def test_window_state_change_refreshes_polling_mode(window, monkeypatch):
+    calls = []
+    monkeypatch.setattr(window, "update_polling_mode", lambda: calls.append(True))
+
+    window.changeEvent(QEvent(QEvent.Type.WindowStateChange))
+
+    assert calls == [True]
 
 
 def test_manual_release_check_requires_opt_in_and_uses_public_metadata(window, monkeypatch):
