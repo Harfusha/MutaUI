@@ -67,13 +67,31 @@ def test_quick_navigator_filters_words_and_selects_page(window):
 
     navigator.choose()
     assert navigator.target == 9
-
     navigator.filter("no matching page")
     assert navigator.list.count() == 0
     navigator.target = None
     navigator.choose()
     assert navigator.target is None
     navigator.close()
+
+
+def test_live_language_switch_retranslates_navigation_and_page_header(window):
+    settings_index = next(
+        index for index, route in enumerate(app_module.PAGE_ROUTES) if route.route_id == "settings"
+    )
+    window.set_ui_mode("advanced")
+    window.set_page(settings_index)
+    language = window.language_input
+
+    language.setCurrentIndex(language.findData("cs"))
+
+    assert "Přehled" in window.nav[0].text()
+    assert window.page_name.text() == "Nastavení"
+
+    language.setCurrentIndex(language.findData("en"))
+
+    assert "Overview" in window.nav[0].text()
+    assert window.page_name.text() == "Settings"
 
 
 def test_dashboard_fits_narrow_window_without_horizontal_scroll(window, qapp):
