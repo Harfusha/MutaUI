@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+import ssh_profiles
 from ssh_profiles import test_ssh_connection as check_ssh_connection
 
 
@@ -156,6 +157,14 @@ def openssh_server(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> OpenSSHFi
         encoding="utf-8",
     )
     config.chmod(0o600)
+    run_ssh = ssh_profiles._run_ssh
+
+    def run_ssh_with_fixture_config(
+        argv: list[str], *, timeout: int
+    ) -> subprocess.CompletedProcess[str]:
+        return run_ssh([argv[0], "-F", str(config), *argv[1:]], timeout=timeout)
+
+    monkeypatch.setattr(ssh_profiles, "_run_ssh", run_ssh_with_fixture_config)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("SSH_AUTH_SOCK", "")
     try:
