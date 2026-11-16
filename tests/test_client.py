@@ -169,6 +169,7 @@ def test_exec_without_shell_and_readonly_env(monkeypatch, tmp_path):
     assert kwargs["env"]["MUTAGEN_DISABLE_AUTOSTART"] == "1"
     assert kwargs["stdin"] is not None
     assert kwargs["shell"] is False
+    assert kwargs["creationflags"] == getattr(mutagen_client.subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def test_execute_uses_exact_target_no_shell(monkeypatch, tmp_path):
@@ -746,9 +747,6 @@ def test_process_sampler_handles_unavailable_os_counters_and_memory(monkeypatch)
 
         def cpu_times(self):
             return SimpleNamespace(user=1.0, system=0.5)
-
-        def io_counters(self):
-            raise OSError("I/O counters unavailable")
 
         def memory_info(self):
             raise OSError("memory unavailable")

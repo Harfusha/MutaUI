@@ -698,7 +698,7 @@ class MutagenClient:
                 raise MutagenError("Mutagen data directory must be an absolute path.")
             env["MUTAGEN_DATA_DIRECTORY"] = data_directory
         env["NO_COLOR"] = "1"
-        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         try:
             result = subprocess.run(
                 [self.binary, *args],
@@ -872,7 +872,8 @@ class ProcessSampler:
                 times = process.cpu_times()
                 total_cpu = times.user + times.system
                 try:
-                    io = process.io_counters()
+                    io_method = "io_counters"
+                    io = getattr(process, io_method)()
                     read_bytes = int(io.read_bytes)
                     write_bytes = int(io.write_bytes)
                 except (AttributeError, OSError, psutil.Error):
