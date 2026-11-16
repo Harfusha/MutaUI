@@ -209,3 +209,19 @@ def test_real_ssh_rejects_changed_host_key(openssh_server: OpenSSHFixture) -> No
 
     assert not changed_key_result.success
     assert changed_key_result.host_key_error
+
+
+def test_real_ssh_recovers_after_server_network_flap(openssh_server: OpenSSHFixture) -> None:
+    server = openssh_server
+    server.pin(server.host_key_a)
+    assert check_ssh_connection(server.client_alias).success
+
+    server.stop()
+    disconnected = check_ssh_connection(server.client_alias)
+    assert not disconnected.success
+    assert not disconnected.host_key_error
+
+    server.start(server.host_key_a)
+    reconnected = check_ssh_connection(server.client_alias)
+    assert reconnected.success
+    assert not reconnected.host_key_error
