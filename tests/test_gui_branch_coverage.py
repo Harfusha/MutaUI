@@ -281,3 +281,54 @@ def test_history_clear_respects_optional_recorder() -> None:
     dialog.recorder = SimpleNamespace(clear_events=lambda: recorder_clears.append("recorder"))
     app_module.MainWindow.clear_logs(dialog)
     assert recorder_clears == ["recorder"]
+
+
+def test_polling_update_handles_optional_timers() -> None:
+    intervals: list[int] = []
+    window = SimpleNamespace(
+        isVisible=lambda: True,
+        isMinimized=lambda: False,
+        metric_period_ms=lambda: 2500,
+        poll_period_ms=lambda: 4000,
+        metric_timer=SimpleNamespace(setInterval=intervals.append),
+        timer=SimpleNamespace(setInterval=intervals.append),
+    )
+
+    app_module.MainWindow.update_polling_mode(window)
+    assert intervals == [2500, 4000]
+    assert window._eco_hidden is False
+
+    del window.metric_timer
+    del window.timer
+    app_module.MainWindow.update_polling_mode(window)
+    assert intervals == [2500, 4000]
+
+
+def test_tray_notification_empty_and_cancelled_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    shown: list[bool] = []
+    requests: list[dict[str, str]] = []
+    empty = SimpleNamespace(
+        _last_notification_session_keys=(), show_window=lambda: shown.append(True)
+    )
+    app_module.MainWindow.open_notified_issue(empty)
+    assert shown == [True]
+
+    grouped = SimpleNamespace(
+        _last_notification_session_keys=(("sync", "sync-id"), ("forward", "forward-id")),
+        handle_launch_request=requests.append,
+    )
+    monkeypatch.setattr(app_module.QInputDialog, "getItem", lambda *_args, **_kwargs: ("", False))
+    app_module.MainWindow.open_notified_issue(grouped)
+    assert requests == []
+
+
+def test_open_onboarding_raises_existing_wizard() -> None:
+    calls: list[str] = []
+    wizard = SimpleNamespace(
+        raise_=lambda: calls.append("raise"), activateWindow=lambda: calls.append("activate")
+    )
+    window = SimpleNamespace(onboarding_wizard=wizard)
+
+    app_module.MainWindow.open_onboarding(window)
+
+    assert calls == ["raise", "activate"]
