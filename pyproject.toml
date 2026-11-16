@@ -61,6 +61,7 @@ source = [
     "app",
     "async_recorder",
     "benchmark",
+    "connection_profiles",
     "endpoint_inspector",
     "gui_capture",
     "insights",
@@ -97,9 +98,35 @@ pythonpath = ["src", "."]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src/mutaui"]
+files = [
+    "src/mutaui",
+    "connection_profiles.py",
+    "endpoint_inspector.py",
+    "server_groups.py",
+    "settings.py",
+    "performance.py",
+    "forward_configuration.py",
+    "portable_bundle.py",
+    "ignore_presets.py",
+    "sync_configuration.py",
+    "ssh_profiles.py",
+    "monitoring.py",
+    "insights.py",
+    "async_recorder.py",
+    "benchmark.py",
+    "log_stream.py",
+    "sync_profiles.py",
+    "verify_source.py",
+    "mutagen_client.py",
+    "gui_capture.py",
+]
 follow_imports = "skip"
+mypy_path = "src"
 
 [[tool.mypy.overrides]]
 module = ["AppKit", "Foundation"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["psutil"]
 ignore_missing_imports = true

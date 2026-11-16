@@ -251,6 +251,10 @@ _TEXT_CATALOG = {
     "issues": "problémy",
     "Application load": "Vytížení aplikace",
     "measured for the UI process, not Mutagen": "měřeno pro proces aplikace, nikoli pro Mutagen",
+    "Test failed: {message}": "Test selhal: {message}",
+    "Could not save onboarding status: {error}": ("Nepodařilo se uložit stav průvodce: {error}"),
+    "Process monitoring: {message}": "Sledování procesů: {message}",
+    "Number of skipped history samples: {count}": ("Počet vynechaných vzorků historie: {count}"),
     "current": "aktuálně",
     "average": "průměr",
     "maximum": "maximum",
@@ -339,6 +343,12 @@ _TEXT_CATALOG = {
     "sessions need attention": "relace vyžadují pozornost",
     "Session recovered": "Relace obnovena",
     "sessions recovered": "relace obnoveny",
+    "Session needs attention: {title}": "Relace vyžaduje pozornost: {title}",
+    "Number of sessions needing attention: {count}": (
+        "Počet relací vyžadujících pozornost: {count}"
+    ),
+    "Session recovered: {title}": "Relace obnovena: {title}",
+    "Number of recovered sessions: {count}": "Počet obnovených relací: {count}",
     "Quiet hours": "Tiché hodiny",
     "Quiet Hours": "Tiché hodiny",
     "Suppress notifications during quiet hours": "Potlačit oznámení během tichých hodin",
@@ -958,6 +968,14 @@ _DIALOG_CATALOG = {
     "This source binds beyond loopback and may expose the destination publicly. Continue?": "Tento zdroj naslouchá mimo loopback a může cíl zpřístupnit veřejně. Pokračovat?",
     "Turn Off Sync Start?": "Vypnout spouštění synchronizace?",
     "Wait for the current command to finish first.": "Nejprve počkejte na dokončení aktuálního příkazu.",
+    "Loaded {path} · SHA-256 {sha256} · source retained for collision checks.": "Načteno {path} · SHA-256 {sha256} · zdroj je zachován pro kontrolu kolizí.",
+    "Invalid source retained unchanged: {error}": "Neplatný zdroj zůstává beze změny: {error}",
+    "Saved safely. Backup: {backup} · new SHA-256 {sha256}": "Bezpečně uloženo. Záloha: {backup} · nový SHA-256 {sha256}",
+    "Legacy settings migrated; exact source backup created.": "Starší nastavení byla migrována; byla vytvořena přesná záloha zdroje.",
+    "Exact backup: {path}": "Přesná záloha: {path}",
+    "Restore the exact settings bytes from this backup? A backup of current settings will also be kept.\n\n{backup}": "Obnovit z této zálohy přesné bajty nastavení? Zároveň se uchová záloha současného nastavení.\n\n{backup}",
+    "Exact migration backup restored: {path}": "Přesná záloha migrace obnovena: {path}",
+    "Connect to {alias} now? The test uses BatchMode and StrictHostKeyChecking=yes. It will not add or replace host keys.": "Připojit se nyní k {alias}? Test používá BatchMode a StrictHostKeyChecking=yes. Nepřidá ani nenahradí hostitelské klíče.",
     "Write Error": "Chyba zápisu",
 }
 

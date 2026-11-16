@@ -18,7 +18,14 @@ from typing import Any
 from mutagen_client import classify, conflict_count, problem_count
 
 
-def local_self_check(*, app_path, settings_path, history, qt_version, mutagen_version):
+def local_self_check(
+    *,
+    app_path: str | os.PathLike[str],
+    settings_path: str | os.PathLike[str],
+    history: Any,
+    qt_version: str,
+    mutagen_version: str,
+) -> dict[str, Any]:
     """Check local app paths and runtime health without changing local or remote state."""
     app_file = os.fspath(app_path)
     settings_file = os.fspath(settings_path)
@@ -82,10 +89,10 @@ def _measured_number(value: Any) -> float | None:
         return None
 
 
-def measurement_summary(rows: list[dict]) -> dict:
+def measurement_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Calculate human-useful statistics from actual samples, not interpolated graph lines."""
     fields = ("cpu", "memory", "read_rate", "write_rate", "forward_out_rate", "forward_in_rate")
-    result: dict = {"samples": len(rows), "fields": {}}
+    result: dict[str, Any] = {"samples": len(rows), "fields": {}}
     for field in fields:
         values = sorted(
             value for row in rows if (value := _measured_number(row.get(field))) is not None
@@ -125,7 +132,7 @@ class AlertEngine:
     fires when the metric stays above the limit for the configured duration.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.started: dict[str, float] = {}
         self.fired: set[str] = set()
 
@@ -172,7 +179,9 @@ class AlertEngine:
         return alerts
 
 
-def state_transitions(previous: dict, current: dict) -> list[tuple[str, str, str, str]]:
+def state_transitions(
+    previous: dict[str, str], current: dict[str, str]
+) -> list[tuple[str, str, str, str]]:
     """Report meaningful transitions, not brief normal busy/active oscillations."""
     events = []
     for identity, state in current.items():
@@ -210,7 +219,7 @@ def safe_diagnostic_report(
     build_id: str | None = None,
     recent_event_count: int = 0,
     event_count_capped: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Strict allow-list: excludes identifiers, names, paths, hosts, auth and errors.
 
     Unlike redaction of a raw snapshot, new upstream fields are excluded by
@@ -236,7 +245,7 @@ def safe_diagnostic_report(
     process_count = (
         _measured_number(getattr(snapshot, "processes", None)) if resource_observed else None
     )
-    report = {
+    report: dict[str, Any] = {
         "schema": "mutagen-control-safe-diagnostics-v1",
         "timestamp_unix": round(now),
         "application_version": _safe_version(application_version),

@@ -10,6 +10,7 @@ import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 METRIC_COLUMNS = (
     "cpu",
@@ -66,10 +67,12 @@ class ForwardTrafficMeter:
     not system-wide network interface traffic.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.previous: dict[str, tuple[float, int, int]] = {}
 
-    def update(self, sessions: list[dict], now: float | None = None) -> tuple[float, float]:
+    def update(
+        self, sessions: list[dict[str, Any]], now: float | None = None
+    ) -> tuple[float, float]:
         now = time.monotonic() if now is None else now
         current: dict[str, tuple[float, int, int]] = {}
         outgoing = incoming = 0.0
@@ -94,7 +97,7 @@ class ForwardTrafficMeter:
 class HistoryStore:
     """SQLite time series with bounded retention and aggregated chart queries."""
 
-    def __init__(self, path: Path | str = ":memory:", retention_hours: int = 48):
+    def __init__(self, path: Path | str = ":memory:", retention_hours: int = 48) -> None:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +134,7 @@ class HistoryStore:
         self.db.commit()
         self._last_prune = 0.0
 
-    def add(self, sample: Sample):
+    def add(self, sample: Sample) -> None:
         values = (sample.ts,) + tuple(getattr(sample, k) for k in METRIC_COLUMNS)
         self.db.execute(
             "INSERT OR REPLACE INTO metrics VALUES (" + ",".join("?" for _ in values) + ")", values
@@ -141,7 +144,7 @@ class HistoryStore:
             self.prune(sample.ts)
             self._last_prune = sample.ts
 
-    def prune(self, now: float | None = None):
+    def prune(self, now: float | None = None) -> None:
         now = time.time() if now is None else now
         self.db.execute("DELETE FROM metrics WHERE ts < ?", (now - self.retention_hours * 3600,))
         self.db.execute("DELETE FROM events WHERE ts < ?", (now - 30 * 86400,))
@@ -152,7 +155,7 @@ class HistoryStore:
 
     def query(
         self, hours: float = 1.0, max_points: int = 440, now: float | None = None
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Return one aggregated point per interval, within the selected window."""
         hours = max(1 / 60, min(float(hours), self.retention_hours))
         max_points = max(10, min(2000, int(max_points)))
@@ -168,7 +171,7 @@ class HistoryStore:
             {"ts": ts, **dict(zip(METRIC_COLUMNS, fields, strict=True))} for ts, *fields in cursor
         ]
 
-    def statistics(self, hours: float = 1.0, now: float | None = None) -> dict:
+    def statistics(self, hours: float = 1.0, now: float | None = None) -> dict[str, Any]:
         """Summary of raw measurements over the range (not downsampled chart points)."""
         from insights import measurement_summary
 
@@ -182,9 +185,10 @@ class HistoryStore:
                 (now - hours * 3600, now),
             )
         ]
-        return measurement_summary(rows)
+        summary: dict[str, Any] = measurement_summary(rows)
+        return summary
 
-    def export_csv(self, path: Path | str, hours: float = 24.0, now: float | None = None):
+    def export_csv(self, path: Path | str, hours: float = 24.0, now: float | None = None) -> None:
         """Export full-resolution samples for the selected period, not chart averages."""
         now = time.time() if now is None else now
         hours = max(1 / 60, min(float(hours), self.retention_hours))
@@ -199,7 +203,7 @@ class HistoryStore:
             ):
                 writer.writerow(row)
 
-    def add_event(self, message: str, severity: str = "info", now: float | None = None):
+    def add_event(self, message: str, severity: str = "info", now: float | None = None) -> None:
         now = time.time() if now is None else now
         self.db.execute(
             "INSERT INTO events(ts, severity, message) VALUES (?,?,?)", (now, severity, message)
@@ -216,11 +220,11 @@ class HistoryStore:
             )
         )
 
-    def clear_events(self):
+    def clear_events(self) -> None:
         self.db.execute("DELETE FROM events")
         self.db.commit()
 
-    def add_remote(self, host: str, ts: float, data: dict):
+    def add_remote(self, host: str, ts: float, data: dict[str, Any]) -> None:
         """Save one opt-in sample from a remote SSH endpoint."""
         values = [host, float(ts)] + [data.get(col) for col in REMOTE_COLUMNS]
         columns = ("host", "ts") + REMOTE_COLUMNS
@@ -239,7 +243,7 @@ class HistoryStore:
 
     def query_remote(
         self, host: str, hours: float = 1.0, max_points: int = 320, now: float | None = None
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Aggregate only a selected host's metrics, preserving NULL rates."""
         now = time.time() if now is None else now
         hours = max(1 / 60, min(float(hours), self.retention_hours))
@@ -254,7 +258,7 @@ class HistoryStore:
             {"ts": ts, **dict(zip(REMOTE_COLUMNS, values, strict=True))} for ts, *values in cursor
         ]
 
-    def export_remote(self, path: Path | str, host: str, hours: float = 24.0):
+    def export_remote(self, path: Path | str, host: str, hours: float = 24.0) -> None:
         """Export a chosen host's raw measurements. Host strings are private."""
         after = time.time() - max(1 / 60, min(float(hours), self.retention_hours)) * 3600
         with open(path, "w", newline="", encoding="utf-8-sig") as target:
@@ -268,13 +272,13 @@ class HistoryStore:
             )
             writer.writerows(cursor)
 
-    def close(self):
+    def close(self) -> None:
         self.db.close()
 
 
 def statistics_from_file(
     path: Path | str, hours: float = 1.0, retention_hours: int = 48, now: float | None = None
-) -> dict:
+) -> dict[str, Any]:
     """Compute exact raw-sample statistics on a separate SQLite read connection.
 
     Intended for a QThreadPool worker so that 48h of samples never forces a
@@ -298,7 +302,8 @@ def statistics_from_file(
                 (now - hours * 3600, now),
             )
         ]
-        return measurement_summary(rows)
+        summary: dict[str, Any] = measurement_summary(rows)
+        return summary
     finally:
         connection.close()
 
@@ -309,7 +314,7 @@ def query_metrics_from_file(
     max_points: int = 440,
     retention_hours: int = 48,
     now: float | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read chart bins on a separate, read-only SQLite connection.
 
     Heavy GROUP BY queries for 48 hours of 1 Hz telemetry must not freeze the

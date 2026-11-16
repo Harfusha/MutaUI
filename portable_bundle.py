@@ -122,7 +122,7 @@ def _redact_endpoint(value: str, *, include_local_paths: bool, warnings: list[st
 def _safe_profile(
     profile: ConnectionProfile, *, include_local_paths: bool, warnings: list[str]
 ) -> dict[str, Any]:
-    item = _profile_json(profile)
+    item: dict[str, Any] = _profile_json(profile)
     item["endpoint_a"] = _redact_endpoint(
         item["endpoint_a"], include_local_paths=include_local_paths, warnings=warnings
     )
@@ -391,4 +391,5 @@ def selected_preferences(
         raise PortableBundleError(
             "Imported preference validation failed: " + "; ".join(validated.warnings)
         )
-    return validated.values
+    values: dict[str, Any] = validated.values
+    return values

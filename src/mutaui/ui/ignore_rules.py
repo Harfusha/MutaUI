@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -187,7 +186,7 @@ class IgnoreConversionDialog(QDialog):
             item = self.table.item(row, 0)
             if item is not None and item.checkState() == Qt.CheckState.Checked:
                 selected.add(rule.line)
-        return cast(tuple[str, ...], apply_converted_rules(self.preview, selected))
+        return apply_converted_rules(self.preview, selected)
 
 
 __all__ = ["IgnoreConversionDialog", "IgnorePresetManagerDialog"]

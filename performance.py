@@ -9,10 +9,13 @@ from __future__ import annotations
 import bisect
 import math
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 
-def envelope_downsample(rows: Iterable[tuple], max_points: int = 600) -> list[tuple]:
+def envelope_downsample(
+    rows: Iterable[tuple[Any, ...]], max_points: int = 600
+) -> list[tuple[Any, ...]]:
     """Return time-ordered rows while preserving peaks and troughs.
 
     For each bucket retain max/min of each *present* numeric metric, plus the
@@ -73,7 +76,7 @@ def nearest_time_index(timestamps: list[float], target: float) -> int:
 class RefreshGate:
     """Coalesce UI refreshes; forcing bypasses limit, but updates the clock."""
 
-    def __init__(self, min_seconds: float, clock=time.monotonic):
+    def __init__(self, min_seconds: float, clock: Callable[[], float] = time.monotonic):
         if min_seconds < 0:
             raise ValueError("Interval must be non-negative")
         self.min_seconds = float(min_seconds)
@@ -87,7 +90,7 @@ class RefreshGate:
             return True
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         self.last = float("-inf")
 
 
@@ -99,7 +102,9 @@ class PollBackoff:
     is injected so retry logic can be tested without sleeping.
     """
 
-    def __init__(self, base: float = 4.0, maximum: float = 60.0, clock=time.monotonic):
+    def __init__(
+        self, base: float = 4.0, maximum: float = 60.0, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         if base <= 0 or maximum < base:
             raise ValueError("Invalid polling backoff interval")
         self.base = base

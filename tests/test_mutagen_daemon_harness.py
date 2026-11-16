@@ -43,12 +43,14 @@ def test_isolated_daemon_repeat_cycles(tmp_path: Path) -> None:
     binary = _mutagen_binary()
     assert binary is not None
 
-    # Verify 3 consecutive start/stop cycles without state corruption
-    for i in range(3):
+    # Verify ten consecutive start/list/stop cycles without state corruption.
+    for i in range(10):
         cycle_dir = tmp_path / f"cycle-{i}"
         with IsolatedMutagenDaemon(binary, cycle_dir) as daemon:
             assert daemon.phase == "ready"
+            assert isinstance(daemon.client.list_sessions("sync"), list)
         assert daemon.phase == "stopped"
+        assert not daemon.client._daemon_state()
 
 
 def test_isolated_daemon_timeout_records_diagnostics(

@@ -16,6 +16,13 @@ from sync_configuration import validate_sync_proposal
 from sync_profiles import PROFILES
 
 CURRENT_SCHEMA_VERSION = 1
+
+
+def settings_path() -> Path:
+    root = Path(os.getenv("APPDATA") or str(Path.home() / ".config")) / "MutagenControl"
+    return root / "settings.json"
+
+
 DEFAULT_SETTINGS: dict[str, Any] = {
     "schema_version": CURRENT_SCHEMA_VERSION,
     "theme": "system",

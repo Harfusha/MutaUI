@@ -10,6 +10,7 @@ import json
 import statistics
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from endpoint_inspector import summary
@@ -17,7 +18,7 @@ from monitoring import HistoryStore, Sample
 from mutagen_client import example_snapshot
 
 
-def timed(func, repetitions=3):
+def timed(func: Callable[[], object], repetitions: int = 3) -> float:
     durations = []
     for _ in range(repetitions):
         start = time.perf_counter()
@@ -26,7 +27,7 @@ def timed(func, repetitions=3):
     return round(statistics.median(durations), 3)
 
 
-def run_benchmark():
+def run_benchmark() -> dict[str, float | str]:
     session = example_snapshot().sync[0]
     decode_ms = timed(lambda: [summary(session, "sync") for _ in range(10_000)])
     with tempfile.TemporaryDirectory() as directory:
@@ -34,7 +35,7 @@ def run_benchmark():
         try:
             now = time.time()
 
-            def fill():
+            def fill() -> None:
                 for i in range(2000):
                     db.add(Sample(ts=now - 4000 + i * 2, cpu=i % 50, memory=100_000_000 + i))
 
