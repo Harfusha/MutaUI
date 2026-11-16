@@ -1,3 +1,4 @@
+import errno
 import hashlib
 import json
 from dataclasses import replace
@@ -227,6 +228,93 @@ def test_replace_failure_before_commit_keeps_sources_and_both_backups(tmp_path, 
     assert (beta / "same.txt").read_bytes() == b"BETA!"
     assert (receipt.backup_directory / "alpha.backup").read_bytes() == b"ALPHA"
     assert (receipt.backup_directory / "beta.backup").read_bytes() == b"BETA!"
+
+
+def test_backup_fsync_failure_reports_partial_backup_without_touching_sources(
+    tmp_path, monkeypatch
+):
+    alpha, beta, backups, plan = _case(tmp_path)
+    real_fsync = conflict_resolver.os.fsync
+    fsync_calls = 0
+
+    def fail_first_backup_fsync(descriptor):
+        nonlocal fsync_calls
+        fsync_calls += 1
+        if fsync_calls == 2:  # Prepared audit is first; alpha backup is second.
+            raise OSError(errno.ENOSPC, "injected disk full")
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(conflict_resolver.os, "fsync", fail_first_backup_fsync)
+
+    receipt = apply_manual_resolution(
+        plan,
+        consent=True,
+        typed_confirmation=plan.typed_confirmation,
+        audit_path=tmp_path / "audit.jsonl",
+        current_native_digest=lambda *_: "native-conflict-1",
+        flush_and_verify=lambda *_: True,
+        feature_enabled=True,
+    )
+
+    assert fsync_calls == 2
+    assert not receipt.verified
+    assert not receipt.rollback_attempted
+    assert not receipt.recovery_uncertain
+    assert not receipt.audit_complete
+    assert "source files were not modified" in receipt.message
+    assert (alpha / "same.txt").read_bytes() == b"ALPHA"
+    assert (beta / "same.txt").read_bytes() == b"BETA!"
+    assert receipt.backup_directory is not None
+    assert sorted(path.name for path in receipt.backup_directory.iterdir()) == ["alpha.backup"]
+    assert (receipt.backup_directory / "alpha.backup").read_bytes() == b"ALPHA"
+    assert receipt.backup_directory.parent == backups
+
+
+@pytest.mark.parametrize("failure_stage", ["temporary-fsync", "rename"])
+def test_atomic_replace_failure_cleans_temporary_file_and_keeps_sources(
+    tmp_path, monkeypatch, failure_stage
+):
+    alpha, beta, _backups, plan = _case(tmp_path)
+    real_fsync = conflict_resolver.os.fsync
+    fsync_calls = 0
+
+    def fail_temporary_fsync(descriptor):
+        nonlocal fsync_calls
+        fsync_calls += 1
+        if fsync_calls == 5:  # Audit, two copies, and manifest precede the replace temp.
+            raise OSError(errno.EIO, "injected temporary fsync failure")
+        real_fsync(descriptor)
+
+    def fail_rename(*_args, **_kwargs):
+        raise OSError("injected rename failure")
+
+    if failure_stage == "temporary-fsync":
+        monkeypatch.setattr(conflict_resolver.os, "fsync", fail_temporary_fsync)
+    else:
+        monkeypatch.setattr(conflict_resolver.os, "replace", fail_rename)
+
+    receipt = apply_manual_resolution(
+        plan,
+        consent=True,
+        typed_confirmation=plan.typed_confirmation,
+        audit_path=tmp_path / "audit.jsonl",
+        current_native_digest=lambda *_: "native-conflict-1",
+        flush_and_verify=lambda *_: True,
+        feature_enabled=True,
+    )
+
+    assert not receipt.verified
+    assert not receipt.rollback_attempted
+    assert not receipt.recovery_uncertain
+    if failure_stage == "temporary-fsync":
+        assert fsync_calls == 5
+    assert (alpha / "same.txt").read_bytes() == b"ALPHA"
+    assert (beta / "same.txt").read_bytes() == b"BETA!"
+    assert receipt.backup_directory is not None
+    assert (receipt.backup_directory / "alpha.backup").read_bytes() == b"ALPHA"
+    assert (receipt.backup_directory / "beta.backup").read_bytes() == b"BETA!"
+    assert (receipt.backup_directory / "manifest.json").is_file()
+    assert not tuple(beta.glob(".mutaui-conflict-*"))
 
 
 def test_failed_restore_keeps_backups_and_marks_recovery_uncertain(tmp_path, monkeypatch):

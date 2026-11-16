@@ -34,6 +34,40 @@ def test_ui_preferences_default_to_system_theme_and_english():
     assert DEFAULT_SETTINGS["language"] == "en"
 
 
+def test_interpolated_status_and_confirmation_messages_have_czech_templates():
+    cases = {
+        "Loaded {path} · SHA-256 {sha256} · source retained for collision checks.": (
+            "Načteno /tmp/mutagen.yml · SHA-256 abc123 · zdroj je zachován pro kontrolu kolizí."
+        ),
+        "Invalid source retained unchanged: {error}": "Neplatný zdroj zůstává beze změny: parse error",
+        "Saved safely. Backup: {backup} · new SHA-256 {sha256}": (
+            "Bezpečně uloženo. Záloha: /tmp/settings.bak · nový SHA-256 abc123"
+        ),
+        "Legacy settings migrated; exact source backup created.": (
+            "Starší nastavení byla migrována; byla vytvořena přesná záloha zdroje."
+        ),
+        "Exact backup: {path}": "Přesná záloha: /tmp/mutagen.yml",
+        "Restore the exact settings bytes from this backup? A backup of current settings will also be kept.\n\n{backup}": (
+            "Obnovit z této zálohy přesné bajty nastavení? Zároveň se uchová záloha současného nastavení.\n\n/tmp/settings.bak"
+        ),
+        "Exact migration backup restored: {path}": "Přesná záloha migrace obnovena: /tmp/mutagen.yml",
+        "Connect to {alias} now? The test uses BatchMode and StrictHostKeyChecking=yes. It will not add or replace host keys.": (
+            "Připojit se nyní k devbox? Test používá BatchMode a StrictHostKeyChecking=yes. Nepřidá ani nenahradí hostitelské klíče."
+        ),
+    }
+    values = {
+        "path": "/tmp/mutagen.yml",
+        "sha256": "abc123",
+        "error": "parse error",
+        "backup": "/tmp/settings.bak",
+        "alias": "devbox",
+    }
+
+    for template, expected in cases.items():
+        assert translate_text(template, "en").format(**values) == template.format(**values)
+        assert translate_text(template, "cs").format(**values) == expected
+
+
 def test_ui_preferences_validate_supported_theme_and_language():
     result = validate_settings({"theme": "light", "language": "cs"})
 
@@ -127,40 +161,114 @@ def test_dynamic_mutagen_status_and_endpoint_messages_are_localized():
     assert translate_text("Connecting ALPHA", "en") == "Connecting ALPHA"
 
 
-def test_literal_label_and_button_texts_have_czech_catalog_entries():
-    application = Path(__file__).parents[1] / "app.py"
-    tree = ast.parse(application.read_text(encoding="utf-8"))
-    source_texts = set()
+def test_session_export_menu_label_translates_from_english_source():
+    assert translate_text("Export JSON", "en") == "Export JSON"
+    assert translate_text("Export JSON", "cs") == "Exportovat JSON"
 
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = (
-            node.func.id
-            if isinstance(node.func, ast.Name)
-            else node.func.attr
-            if isinstance(node.func, ast.Attribute)
-            else ""
-        )
-        arg_index = 1 if name == "set_localized_text" else 0
-        if (
-            name
-            in {
-                "label",
-                "button",
-                "set_localized_text",
-                "localized_label",
-                "localized_button",
-                "localized_checkbox",
-                "localized_action",
-            }
-            and len(node.args) > arg_index
-            and isinstance(node.args[arg_index], ast.Constant)
-            and isinstance(node.args[arg_index].value, str)
-        ):
-            source_texts.add(node.args[arg_index].value)
+
+def test_interpolated_error_and_monitoring_messages_translate():
+    assert translate_text("Test failed: {message}", "cs").format(message="denied") == (
+        "Test selhal: denied"
+    )
+    assert (
+        translate_text("Could not save onboarding status: {error}", "cs").format(error="read-only")
+        == "Nepodařilo se uložit stav průvodce: read-only"
+    )
+    assert (
+        translate_text("Process monitoring: {message}", "cs").format(message="unavailable")
+        == "Sledování procesů: unavailable"
+    )
+    assert (
+        translate_text("Number of skipped history samples: {count}", "cs").format(count=3)
+        == "Počet vynechaných vzorků historie: 3"
+    )
+    assert (
+        translate_text("Session needs attention: {title}", "cs").format(title="Exact session")
+        == "Relace vyžaduje pozornost: Exact session"
+    )
+    assert (
+        translate_text("Number of sessions needing attention: {count}", "cs").format(count=2)
+        == "Počet relací vyžadujících pozornost: 2"
+    )
+    assert (
+        translate_text("Session recovered: {title}", "cs").format(title="Exact session")
+        == "Relace obnovena: Exact session"
+    )
+    assert (
+        translate_text("Number of recovered sessions: {count}", "cs").format(count=2)
+        == "Počet obnovených relací: 2"
+    )
+
+
+def test_literal_ui_text_calls_have_czech_catalog_entries():
+    root = Path(__file__).parents[1]
+    sources = [root / "app.py", *sorted((root / "src/mutaui/ui").rglob("*.py"))]
+    source_texts = set()
+    translated_texts = set()
+    tooltip_texts = set()
+    placeholder_texts = set()
+
+    for source in sources:
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else ""
+            )
+            arg_index = 1 if name == "set_localized_text" else 0
+            if (
+                name == "translate_text"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                translated_texts.add(node.args[0].value)
+            if (
+                name
+                in {
+                    "label",
+                    "button",
+                    "set_localized_text",
+                    "localized_label",
+                    "localized_button",
+                    "localized_checkbox",
+                    "localized_action",
+                }
+                and len(node.args) > arg_index
+                and isinstance(node.args[arg_index], ast.Constant)
+                and isinstance(node.args[arg_index].value, str)
+            ):
+                source_texts.add(node.args[arg_index].value)
+            if (
+                name == "set_localized_tooltip"
+                and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                tooltip_texts.add(node.args[1].value)
+            if (
+                name == "set_localized_placeholder"
+                and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+            ):
+                placeholder_texts.add(node.args[1].value)
 
     assert source_texts <= _TEXT_CATALOG.keys()
+    assert translated_texts <= set().union(
+        _DIALOG_CATALOG,
+        _PLACEHOLDER_CATALOG,
+        _TEXT_CATALOG,
+        _TITLE_CATALOG,
+        _TOOLTIP_CATALOG,
+    )
+    assert tooltip_texts <= _TOOLTIP_CATALOG.keys()
+    assert placeholder_texts <= _PLACEHOLDER_CATALOG.keys()
     for route in PAGE_ROUTES:
         assert {"title", "caption", "tooltip"} <= _ROUTE_CATALOG[route.route_id].keys()
 

@@ -243,6 +243,8 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
             if pulse_times:
                 max_pulse_gap = max(max_pulse_gap, now - pulse_times[-1])
             pulse_times.append(now)
+            if refresh_requests >= 20 and len(pulse_times) >= 50:
+                event_loop.quit()
 
         pulse_timer = QTimer()
         pulse_timer.setInterval(10)
@@ -254,13 +256,15 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
             nonlocal refresh_requests
             if refresh_requests >= 20:
                 request_timer.stop()
-                event_loop.quit()
+                if len(pulse_times) >= 50:
+                    event_loop.quit()
                 return
             window.refresh(force=refresh_requests % 2 == 0)
             refresh_requests += 1
             if refresh_requests >= 20:
                 request_timer.stop()
-                event_loop.quit()
+                if len(pulse_times) >= 50:
+                    event_loop.quit()
 
         request_timer.timeout.connect(request_refresh)
         process_timer = QTimer()

@@ -1,12 +1,13 @@
 """Session model keeps row identity and rendering data through large snapshots."""
 
 import os
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
-from PySide6.QtWidgets import QApplication, QTableWidget
+from PySide6.QtWidgets import QApplication, QTableView, QTableWidget
 
 from app import MainWindow, SessionTableModel
 
@@ -265,6 +266,36 @@ def test_incremental_insert_and_remove_preserve_persistent_selection(qapp):
     assert resets.count() == 0
     assert selected_status.row() == 1
     assert model.index(1, 0).data() == "Beta edited"
+
+
+def test_table_view_keeps_selection_and_scroll_during_incremental_refresh(qapp):
+    model = SessionTableModel(["NAME", "STATUS"], "sync")
+    sessions = [{"identifier": f"row-{index}", "name": f"Row {index:03}"} for index in range(100)]
+    view = QTableView()
+    view.setModel(model)
+    owner = SimpleNamespace(
+        favorites={"sync": ()},
+        on_select=lambda _kind: None,
+        fit_table_to_rows=MainWindow.fit_table_to_rows,
+    )
+    MainWindow.fill_table(owner, view, sessions, "sync")
+    view.selectRow(70)
+    view.verticalScrollBar().setValue(40)
+
+    scroll_before = view.verticalScrollBar().value()
+    selected = view.selectionModel().selectedRows()[0]
+    selected_id = selected.data(Qt.ItemDataRole.UserRole)
+
+    MainWindow.fill_table(owner, view, [{"identifier": "new", "name": "New"}, *sessions], "sync")
+
+    selected = view.selectionModel().selectedRows()[0]
+    assert selected.data(Qt.ItemDataRole.UserRole) == selected_id == "row-70"
+    assert view.verticalScrollBar().value() == scroll_before
+
+    MainWindow.fill_table(owner, view, sessions, "sync")
+    selected = view.selectionModel().selectedRows()[0]
+    assert selected.data(Qt.ItemDataRole.UserRole) == selected_id
+    assert view.verticalScrollBar().value() == scroll_before
 
 
 def test_duplicate_ids_still_use_safe_reset(qapp):

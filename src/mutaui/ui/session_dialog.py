@@ -1,3 +1,5 @@
+"""Sync and forward session creation dialog."""
+
 from __future__ import annotations
 
 import json
@@ -31,13 +33,7 @@ from ignore_presets import (
     load_ignore_presets,
     parse_ignore_file,
 )
-from mutaui.ui.dialog_components import (
-    add_localized_item,
-    add_localized_row,
-    button,
-    label,
-    localized_checkbox,
-)
+from mutaui.services.session_configuration import build_session_arguments
 from mutaui.ui.ignore_rules import IgnoreConversionDialog
 from mutaui.ui.localization import (
     set_localized_placeholder,
@@ -46,11 +42,30 @@ from mutaui.ui.localization import (
     set_localized_tooltip,
 )
 from mutaui.ui.preferences import active_language, translate_text
+from mutaui.ui.widgets.basic import (
+    add_localized_item,
+    add_localized_row,
+    button,
+    label,
+    localized_checkbox,
+)
+from settings import settings_path as _default_settings_path
 from sync_configuration import (
     load_effective_forward_configuration,
     load_effective_sync_configuration,
 )
-from sync_profiles import PROFILES, profile_flags
+from sync_profiles import PROFILES
+
+_settings_path_provider: Callable[[], Path] = _default_settings_path
+
+
+def _text(text: str) -> str:
+    return translate_text(text, active_language())
+
+
+def configure_settings_path_provider(provider: Callable[[], Path]) -> None:
+    global _settings_path_provider
+    _settings_path_provider = provider
 
 
 class SessionDialog(QDialog):
@@ -62,8 +77,6 @@ class SessionDialog(QDialog):
         ui_mode: str = "basic",
         executable: str = "mutagen",
         saved_profiles: tuple[ConnectionProfile, ...] = (),
-        *,
-        settings_path_provider: Callable[[], Path],
     ) -> None:
         super().__init__(parent)
         self.kind = kind
@@ -97,8 +110,7 @@ class SessionDialog(QDialog):
         self.socket_permission_source: QLineEdit | None = None
         self.socket_permission_destination: QLineEdit | None = None
         matching_profiles = [profile for profile in saved_profiles if profile.kind == kind]
-        self._settings_path_provider = settings_path_provider
-        self.connection_profile: QComboBox | None = None
+        self.connection_profile = None
         if matching_profiles:
             self.connection_profile = QComboBox()
             add_localized_item(self.connection_profile, "No saved profile", None)
@@ -271,7 +283,7 @@ class SessionDialog(QDialog):
                 "IDE and logs": (".idea/", ".vscode/", "*.log", ".DS_Store"),
             }
             saved_ignores = load_ignore_presets(
-                self._settings_path_provider().with_name("ignore-presets.json")
+                _settings_path_provider().with_name("ignore-presets.json")
             )
             if saved_ignores.valid:
                 for preset in saved_ignores.presets:
@@ -516,17 +528,15 @@ class SessionDialog(QDialog):
                 self.ignore_vcs.setChecked(ignore_vcs)
             watch = defaults.get("watch.mode")
             interval = defaults.get("watch.pollingInterval")
-            profile_codes = {
-                ("portable", None): "events",
-                ("force-poll", 5): "fast_poll",
-                ("force-poll", 20): "balanced_poll",
-                ("force-poll", 60): "eco_poll",
-                ("no-watch", None): "manual",
-            }
+            profile_code = None
             if isinstance(watch, str) and (isinstance(interval, int) or interval is None):
-                profile_code = profile_codes.get((watch, interval))
-            else:
-                profile_code = None
+                profile_code = {
+                    ("portable", None): "events",
+                    ("force-poll", 5): "fast_poll",
+                    ("force-poll", 20): "balanced_poll",
+                    ("force-poll", 60): "eco_poll",
+                    ("no-watch", None): "manual",
+                }.get((watch, interval))
             if profile_code is not None:
                 profile_index = self.profile.findData(profile_code)
                 if profile_index >= 0:
@@ -540,56 +550,38 @@ class SessionDialog(QDialog):
     def endpoint_error(self, endpoint: str) -> str | None:
         value = endpoint.strip()
         if not value:
-            return translate_text("Enter both endpoints.", active_language())
+            return _text("Enter both endpoints.")
         if "\x00" in value or value.startswith("-"):
-            return translate_text(
-                "Endpoint contains an invalid NUL or option-like value.", active_language()
-            )
+            return _text("Endpoint contains an invalid NUL or option-like value.")
         if self.kind == "sync":
             if value.startswith("ssh://"):
-                return translate_text(
-                    "Use Mutagen's native SSH form, such as user@host:/path.", active_language()
-                )
+                return _text("Use Mutagen's native SSH form, such as user@host:/path.")
             if value.startswith("docker://") and not value.removeprefix("docker://").strip("/:"):
-                return translate_text(
-                    "Docker endpoint needs a container name or path.", active_language()
-                )
+                return _text("Docker endpoint needs a container name or path.")
             if "@" in value and ":" not in value:
-                return translate_text(
-                    "SSH endpoint needs a path after the host, for example user@host:/path.",
-                    active_language(),
+                return _text(
+                    "SSH endpoint needs a path after the host, for example user@host:/path."
                 )
             return None
         if value.startswith(("tcp:", "tcp4:", "tcp6:")):
             address = value.split(":", 1)[1]
             if ":" not in address:
-                return translate_text(
-                    "TCP endpoint needs a host and port, for example tcp:localhost:8080.",
-                    active_language(),
-                )
+                return _text("TCP endpoint needs a host and port, for example tcp:localhost:8080.")
             host, port = address.rsplit(":", 1)
             try:
                 valid_port = 1 <= int(port) <= 65535
             except ValueError:
                 valid_port = False
             if not host or not valid_port:
-                return translate_text(
-                    "TCP endpoint needs a host and a port from 1 to 65535.", active_language()
-                )
+                return _text("TCP endpoint needs a host and a port from 1 to 65535.")
         elif value.startswith("unix:") and not value.removeprefix("unix:").strip():
-            return translate_text("Unix socket endpoint needs a path.", active_language())
+            return _text("Unix socket endpoint needs a path.")
         elif value.startswith("unix:") and not self.local_unix_socket_supported():
-            return translate_text(
-                "Unix sockets are unavailable on this local platform.", active_language()
-            )
+            return _text("Unix sockets are unavailable on this local platform.")
         elif value.startswith("npipe:") and os.name != "nt":
-            return translate_text(
-                "Windows named pipes are available only on Windows endpoints.", active_language()
-            )
+            return _text("Windows named pipes are available only on Windows endpoints.")
         elif value.startswith("docker://") and not value.removeprefix("docker://").strip("/:"):
-            return translate_text(
-                "Docker forwarding endpoint needs a container and address.", active_language()
-            )
+            return _text("Docker forwarding endpoint needs a container and address.")
         return None
 
     @staticmethod
@@ -641,21 +633,18 @@ class SessionDialog(QDialog):
                 values[key] for key in ("owner", "group", "permissionMode")
             )
             if explicitly_configured and not is_unix_forward_endpoint(endpoint):
-                return translate_text(
-                    "Socket settings for {side} require a Unix socket endpoint.",
-                    active_language(),
-                ).format(side=side.title())
+                return _text("Socket settings for {side} require a Unix socket endpoint.").format(
+                    side=side.title()
+                )
             if values["overwriteMode"] == "overwrite":
                 entry_type = local_unix_socket_entry_type(endpoint)
                 if entry_type == "directory":
-                    return translate_text(
-                        "A directory already exists at the local socket path; overwrite is blocked.",
-                        active_language(),
+                    return _text(
+                        "A directory already exists at the local socket path; overwrite is blocked."
                     )
                 if entry_type in {"unavailable", "special filesystem entry"}:
-                    return translate_text(
-                        "The local socket path cannot be safely inspected; overwrite is blocked.",
-                        active_language(),
+                    return _text(
+                        "The local socket path cannot be safely inspected; overwrite is blocked."
                     )
             try:
                 for key, value in values.items():
@@ -663,7 +652,7 @@ class SessionDialog(QDialog):
                         continue
                     validate_forward_proposal(f"{side}.socket.{key}", value)
             except ValueError as exc:
-                return translate_text(str(exc), active_language())
+                return _text(str(exc))
         return None
 
     def validate(self) -> None:
@@ -771,59 +760,47 @@ class SessionDialog(QDialog):
         return None
 
     def arguments(self) -> list[str]:
-        args = []
-        if self.name.text().strip():
-            args.append("--name=" + self.name.text().strip())
-        if self.pause.isChecked():
-            args.append("--paused")
-        if self.kind == "sync":
-            args.append("--mode=" + self.mode.currentText())
-            args.extend(profile_flags(self.profile.currentData()))
-            if self.ignore_vcs.checkState() == Qt.CheckState.Checked:
-                args.append("--ignore-vcs")
-            elif self.ignore_vcs.checkState() == Qt.CheckState.Unchecked:
-                args.append("--no-ignore-vcs")
-            for entry in self.ignore.toPlainText().splitlines():
-                if entry.strip():
-                    args.append("--ignore=" + entry.strip())
-        elif any(
-            endpoint.startswith("unix:") or ":unix:" in endpoint
-            for endpoint in (self.a.text().strip().lower(), self.b.text().strip().lower())
-        ):
-            args.append("--socket-overwrite-mode=leave")
-            for side, endpoint, controls in (
-                (
-                    "source",
-                    self.a.text().strip(),
-                    (
-                        self.socket_overwrite_source,
-                        self.socket_owner_source,
-                        self.socket_group_source,
-                        self.socket_permission_source,
-                    ),
+        ignore_state = self.ignore_vcs.checkState()
+        return build_session_arguments(
+            self.kind,
+            name=self.name.text(),
+            paused=self.pause.isChecked(),
+            mode=self.mode.currentText(),
+            profile=self.profile.currentData() if self.kind == "sync" else "default",
+            ignore_vcs=(
+                True
+                if ignore_state == Qt.CheckState.Checked
+                else False
+                if ignore_state == Qt.CheckState.Unchecked
+                else None
+            ),
+            ignore_patterns=self.ignore.toPlainText().splitlines(),
+            alpha=self.a.text(),
+            beta=self.b.text(),
+            socket_options={
+                "source": (
+                    self.socket_overwrite_source.currentData()
+                    if self.socket_overwrite_source is not None
+                    else None,
+                    self.socket_owner_source.text() if self.socket_owner_source is not None else "",
+                    self.socket_group_source.text() if self.socket_group_source is not None else "",
+                    self.socket_permission_source.text()
+                    if self.socket_permission_source is not None
+                    else "",
                 ),
-                (
-                    "destination",
-                    self.b.text().strip(),
-                    (
-                        self.socket_overwrite_destination,
-                        self.socket_owner_destination,
-                        self.socket_group_destination,
-                        self.socket_permission_destination,
-                    ),
+                "destination": (
+                    self.socket_overwrite_destination.currentData()
+                    if self.socket_overwrite_destination is not None
+                    else None,
+                    self.socket_owner_destination.text()
+                    if self.socket_owner_destination is not None
+                    else "",
+                    self.socket_group_destination.text()
+                    if self.socket_group_destination is not None
+                    else "",
+                    self.socket_permission_destination.text()
+                    if self.socket_permission_destination is not None
+                    else "",
                 ),
-            ):
-                if not endpoint.lower().startswith("unix:") and ":unix:" not in endpoint.lower():
-                    continue
-                overwrite, owner, group, permission = controls
-                if overwrite is not None and overwrite.currentData() != "leave":
-                    args.append(f"--socket-overwrite-mode-{side}={overwrite.currentData()}")
-                for control, flag in (
-                    (owner, "owner"),
-                    (group, "group"),
-                    (permission, "permission-mode"),
-                ):
-                    value = control.text().strip() if control is not None else ""
-                    if value:
-                        args.append(f"--socket-{flag}-{side}={value}")
-        return [*args, self.a.text().strip(), self.b.text().strip()]
+            },
+        )

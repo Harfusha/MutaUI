@@ -29,6 +29,22 @@ def test_read_only_config_reader_handles_aliases_includes_and_wildcards(tmp_path
     assert config.read_text(encoding="utf-8") == original
 
 
+def test_config_reader_preserves_ipv6_and_unicode_host_names(tmp_path):
+    config = tmp_path / "config"
+    config.write_text(
+        "Host ipv6-target\n  HostName 2001:db8::5\n"
+        "Host unicode-target\n  HostName münchen.example\n",
+        encoding="utf-8",
+    )
+
+    result = parse_ssh_config(config)
+    profiles = {profile.alias: profile for profile in result.profiles}
+
+    assert result.valid
+    assert profiles["ipv6-target"].directives["hostname"] == ("2001:db8::5",)
+    assert profiles["unicode-target"].directives["hostname"] == ("münchen.example",)
+
+
 def test_config_reader_rejects_invalid_utf8_and_never_rewrites_it(tmp_path):
     config = tmp_path / "config"
     config.write_bytes(b"Host devbox\nUser \xff")
@@ -316,6 +332,8 @@ def test_ssh_manager_lists_aliases_without_running_ssh(tmp_path, monkeypatch):
     app_module = pytest.importorskip("app")
     ssh_dialog_module = pytest.importorskip("mutaui.ui.ssh_profile_dialog")
     from PySide6.QtCore import QCoreApplication, QEvent
+
+    ssh_dialog_module = pytest.importorskip("mutaui.ui.ssh_profile_manager")
     from PySide6.QtWidgets import QApplication
 
     ssh_config = tmp_path / "config"

@@ -1,5 +1,5 @@
-from PySide6.QtCore import QCoreApplication
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+from PySide6.QtWidgets import QApplication, QWidget
 
 from benchmarks.session_table_benchmark import (
     SESSION_SIZES,
@@ -53,6 +53,46 @@ def test_qt_view_benchmark_filters_and_renders_the_session_model(monkeypatch):
     assert result["viewport_rendered"] is True
     assert result["repetitions"] == 3
     assert 0 <= result["p50_ms"] <= result["p95_ms"] <= result["max_ms"]
+
+
+def test_qt_view_benchmark_does_not_process_an_outer_loop_deferred_delete():
+    QApplication.instance() or QApplication([])
+    pending = QWidget()
+    deleted = []
+    pending.destroyed.connect(lambda: deleted.append(True))
+    nested_loop = QEventLoop()
+
+    def defer_delete_and_exit():
+        pending.deleteLater()
+        nested_loop.quit()
+
+    QTimer.singleShot(0, defer_delete_and_exit)
+    nested_loop.exec()
+    assert deleted == []
+
+    measure_qt_view(1, repetitions=1)
+
+    assert deleted == []
+
+
+def test_main_window_benchmark_does_not_process_an_outer_loop_deferred_delete():
+    QApplication.instance() or QApplication([])
+    pending = QWidget()
+    deleted = []
+    pending.destroyed.connect(lambda: deleted.append(True))
+    nested_loop = QEventLoop()
+
+    def defer_delete_and_exit():
+        pending.deleteLater()
+        nested_loop.quit()
+
+    QTimer.singleShot(0, defer_delete_and_exit)
+    nested_loop.exec()
+    assert deleted == []
+
+    measure_main_window(1, repetitions=1)
+
+    assert deleted == []
 
 
 def test_main_window_benchmark_uses_demo_data_and_isolated_settings(monkeypatch):

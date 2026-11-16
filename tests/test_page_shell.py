@@ -9,6 +9,11 @@ from PySide6.QtWidgets import QApplication, QWidget
 from mutaui.ui.page_shell import PAGE_ROUTES, LazyStackedWidget
 
 
+@pytest.fixture(scope="session")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
 def test_page_routes_have_stable_unique_ids_and_current_order():
     assert len(PAGE_ROUTES) == 11
     assert len({route.route_id for route in PAGE_ROUTES}) == len(PAGE_ROUTES)
@@ -22,8 +27,7 @@ def test_page_routes_have_stable_unique_ids_and_current_order():
     assert PAGE_ROUTES[10].route_id == "servers"
 
 
-def test_lazy_page_is_created_on_first_navigation_and_reused():
-    _app = QApplication.instance() or QApplication([])
+def test_lazy_page_is_created_on_first_navigation_and_reused(qapp):
     shell = LazyStackedWidget()
     created = []
 
@@ -48,12 +52,8 @@ def test_lazy_page_is_created_on_first_navigation_and_reused():
     assert len(created) == 1
     assert shell.widget(1) is created[0]
 
-    shell.deleteLater()
-    QCoreApplication.sendPostedEvents(shell, QEvent.Type.DeferredDelete)
 
-
-def test_lazy_page_factory_failure_is_retryable_and_invalid_index_is_rejected():
-    _app = QApplication.instance() or QApplication([])
+def test_lazy_page_factory_failure_is_retryable_and_invalid_index_is_rejected(qapp):
     shell = LazyStackedWidget()
     attempts = []
 
@@ -79,8 +79,7 @@ def test_lazy_page_factory_failure_is_retryable_and_invalid_index_is_rejected():
     QCoreApplication.sendPostedEvents(shell, QEvent.Type.DeferredDelete)
 
 
-def test_lazy_page_retries_when_placeholder_disappears(monkeypatch):
-    _app = QApplication.instance() or QApplication([])
+def test_lazy_page_retries_when_placeholder_disappears(monkeypatch, qapp):
     shell = LazyStackedWidget()
     attempts = []
 

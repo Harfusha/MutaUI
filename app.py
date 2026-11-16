@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from functools import partial
 from html import escape as html_escape
 from pathlib import Path
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, cast
 
 _SOURCE_PACKAGE_PATH = Path(__file__).resolve().parent / "src"
 if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
@@ -31,7 +31,7 @@ if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
 # a same-named DLL from another Python or Qt installation on PATH.
 _DLL_DIRECTORY_HANDLES = []
 if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):  # pragma: no cover
-    _bundle_root = Path(cast(str, sys.__dict__["_MEIPASS"]))
+    _bundle_root = Path(sys.__dict__["_MEIPASS"])
     _dll_directories = (_bundle_root / "PySide6", _bundle_root / "shiboken6")
     os.environ["PATH"] = os.pathsep.join(
         [
@@ -48,17 +48,14 @@ from PySide6.QtCore import (
     QAbstractTableModel,  # noqa: F401
     QEvent,
     QModelIndex,  # noqa: F401
-    QObject,
     QPoint,
     QPointF,  # noqa: F401
     QRectF,
-    QRunnable,
     Qt,
     QThreadPool,
     QTime,
     QTimer,
     QUrl,
-    Signal,
     qVersion,
 )
 from PySide6.QtGui import (
@@ -67,7 +64,6 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QDesktopServices,
-    QFont,
     QGuiApplication,
     QHideEvent,
     QIcon,
@@ -85,6 +81,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QCompleter,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -123,7 +120,9 @@ from PySide6.QtWidgets import (
 
 from async_recorder import AsyncRecorder
 from connection_profiles import (
-    ConnectionProfile,
+    ConnectionProfile as ConnectionProfile,
+)
+from connection_profiles import (
     ConnectionProfileStore,
     load_profile_store,
 )
@@ -142,7 +141,7 @@ from ignore_presets import (
     path_aware_ignore_rule,
     preset_to_record,
 )
-from insights import local_self_check, safe_diagnostic_report, session_log_report
+from insights import AlertEngine, local_self_check, safe_diagnostic_report, session_log_report
 from log_stream import FileTail, TrackedLogLines
 from monitoring import (
     ForwardTrafficMeter,
@@ -168,17 +167,9 @@ from mutagen_client import (
 from mutaui import __version__ as APP_VERSION
 from mutaui.adapters.cli_executor import LegacyMutagenExecutor
 from mutaui.adapters.mutagen_snapshot import from_legacy_session
-from mutaui.adapters.yaml_config import load_yaml_file
-from mutaui.adapters.yaml_config_editor import (
-    ConcurrentConfigChange,
-    InvalidConfigForWrite,
-    apply_yaml_edit,
-    preview_yaml_text,
-)
 from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner, ActionRequest
-from mutaui.services.alert_engine import AlertEngine
-from mutaui.services.health_network_monitor import attach_health_network_monitor
 from mutaui.services.health_tracker import (
+    HealthObservation,
     HealthPolicy,
     HealthTracker,
     health_policy_from_settings,
@@ -189,27 +180,40 @@ from mutaui.services.reconfiguration import (
     extract_sync_configuration,
     validate_native_command_snapshot,
 )
-from mutaui.services.replacement import ReplacementRequest, replace_non_project_mutagen_session
+from mutaui.services.replacement import (
+    ReplacementAuditEvent,
+    ReplacementReceipt,
+    ReplacementRequest,
+    replace_non_project_mutagen_session,
+)
 from mutaui.services.replacement_command import render_sync_replacement_arguments
-from mutaui.services.session_configuration import build_session_configuration_proposal
+from mutaui.services.session_configuration import (
+    build_session_configuration_proposal,
+)
 from mutaui.services.session_doctor import (
     FRESHNESS_SECONDS,
     SessionDoctorContext,
     diagnose_sessions,
 )
-from mutaui.services.session_health_observer import observe_session_health
 from mutaui.services.session_notification_gate import SessionNotificationGate
 from mutaui.services.session_provenance import ProvenanceStoreError, SessionProvenanceStore
-from mutaui.services.tray_status import worst_tray_status
 from mutaui.services.update_checker import (
     RELEASES_URL,
     UpdateCheckResult,
     check_for_update,
 )
+from mutaui.ui import global_config_editor, settings_migration
 from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog
 from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
+from mutaui.ui.health_network_monitor import (
+    attach_health_network_monitor as attach_health_network_monitor_ui,
+)
+from mutaui.ui.health_network_monitor import (
+    health_network_changed as apply_health_network_change,
+)
 from mutaui.ui.ignore_rules import IgnorePresetManagerDialog
 from mutaui.ui.onboarding import (
+    CLIDiscovery,
     host_architecture,
     inspect_cli,
     run_isolated_local_sync_test,
@@ -218,7 +222,7 @@ from mutaui.ui.page_shell import PAGE_ROUTES, LazyStackedWidget
 from mutaui.ui.performance_tuning import (
     apply_performance_assistant,
 )
-from mutaui.ui.portable_import_dialog import PortableImportPreviewDialog
+from mutaui.ui.portable_import_preview import PortableImportPreviewDialog
 from mutaui.ui.preferences import (
     ADVANCED_ROUTE_IDS,
     active_language,
@@ -230,8 +234,24 @@ from mutaui.ui.preferences import (
     translate_text,
 )
 from mutaui.ui.project_viewer import NativeProjectManagerDialog
+from mutaui.ui.session_alerts import check_alerts as check_session_alerts
+from mutaui.ui.session_configuration_table import fill_session_configuration_table
+from mutaui.ui.settings_page import build_settings_page
 from mutaui.ui.settings_registry import setting_tooltip
-from mutaui.ui.ssh_profile_dialog import SSHProfileManagerDialog
+from mutaui.ui.ssh_profile_manager import SSHProfileManagerDialog
+from mutaui.ui.tray_status import update_tray_status as update_tray_status_ui
+from mutaui.ui.widgets.basic import (
+    add_localized_item,
+    add_localized_items,
+    add_localized_row,
+    button,
+    card,
+    label,
+    localized_button,
+    localized_checkbox,
+    localized_label,
+)
+from mutaui.ui.worker import Worker, WorkerSignals  # noqa: F401
 from performance import (  # noqa: F401
     PollBackoff,
     RefreshGate,
@@ -246,7 +266,10 @@ from portable_bundle import (
     selected_preferences,
 )
 from server_groups import group_servers, session_servers
-from settings import load_settings, migrate_settings_file, rollback_settings_migration
+from settings import (
+    load_settings,
+    settings_path,
+)
 from settings import write_settings as save_settings_file
 from sync_configuration import (
     SYNC_CONFIG_FIELDS,
@@ -254,21 +277,10 @@ from sync_configuration import (
     SyncConfigRow,
     session_configuration_rows,
 )
-from sync_profiles import PROFILES, AdaptivePolling
+from sync_profiles import PROFILES as PROFILES
+from sync_profiles import AdaptivePolling
 
 BG = "#0B1019"
-
-
-class EndpointCardWidgets(TypedDict):
-    title: QLabel
-    address: QLabel
-    conn: QLabel
-    stats: QLabel
-    issues: QLabel
-    progress: QProgressBar
-    stage: QLabel
-
-
 CARD = "#141D2A"
 CARD2 = "#1C2B3A"
 BORDER = "#2A394A"
@@ -354,11 +366,6 @@ QToolTip {{ background: #1E2B43; border: 1px solid #41536E; color: white; paddin
 """
 
 
-def settings_path() -> Path:
-    root = Path(os.getenv("APPDATA") or str(Path.home() / ".config")) / "MutagenControl"
-    return root / "settings.json"
-
-
 def read_settings() -> dict[str, Any]:
     return load_settings(settings_path()).values
 
@@ -381,15 +388,6 @@ def write_settings(data: dict[str, Any]) -> None:
     save_settings_file(settings_path(), data)
 
 
-from mutaui.ui.dialog_components import (
-    add_localized_item,
-    add_localized_items,
-    add_localized_row,
-    button,
-    label,
-    localized_checkbox,
-    localized_label,
-)
 from mutaui.ui.localization import (
     _LOCALIZED_ITEM_ROLE,
     set_localized_accessible_name,
@@ -398,12 +396,6 @@ from mutaui.ui.localization import (
     set_localized_title,
     set_localized_tooltip,
 )
-
-
-def localized_button(text: str) -> QPushButton:
-    widget = QPushButton()
-    set_localized_text(widget, text)
-    return widget
 
 
 def localized_action(text: str, parent: QWidget) -> QAction:
@@ -422,15 +414,6 @@ def _czech_plural(count: int, forms: tuple[str, str, str]) -> str:
     if remainder_10 in {2, 3, 4}:
         return forms[1]
     return forms[2]
-
-
-def card(*, layout: QVBoxLayout | None = None) -> tuple[QFrame, QVBoxLayout]:
-    f = QFrame()
-    f.setObjectName("card")
-    l = QVBoxLayout(f)
-    l.setContentsMargins(21, 19, 21, 19)
-    l.setSpacing(13)
-    return f, l
 
 
 def separator() -> QFrame:
@@ -478,7 +461,7 @@ def readable_record_lines(value: object, *, indent: int = 0) -> list[str]:
     return [f"{pad}{value}"]
 
 
-def session_detail_html(lines: list[str], separator_text: str) -> str:
+def session_detail_html(lines: Iterable[str], separator_text: str) -> str:
     """Render session detail rows with visual hierarchy while escaping values."""
     rendered = []
     for line in lines:
@@ -514,54 +497,12 @@ def session_detail_html(lines: list[str], separator_text: str) -> str:
     return '<div style="line-height:1.35;">' + "".join(rendered) + "</div>"
 
 
+from mutaui.ui.session_dialog import SessionDialog, configure_settings_path_provider
 from mutaui.ui.widgets.graph import Graph
 from mutaui.ui.widgets.health_ring import HealthRing
 from mutaui.ui.widgets.session_table import SessionTableModel
 
-
-class WorkerSignals(QObject):
-    result = Signal(object)
-    error = Signal(str)
-    finished = Signal()
-
-
-class Worker(QRunnable):
-    def __init__(self, func: Callable[[], object]) -> None:
-        super().__init__()
-        self.func = func
-        self.signals = WorkerSignals()
-
-    def run(self) -> None:
-        try:
-            self.signals.result.emit(self.func())
-        except Exception as exc:
-            self.signals.error.emit(str(exc))
-        finally:
-            self.signals.finished.emit()
-
-
-from mutaui.ui.session_dialog import SessionDialog as _SessionDialog
-
-
-class SessionDialog(_SessionDialog):
-    def __init__(
-        self,
-        kind: str,
-        parent: QWidget | None = None,
-        default_profile: str = "default",
-        ui_mode: str = "basic",
-        executable: str = "mutagen",
-        saved_profiles: tuple[ConnectionProfile, ...] = (),
-    ) -> None:
-        super().__init__(
-            kind,
-            parent,
-            default_profile,
-            ui_mode,
-            executable,
-            saved_profiles,
-            settings_path_provider=settings_path,
-        )
+configure_settings_path_provider(lambda: settings_path())
 
 
 class QuickNavigator(QDialog):
@@ -574,13 +515,13 @@ class QuickNavigator(QDialog):
     def __init__(
         self,
         parent: QWidget | None,
-        commands: Iterable[tuple[str | None, str | None, str | None, str, str]] = (),
+        commands: Iterable[tuple[str, str | None, str | None, str, str]] = (),
     ) -> None:
         super().__init__(parent)
         set_localized_title(self, "Quick Navigation  ·  Ctrl+K")
         self.setMinimumSize(520, 420)
         self.target: int | None = None
-        self.command: tuple[str | None, str | None, str | None] | None = None
+        self.command: tuple[Any, ...] | None = None
         self.commands = tuple(commands)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(23, 21, 23, 21)
@@ -796,14 +737,15 @@ class MainWindow(QMainWindow):
         self._power_event_filter: object | None = None
         self._last_snapshot_received_monotonic: float | None = None
         self._health_network_information = None
-        self._health_network_reachability = None
+        self._health_network_reachability: object | None = None
+        self.onboarding_wizard: QWizard | None = None
         if not demo:
             self._attach_health_network_monitor()
         self._doctor_observation_key: tuple[datetime | None, datetime | None] | None = None
         self._doctor_previous_issue_count: int | None = None
         self._doctor_current_issue_count: int | None = None
-        self.cpu_series: deque[float | int] = deque(maxlen=50)
-        self.mem_series: deque[float | int] = deque(maxlen=50)
+        self.cpu_series: deque[Any] = deque(maxlen=50)
+        self.mem_series: deque[Any] = deque(maxlen=50)
         selected_history_path = history_path
         if selected_history_path is None:
             selected_history_path = (
@@ -824,8 +766,8 @@ class MainWindow(QMainWindow):
         self.traffic_rates = (0.0, 0.0)
         self._traffic_sample_pending = False
         self.last_metrics = {"cpu": 0, "memory": 0, "read_rate": 0, "write_rate": 0, "processes": 0}
-        self.previous_states: dict[tuple[str, Any], Any] | None = None
-        self.previous_daemon: bool | None = None
+        self.previous_states = None
+        self.previous_daemon = None
         self.session_counts = (0, 0)
         self.alert_engine = AlertEngine()
         self.session_notification_gate = SessionNotificationGate()
@@ -879,8 +821,7 @@ class MainWindow(QMainWindow):
         self._chart_monitor_gate = RefreshGate(3.2)
         self._chart_query_pending = False
         self._chart_query_reschedule = False
-        self._table_signatures: dict[str, tuple[Any, ...]] = {}
-        self.onboarding_wizard: QWizard | None = None
+        self._table_signatures: dict[str, Any] = {}
         self._tail_render_pending = False
         self._eco_hidden = False
         # Mode stays in memory only; changing it never writes settings or Mutagen data.
@@ -897,18 +838,23 @@ class MainWindow(QMainWindow):
         self.set_ui_mode(self.ui_mode)
         self.apply_theme(self.conf.get("theme", "system"))
         self.create_tray()
-        QShortcut(QKeySequence("Ctrl+R"), self).activated.connect(lambda: self.refresh(force=True))
-        QShortcut(QKeySequence("F5"), self).activated.connect(lambda: self.refresh(force=True))
-        QShortcut(QKeySequence("Ctrl+N"), self).activated.connect(self.new_current_session)
-        QShortcut(QKeySequence("Ctrl+M"), self).activated.connect(partial(self.set_page, 6))
-        QShortcut(QKeySequence("Ctrl+K"), self).activated.connect(self.open_navigator)
+        shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        shortcut.activated.connect(lambda: self.refresh(force=True))
+        shortcut = QShortcut(QKeySequence("F5"), self)
+        shortcut.activated.connect(lambda: self.refresh(force=True))
+        shortcut = QShortcut(QKeySequence("Ctrl+N"), self)
+        shortcut.activated.connect(self.new_current_session)
+        shortcut = QShortcut(QKeySequence("Ctrl+M"), self)
+        shortcut.activated.connect(partial(self.set_page, 6))
+        shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
+        shortcut.activated.connect(self.open_navigator)
         # Direct page shortcuts: Ctrl+1 through Ctrl+0 (pages 0–9) and Ctrl+Shift+1 for page 10
         for _i in range(10):
             _idx = _i  # capture
-            QShortcut(
-                QKeySequence(f"Ctrl+{(_i + 1) % 10 if _i < 9 else 0}"), self
-            ).activated.connect(partial(self.set_page, _idx))
-        QShortcut(QKeySequence("Ctrl+Shift+1"), self).activated.connect(partial(self.set_page, 10))
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{(_i + 1) % 10 if _i < 9 else 0}"), self)
+            shortcut.activated.connect(partial(self.set_page, _idx))
+        shortcut = QShortcut(QKeySequence("Ctrl+Shift+1"), self)
+        shortcut.activated.connect(partial(self.set_page, 10))
         self.add_log("Application started" + (" (DEMO mode)" if demo else ""))
         settings_warning = settings_warning_message(self.settings_load.warnings)
         if settings_warning:
@@ -930,7 +876,7 @@ class MainWindow(QMainWindow):
 
     def poll_period_ms(self) -> int:
         eco = self._eco_hidden and bool(self.conf.get("eco_tray", True))
-        return int(
+        return (
             self.adaptive_policy.interval(
                 enabled=bool(self.conf.get("adaptive_poll", True)),
                 normal=int(self.conf.get("interval", 4)),
@@ -1005,7 +951,7 @@ class MainWindow(QMainWindow):
 
     def create_tray(self) -> None:
         self.tray = QSystemTrayIcon(self.windowIcon(), self)
-        self._last_notification_session_keys: tuple[tuple[str, str], ...] = ()
+        self._last_notification_session_keys = ()
         set_localized_tooltip(self.tray, "Mutagen Control")
         menu = QMenu(self)
         show_action = localized_action("Open Mutagen Control", self)
@@ -1045,25 +991,8 @@ class MainWindow(QMainWindow):
         painter.end()
         return QIcon(pixmap)
 
-    def update_tray_status(self, snap: Snapshot, states: Mapping[str, str]) -> None:
-        status = worst_tray_status(
-            daemon_online=bool(snap.daemon),
-            sessions_stale=bool(getattr(snap, "sessions_stale", False)),
-            states=states.values(),
-        )
-        set_localized_tooltip(
-            self.tray,
-            {
-                "issue": "Status: session needs attention",
-                "paused": "Status: session paused",
-                "busy": "Status: connecting or scanning",
-                "healthy": "Status: sessions active",
-                "idle": "Status: no sessions",
-                "offline": "Status: Mutagen daemon offline",
-                "unknown": "Status: session state unknown",
-            }[status],
-        )
-        self.tray.setIcon(self._tray_status_icon(status))
+    def update_tray_status(self, snap: Any, states: Mapping[tuple[str, str], str]) -> None:
+        update_tray_status_ui(self.tray, self._tray_status_icon, snap, states)
 
     def open_notified_issue(self) -> None:
         keys = self._last_notification_session_keys
@@ -1196,7 +1125,7 @@ class MainWindow(QMainWindow):
         )
         self.submit(lambda: inspect_cli(client), self.show_onboarding_cli_result)
 
-    def show_onboarding_cli_result(self, result: Any) -> None:
+    def show_onboarding_cli_result(self, result: CLIDiscovery) -> None:
         capabilities = ", ".join(result.capabilities) or "no session commands confirmed"
         binary_architecture = ", ".join(result.architectures) or "Unknown"
         detail = (
@@ -1224,7 +1153,9 @@ class MainWindow(QMainWindow):
         self.submit(
             lambda: run_isolated_local_sync_test(client),
             self.onboarding_test_status.setText,
-            on_error=lambda message: self.onboarding_test_status.setText(f"Test failed: {message}"),
+            on_error=lambda message: self.onboarding_test_status.setText(
+                translate_text("Test failed: {message}", active_language()).format(message=message)
+            ),
         )
 
     def complete_onboarding(self) -> None:
@@ -1241,7 +1172,12 @@ class MainWindow(QMainWindow):
         try:
             write_settings(self.conf)
         except OSError as exc:
-            self.statusBar().showMessage(f"Could not save onboarding status: {exc}", 10000)
+            self.statusBar().showMessage(
+                translate_text(
+                    "Could not save onboarding status: {error}", active_language()
+                ).format(error=exc),
+                10000,
+            )
             self.conf["onboarding_completed"] = False
             self.conf["check_updates_on_startup"] = previous_update_preference
 
@@ -1361,7 +1297,7 @@ class MainWindow(QMainWindow):
                 f"RAM {human_bytes(metrics.get('gui_memory', 0))}  ·  "
                 f"{translate_text('measured for the UI process, not Mutagen', self.ui_language)}"
             )
-        if hasattr(self, "_last_monitor_stats"):
+        if hasattr(self, "_last_monitor_stats") and self._stats_cache_range is not None:
             self.apply_statistics(self._last_monitor_stats, self._stats_cache_range)
         if hasattr(self, "monitor_labels") and hasattr(self, "last_metrics"):
             self.monitor_labels["traffic"].setText(
@@ -1576,7 +1512,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         if dialog.command is not None:
-            command, selected_kind, identifier = dialog.command
+            command, kind, identifier = dialog.command
             if command == "doctor":
                 self.set_page(7)
             elif command == "open_project":
@@ -1591,13 +1527,13 @@ class MainWindow(QMainWindow):
                 if path:
                     self.handle_launch_request({"command": "open_project", "path": path})
             elif command in {"focus_session", "flush_session"}:
-                self.focus_session_from_navigator(selected_kind or "", identifier)
+                self.focus_session_from_navigator(kind, identifier)
                 if command == "flush_session":
                     self.session_action("sync", "flush")
         elif dialog.target is not None:
             self.set_page(dialog.target)
 
-    def focus_session_from_navigator(self, kind: str, identifier: str | None) -> None:
+    def focus_session_from_navigator(self, kind: str, identifier: str) -> None:
         if kind not in {"sync", "forward"} or not identifier:
             return
         self.set_page(1 if kind == "sync" else 2)
@@ -1706,7 +1642,9 @@ class MainWindow(QMainWindow):
             )
             val.clicked.connect(lambda _checked=False, k=key: self.show_metric_menu(k))
             c.addWidget(val)
-            c.addWidget(label(note + " · click to open", muted=True, size=10))
+            note_label = label(note + " · click to open", muted=True, size=10)
+            note_label.setWordWrap(True)
+            c.addWidget(note_label)
             self.metric_widgets[key] = val
             metrics.addWidget(f, 1)
         l.addLayout(metrics)
@@ -1812,11 +1750,7 @@ class MainWindow(QMainWindow):
         return f, graph, value
 
     def make_table(
-        self,
-        headers: Sequence[str],
-        height: int = 370,
-        *,
-        stretch_columns: Iterable[int] = (),
+        self, headers: Sequence[str], height: int = 370, *, stretch_columns: Iterable[int] = ()
     ) -> QTableWidget:
         table = QTableWidget(0, len(headers))
         set_localized_accessible_name(table, "Data table")
@@ -2119,7 +2053,7 @@ class MainWindow(QMainWindow):
         page.setWidget(root)
         return page
 
-    def logs_page(self) -> QWidget:
+    def logs_page(self) -> QScrollArea:
         root = QWidget()
         root.setObjectName("main")
         l = QVBoxLayout(root)
@@ -2256,7 +2190,7 @@ class MainWindow(QMainWindow):
         self._tail_render_pending = False
         self.render_tail()
 
-    def render_tail(self, *_args: object) -> None:
+    def render_tail(self, *_: object) -> None:
         """Append only newly arrived matching lines; never reread Qt's full text.
 
         A filter change or explicit clear performs one full rebuild. Following
@@ -2306,7 +2240,7 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_error(str(exc))
 
-    def daemon_page(self) -> QWidget:
+    def daemon_page(self) -> QScrollArea:
         root = QWidget()
         root.setObjectName("main")
         l = QVBoxLayout(root)
@@ -2731,270 +2665,13 @@ class MainWindow(QMainWindow):
         return health_policy_from_settings(self.conf)
 
     def _attach_health_network_monitor(self) -> None:
-        information, reachability = attach_health_network_monitor(self._health_network_changed)
-        if information is not None:
-            self._health_network_information = information
-            self._health_network_reachability = reachability
+        attach_health_network_monitor_ui(self)
 
-    def _health_network_changed(self, reachability: Any) -> None:
-        previous = self._health_network_reachability
-        self._health_network_reachability = reachability
-        if previous is not None and reachability != previous:
-            self.health_tracker.note_environment_event("network_change", now=time.monotonic())
+    def _health_network_changed(self, reachability: object) -> None:
+        apply_health_network_change(self, reachability)
 
     def settings_page(self) -> QScrollArea:
-        page = QScrollArea()
-        page.setWidgetResizable(True)
-        page.setFrameShape(QFrame.Shape.NoFrame)
-        root = QWidget()
-        root.setObjectName("scrollbody")
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(0, 3, 8, 14)
-        layout.setSpacing(17)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
-        appearance, al = card()
-        al.addWidget(label("Display and Language", size=16, bold=True))
-        appearance_form = QFormLayout()
-        appearance_form.setVerticalSpacing(14)
-        self.theme_input = QComboBox()
-        self.theme_input.setToolTip(setting_tooltip("theme", self.ui_language))
-        for theme in ("system", "light", "dark"):
-            self.theme_input.addItem(translate(f"appearance.{theme}", self.ui_language), theme)
-        self.theme_input.setCurrentIndex(
-            max(0, self.theme_input.findData(self.conf.get("theme", "system")))
-        )
-        self.theme_input.currentIndexChanged.connect(
-            lambda _index: self.apply_theme(self.theme_input.currentData())
-        )
-        appearance_form.addRow(translate("appearance.theme", self.ui_language), self.theme_input)
-        self.language_input = QComboBox()
-        self.language_input.setToolTip(setting_tooltip("language", self.ui_language))
-        for language, key in (("en", "appearance.english"), ("cs", "appearance.czech")):
-            self.language_input.addItem(translate(key, self.ui_language), language)
-        self.language_input.setCurrentIndex(max(0, self.language_input.findData(self.ui_language)))
-        self.language_input.currentIndexChanged.connect(
-            lambda _index: self.apply_ui_language(self.language_input.currentData())
-        )
-        appearance_form.addRow(
-            translate("appearance.language", self.ui_language), self.language_input
-        )
-        al.addLayout(appearance_form)
-        al.addWidget(
-            label(
-                "Mode changes are temporary. Theme and language are saved with application settings.",
-                muted=True,
-                size=11,
-            )
-        )
-        layout.addWidget(appearance)
-        pathcard, pl = card()
-        pl.addWidget(label("Mutagen CLI Location", size=16, bold=True))
-        pl.addWidget(
-            label(
-                "The application communicates with mutagen.exe. If it is not on the system PATH, select it manually.",
-                muted=True,
-            )
-        )
-        r = QHBoxLayout()
-        self.binary_edit = QLineEdit(self.conf.get("binary", ""))
-        self.binary_edit.setToolTip(setting_tooltip("binary", self.ui_language))
-        set_localized_placeholder(
-            self.binary_edit, "C:\\Program Files\\Mutagen\\mutagen.exe   (or blank = PATH)"
-        )
-        r.addWidget(self.binary_edit, 1)
-        r.addWidget(button("Select…", self.browse_binary))
-        pl.addLayout(r)
-        self.version_label = label(self._version_label_text, muted=True)
-        pl.addWidget(self.version_label)
-        layout.addWidget(pathcard)
-        prefs, pr = card()
-        pr.addWidget(label("Application Behavior", size=16, bold=True))
-        form = QFormLayout()
-        form.setVerticalSpacing(18)
-        self.interval_input = QSpinBox()
-        self.interval_input.setRange(2, 30)
-        self.interval_input.setSuffix(" s")
-        self.interval_input.setMinimumWidth(160)
-        self.interval_input.setValue(max(2, min(30, int(self.conf.get("interval", 4)))))
-        self.interval_input.setToolTip(setting_tooltip("interval", self.ui_language))
-        add_localized_row(form, "Session Refresh", self.interval_input)
-        self.metric_interval_input = QComboBox()
-        for seconds in (1, 2, 3, 5, 10):
-            self.metric_interval_input.addItem(f"{seconds} s", seconds)
-        saved = int(self.conf.get("metric_interval", 2))
-        self.metric_interval_input.setCurrentIndex(
-            max(0, self.metric_interval_input.findData(saved))
-        )
-        self.metric_interval_input.setMinimumWidth(160)
-        self.metric_interval_input.setToolTip(setting_tooltip("metric_interval", self.ui_language))
-        add_localized_row(form, "CPU/RAM Sampling", self.metric_interval_input)
-        self.adaptive_input = localized_checkbox("Enable adaptive polling")
-        self.adaptive_input.setChecked(bool(self.conf.get("adaptive_poll", True)))
-        self.adaptive_input.setToolTip(setting_tooltip("adaptive_poll", self.ui_language))
-        add_localized_row(form, "Adaptive Status Polling", self.adaptive_input)
-        self.fast_interval_input = QSpinBox()
-        self.fast_interval_input.setRange(2, 15)
-        self.fast_interval_input.setValue(int(self.conf.get("adaptive_fast", 2)))
-        self.fast_interval_input.setSuffix(" s")
-        self.fast_interval_input.setMinimumWidth(160)
-        self.fast_interval_input.setToolTip(setting_tooltip("adaptive_fast", self.ui_language))
-        add_localized_row(form, "During Activity", self.fast_interval_input)
-        self.idle_interval_input = QSpinBox()
-        self.idle_interval_input.setRange(5, 180)
-        self.idle_interval_input.setValue(int(self.conf.get("adaptive_idle", 30)))
-        self.idle_interval_input.setSuffix(" s")
-        self.idle_interval_input.setMinimumWidth(160)
-        self.idle_interval_input.setToolTip(setting_tooltip("adaptive_idle", self.ui_language))
-        add_localized_row(form, "When Idle", self.idle_interval_input)
-        self.quiet_after_input = QSpinBox()
-        self.quiet_after_input.setRange(15, 900)
-        self.quiet_after_input.setValue(int(self.conf.get("adaptive_quiet", 90)))
-        self.quiet_after_input.setSuffix(" s")
-        self.quiet_after_input.setMinimumWidth(160)
-        self.quiet_after_input.setToolTip(setting_tooltip("adaptive_quiet", self.ui_language))
-        add_localized_row(form, "Idle After", self.quiet_after_input)
-        self.new_sync_profile_input = QComboBox()
-        for code, (title, _) in PROFILES.items():
-            self.new_sync_profile_input.addItem(title, code)
-        self.new_sync_profile_input.setCurrentIndex(
-            max(
-                0,
-                self.new_sync_profile_input.findData(self.conf.get("new_sync_profile", "default")),
-            )
-        )
-        self.new_sync_profile_input.setMinimumWidth(290)
-        self.new_sync_profile_input.setToolTip(
-            setting_tooltip("new_sync_profile", self.ui_language)
-        )
-        add_localized_row(form, "New Sync Sessions", self.new_sync_profile_input)
-        self.eco_tray_input = localized_checkbox("Enable power-saving mode")
-        self.eco_tray_input.setChecked(self.conf.get("eco_tray", True))
-        self.eco_tray_input.setToolTip(setting_tooltip("eco_tray", self.ui_language))
-        add_localized_row(form, "Power Saving Mode", self.eco_tray_input)
-        self.tray_input = localized_checkbox("Minimize on close")
-        self.tray_input.setChecked(self.conf.get("tray", True))
-        self.tray_input.setToolTip(setting_tooltip("tray", self.ui_language))
-        add_localized_row(form, "Notification Area", self.tray_input)
-        self.alert_input = localized_checkbox("Notify on new issues")
-        self.alert_input.setChecked(self.conf.get("alerts", True))
-        self.alert_input.setToolTip(setting_tooltip("alerts", self.ui_language))
-        add_localized_row(form, "Notifications", self.alert_input)
-        pr.addLayout(form)
-        explanation = label(
-            "Adaptive mode changes only how often the UI polls status. Mutagen watches for file changes itself. "
-            "Profiles for new sessions configure native watch/polling settings at creation. "
-            "This does not change existing sessions' internal configuration or limit transfer speed.",
-            muted=True,
-            size=11,
-        )
-        explanation.setWordWrap(True)
-        pr.addWidget(explanation)
-        pr.addWidget(button("Save Settings", self.save_settings, kind="primary"))
-        layout.addWidget(prefs)
-        global_config, global_layout = card()
-        global_layout.addWidget(label("Global Mutagen YAML", size=16, bold=True))
-        global_layout.addWidget(
-            label(
-                "Edit Mutagen defaults for newly created sessions. Existing sessions keep their creation-time configuration.",
-                muted=True,
-            )
-        )
-        config_path_row = QHBoxLayout()
-        self.global_config_path_input = QLineEdit()
-        self.global_config_path_input.setText(str(Path.home() / ".mutagen.yml"))
-        self.global_config_path_input.setReadOnly(True)
-        set_localized_placeholder(
-            self.global_config_path_input, "Select the Mutagen global YAML file"
-        )
-        config_path_row.addWidget(self.global_config_path_input, 1)
-        config_path_row.addWidget(button("Choose file…", self.browse_global_config))
-        config_path_row.addWidget(button("Load", self.load_global_config))
-        global_layout.addLayout(config_path_row)
-        self.global_config_editor = QPlainTextEdit()
-        set_localized_placeholder(
-            self.global_config_editor, "Load a global Mutagen YAML file to edit it safely."
-        )
-        self.global_config_editor.setMinimumHeight(180)
-        self.global_config_editor.setFont(QFont("Consolas"))
-        global_layout.addWidget(self.global_config_editor)
-        self.global_config_status = label("No global config loaded.", muted=True, size=11)
-        self.global_config_status.setWordWrap(True)
-        global_layout.addWidget(self.global_config_status)
-        self.global_yaml_recovery_button = button(
-            "Open read-only recovery…", self.show_global_yaml_recovery
-        )
-        self.global_yaml_recovery_button.setEnabled(False)
-        global_layout.addWidget(self.global_yaml_recovery_button)
-        global_layout.addWidget(
-            button("Review diff and save…", self.preview_global_config, kind="primary")
-        )
-        layout.addWidget(global_config)
-        profiles_card, profiles_layout = card()
-        profiles_layout.addWidget(label("Connection Profiles", size=16, bold=True))
-        profiles_layout.addWidget(
-            label(
-                "Store reusable endpoint pairs, safe defaults, tags, and favorites locally. Profiles do not own or change Mutagen sessions.",
-                muted=True,
-            )
-        )
-        profiles_layout.addWidget(
-            button("Manage Connection Profiles…", self.manage_connection_profiles)
-        )
-        profiles_layout.addWidget(button("Inspect SSH Profiles…", self.manage_ssh_profiles))
-        layout.addWidget(profiles_card)
-        ignore_card, ignore_layout = card()
-        ignore_layout.addWidget(label("Ignore Presets", size=16, bold=True))
-        ignore_layout.addWidget(
-            label(
-                "Manage ordered local rules for new sync drafts. Imported rules are reviewed before use; source files and existing sessions stay unchanged.",
-                muted=True,
-            )
-        )
-        ignore_layout.addWidget(button("Manage Ignore Presets…", self.manage_ignore_presets))
-        layout.addWidget(ignore_card)
-        projects_card, projects_layout = card()
-        projects_layout.addWidget(label("Native Mutagen Projects", size=16, bold=True))
-        projects_layout.addWidget(
-            label(
-                "Import and inspect mutagen.yml files without editing them or running project hooks and commands.",
-                muted=True,
-            )
-        )
-        projects_layout.addWidget(button("Manage Native Projects…", self.manage_native_projects))
-        layout.addWidget(projects_card)
-        portability, portability_layout = card()
-        portability_layout.addWidget(label("Import, Export, and Migration", size=16, bold=True))
-        portability_layout.addWidget(
-            label(
-                "Portable bundles include validated connection profiles and selected safe preferences. Session notes, history, Mutagen state, executable paths, and private keys stay local.",
-                muted=True,
-            )
-        )
-        transfer = QVBoxLayout()
-        transfer.addWidget(button("Export Portable Bundle…", self.export_portable_bundle))
-        transfer.addWidget(button("Import Portable Bundle…", self.import_portable_bundle))
-        transfer.addWidget(button("Migrate Settings with Backup…", self.migrate_local_settings))
-        transfer.addWidget(
-            button("Rollback Settings Migration…", self.rollback_local_settings_migration)
-        )
-        portability_layout.addLayout(transfer)
-        layout.addWidget(portability)
-        note, nl = card()
-        nl.addWidget(label("Information and Limitations", size=16, bold=True))
-        text = label(
-            "• CPU, RAM, and process I/O are totals for local Mutagen processes, not individual sessions.\n"
-            "• The Mutagen CLI provides no universal bandwidth limit for existing sync sessions; watch/polling profiles apply to new sessions.\n"
-            "• File and conflict counts come from the exported session status.\n"
-            "• Sessions may prompt for SSH credentials; unattended SSH keys are recommended.\n"
-            "• This application is not an official Mutagen product and does not modify its internal database.",
-            muted=True,
-        )
-        text.setWordWrap(True)
-        nl.addWidget(text)
-        layout.addWidget(note)
-        layout.addStretch()
-        page.setWidget(root)
-        return page
+        return build_settings_page(self)
 
     def browse_binary(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -3285,208 +2962,22 @@ class MainWindow(QMainWindow):
             )
 
     def migrate_local_settings(self) -> None:
-        try:
-            result = migrate_settings_file(settings_path())
-        except OSError as exc:
-            QMessageBox.warning(
-                self, translate_text("Settings Migration", active_language()), str(exc)
-            )
-            return
-        detail = result.message
-        if result.backup_path:
-            detail += f"\n\nExact backup: {result.backup_path}"
-        QMessageBox.information(
-            self, translate_text("Settings Migration", active_language()), detail
-        )
+        settings_migration.migrate_local_settings(self, settings_path())
 
     def rollback_local_settings_migration(self) -> None:
-        backup, _ = QFileDialog.getOpenFileName(
-            self,
-            translate_text("Select pre-migration settings backup", active_language()),
-            str(settings_path().parent),
-            translate_text("Migration backups (*.pre-migration.*.bak)", active_language()),
-        )
-        if not backup:
-            return
-        answer = QMessageBox.question(
-            self,
-            translate_text("Rollback Settings Migration", active_language()),
-            f"Restore the exact settings bytes from this backup? A backup of current settings will also be kept.\n\n{backup}",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            target = rollback_settings_migration(settings_path(), backup)
-        except OSError as exc:
-            QMessageBox.warning(
-                self, translate_text("Settings Rollback", active_language()), str(exc)
-            )
-            return
-        QMessageBox.information(
-            self,
-            translate_text("Settings Rollback", active_language()),
-            f"Exact migration backup restored: {target}",
-        )
+        settings_migration.rollback_local_settings_migration(self, settings_path())
 
     def browse_global_config(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            translate_text("Select Mutagen global YAML", active_language()),
-            str(Path.home()),
-            translate_text("YAML files (*.yml *.yaml);;All files (*)", active_language()),
-        )
-        if path:
-            self.global_config_path_input.setText(path)
+        global_config_editor.browse_global_config(self)
 
     def load_global_config(self) -> None:
-        path = self.global_config_path_input.text().strip()
-        if not path:
-            QMessageBox.information(
-                self,
-                translate_text("Global Mutagen YAML", active_language()),
-                translate_text("Choose the config file first.", active_language()),
-            )
-            return
-        snapshot = load_yaml_file(path)
-        self._global_config_snapshot = snapshot
-        self.global_config_editor.setPlainText(snapshot.text or "")
-        self.global_config_editor.setReadOnly(not snapshot.valid)
-        self.global_yaml_recovery_button.setEnabled(not snapshot.valid)
-        if snapshot.valid:
-            self.global_config_status.setText(
-                f"Loaded {path} · SHA-256 {snapshot.sha256} · source retained for collision checks."
-            )
-        else:
-            self.global_config_status.setText(
-                f"Invalid source retained unchanged: {snapshot.error}"
-            )
-            QMessageBox.warning(
-                self,
-                translate_text("Invalid Mutagen YAML", active_language()),
-                translate_text(
-                    "The file stays unchanged. Open read-only recovery to copy its source, repair it outside MutaUI, then load it again.",
-                    active_language(),
-                ),
-            )
+        global_config_editor.load_global_config(self)
 
     def show_global_yaml_recovery(self) -> None:
-        snapshot = getattr(self, "_global_config_snapshot", None)
-        if snapshot is None or snapshot.valid:
-            return
-        dialog = QDialog(self)
-        set_localized_title(dialog, "Global YAML recovery")
-        layout = QVBoxLayout(dialog)
-        explanation = label(
-            "This source is read-only. Copy it, repair it in an external editor, then load it again.",
-            muted=True,
-        )
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-        details = label(
-            translate_text("Source path: {path}\\nParse error: {error}", active_language()).format(
-                path=snapshot.source_path or "",
-                error=snapshot.error or "Unknown parse error",
-            ),
-            muted=True,
-            size=11,
-        )
-        details.setWordWrap(True)
-        layout.addWidget(details)
-        raw_source = QPlainTextEdit(dialog)
-        raw_source.setObjectName("globalYamlRecoverySource")
-        raw_source.setPlainText(snapshot.text or "")
-        raw_source.setReadOnly(True)
-        raw_source.setAccessibleName(translate_text("Raw Mutagen YAML source", active_language()))
-        layout.addWidget(raw_source, 1)
-        actions = QHBoxLayout()
-        copy_button = QPushButton(translate_text("Copy raw YAML", active_language()), dialog)
-        copy_button.setObjectName("copyGlobalYamlRecovery")
-        copy_button.setAccessibleName(translate_text("Copy raw YAML", active_language()))
-        copy_button.clicked.connect(lambda: QApplication.clipboard().setText(snapshot.text or ""))
-        actions.addWidget(copy_button)
-        close_button = QPushButton(translate_text("Close", active_language()), dialog)
-        close_button.clicked.connect(dialog.accept)
-        actions.addWidget(close_button)
-        layout.addLayout(actions)
-        dialog.resize(720, 520)
-        dialog.exec()
+        global_config_editor.show_global_yaml_recovery(self)
 
     def preview_global_config(self) -> None:
-        snapshot = getattr(self, "_global_config_snapshot", None)
-        if snapshot is None:
-            QMessageBox.information(
-                self,
-                translate_text("Global Mutagen YAML", active_language()),
-                translate_text("Load a config file first.", active_language()),
-            )
-            return
-        try:
-            preview = preview_yaml_text(snapshot, self.global_config_editor.toPlainText())
-        except InvalidConfigForWrite as exc:
-            QMessageBox.warning(
-                self, translate_text("Invalid Mutagen YAML", active_language()), str(exc)
-            )
-            return
-        confirm = QMessageBox(self)
-        set_localized_title(confirm, "Review Mutagen YAML changes")
-        confirm.setIcon(QMessageBox.Icon.Question)
-        set_localized_text(
-            confirm, "Review this diff. Save creates a backup and atomically replaces the file."
-        )
-        confirm.setDetailedText(preview.diff or "No changes.")
-        apply_button = confirm.addButton(
-            translate_text("Save reviewed changes", active_language()),
-            QMessageBox.ButtonRole.AcceptRole,
-        )
-        confirm.addButton(
-            translate_text("Cancel", active_language()), QMessageBox.ButtonRole.RejectRole
-        )
-        confirm.exec()
-        if confirm.clickedButton() is not apply_button:
-            return
-        try:
-            result = apply_yaml_edit(preview)
-        except ConcurrentConfigChange as collision:
-            choice = QMessageBox(self)
-            set_localized_title(choice, "Mutagen config changed")
-            choice.setIcon(QMessageBox.Icon.Warning)
-            set_localized_text(choice, "Another tool changed this file. Choose how to continue.")
-            choice.setDetailedText(
-                collision.latest.error or collision.latest.text or "Latest source unavailable."
-            )
-            reload_button = choice.addButton(
-                translate_text("Reload external changes", active_language()),
-                QMessageBox.ButtonRole.AcceptRole,
-            )
-            merge_button = choice.addButton(
-                translate_text("Keep draft and merge manually", active_language()),
-                QMessageBox.ButtonRole.ActionRole,
-            )
-            choice.addButton(
-                translate_text("Cancel", active_language()), QMessageBox.ButtonRole.RejectRole
-            )
-            choice.exec()
-            if choice.clickedButton() is reload_button:
-                self.load_global_config()
-            elif choice.clickedButton() is merge_button and collision.latest.valid:
-                self._global_config_snapshot = collision.latest
-                set_localized_text(
-                    self.global_config_status,
-                    "External version loaded as the new baseline. Draft retained; merge manually, review the new diff, then save.",
-                )
-            return
-        except (OSError, InvalidConfigForWrite) as exc:
-            QMessageBox.warning(
-                self, translate_text("Could not save Mutagen config", active_language()), str(exc)
-            )
-            return
-        self._global_config_snapshot = load_yaml_file(result.path)
-        self.global_config_editor.setPlainText(self._global_config_snapshot.text or "")
-        self.global_config_status.setText(
-            f"Saved safely. Backup: {result.backup_path} · new SHA-256 {result.new_sha256}"
-        )
+        global_config_editor.preview_global_config(self)
 
     def save_settings(self) -> None:
         binary = self.binary_edit.text().strip()
@@ -3712,7 +3203,11 @@ class MainWindow(QMainWindow):
         self.submit(
             self.sampler.sample_detailed,
             self.apply_resource_metrics,
-            on_error=lambda message: self.footer.setToolTip("Process monitoring: " + message),
+            on_error=lambda message: self.footer.setToolTip(
+                translate_text("Process monitoring: {message}", active_language()).format(
+                    message=message
+                )
+            ),
             on_done=lambda: setattr(self, "_resource_pending", False),
         )
 
@@ -3757,7 +3252,11 @@ class MainWindow(QMainWindow):
                 set_localized_text(self.writer_status, "History: write error")
                 self.writer_status.setToolTip(self.recorder.last_error)
             elif self.recorder.dropped:
-                self.writer_status.setText(f"History: skipped {self.recorder.dropped} samples")
+                self.writer_status.setText(
+                    translate_text(
+                        "Number of skipped history samples: {count}", active_language()
+                    ).format(count=self.recorder.dropped)
+                )
             else:
                 set_localized_text(self.writer_status, "History: saving continuously")
         else:
@@ -3877,7 +3376,7 @@ class MainWindow(QMainWindow):
             table.setUpdatesEnabled(True)
         self.fit_table_to_rows(table)
 
-    def refresh_charts(self, *args: object, force: bool = False) -> None:
+    def refresh_charts(self, *_args: object, force: bool = False) -> None:
         if self.chart_frozen and not force:
             return
         page_index = self.pages.currentIndex()
@@ -3957,7 +3456,7 @@ class MainWindow(QMainWindow):
                 (row["ts"], row[left], row[right] if right else None) for row in rows
             )
 
-    def apply_statistics(self, stats: dict[str, Any], hours: float | None) -> None:
+    def apply_statistics(self, stats: dict[str, Any], hours: float) -> None:
         if self.pages.currentIndex() != 6 or float(self.monitor_range.currentData()) != hours:
             return  # Ignore an outdated result from another selected interval.
         self._stats_cache_at = time.monotonic()
@@ -4557,9 +4056,8 @@ class MainWindow(QMainWindow):
         note = QLineEdit(str(prefs.get("note", "")))
         note.setMaxLength(180)
         box.addWidget(note)
-        fields_by_key: dict[str, SyncConfigField | ForwardConfigField]
-        config_rows: tuple[SyncConfigRow | ForwardConfigRow, ...]
-        row: SyncConfigRow | ForwardConfigRow
+        fields_by_key: Mapping[str, SyncConfigField | ForwardConfigField]
+        config_rows: Sequence[SyncConfigRow | ForwardConfigRow]
         if kind == "sync":
             box.addWidget(label("Actual Mutagen Sync Configuration", size=14, bold=True))
             proposals = prefs.get("configuration_proposal", {})
@@ -4577,38 +4075,13 @@ class MainWindow(QMainWindow):
             config_table.setMinimumSize(1000, 390)
             config_table.setAlternatingRowColors(True)
             config_table.horizontalHeader().setStretchLastSection(True)
-            for row_index, row in enumerate(config_rows):
-                field = fields_by_key[row.key]
-                current = (
-                    json.dumps(row.current_value, ensure_ascii=False)
-                    if row.present
-                    else "Not reported"
-                )
-                values = (
-                    field.label,
-                    current,
-                    row.origin,
-                    row.impact,
-                    row.support_status,
-                    json.dumps(row.proposed_value, ensure_ascii=False)
-                    if row.key in proposals
-                    else "",
-                )
-                for column, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if column != 5:
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    config_table.setItem(row_index, column, item)
-                options_text = f"\nOptions: {', '.join(field.options)}" if field.options else ""
-                tooltip_item = config_table.item(row_index, 0)
-                if tooltip_item is not None:
-                    tooltip_item.setToolTip(
-                        f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
-                    )
-                set_localized_tooltip(
-                    config_table.item(row_index, 5),
-                    "Local proposal only. Installed Mutagen support must be verified before replacement.",
-                )
+            fill_session_configuration_table(
+                config_table,
+                sync_rows,
+                fields_by_key,
+                proposals,
+                proposal_tooltip="Local proposal only. Installed Mutagen support must be verified before replacement.",
+            )
             box.addWidget(config_table)
             explanation = label(
                 "Current values are read-only snapshots. Edit Proposed value to keep a local replacement draft. "
@@ -4699,13 +4172,11 @@ class MainWindow(QMainWindow):
                 try:
                     pattern = path_aware_ignore_rule(root_path, selected)
                     ignore_row = next(
-                        index
-                        for index, row_key in enumerate(config_row_keys)
-                        if row_key == "ignore.paths"
+                        index for index, row in enumerate(config_rows) if row.key == "ignore.paths"
                     )
-                    draft_item = config_table.item(ignore_row, 5)
-                    assert draft_item is not None
-                    draft_text = draft_item.text().strip()
+                    draft_text = (
+                        cast(QTableWidgetItem, config_table.item(ignore_row, 5)).text().strip()
+                    )
                     if draft_text:
                         patterns = json.loads(draft_text)
                     else:
@@ -4721,7 +4192,9 @@ class MainWindow(QMainWindow):
                         raise ValueError("The current ignore paths are not a known list.")
                     if pattern not in patterns:
                         patterns.append(pattern)
-                    draft_item.setText(json.dumps(patterns, ensure_ascii=False))
+                    cast(QTableWidgetItem, config_table.item(ignore_row, 5)).setText(
+                        json.dumps(patterns, ensure_ascii=False)
+                    )
                     self.add_log(f"Quick Ignore drafted for {root_label}: {pattern}")
                 except (IgnorePresetError, OSError, ValueError, json.JSONDecodeError) as exc:
                     QMessageBox.warning(
@@ -4746,7 +4219,8 @@ class MainWindow(QMainWindow):
             if not isinstance(proposals, dict):
                 proposals = {}
             fields_by_key = {field.key: field for field in FORWARD_CONFIG_FIELDS}
-            config_rows = forward_configuration_rows(sess, proposals)
+            forward_rows = forward_configuration_rows(sess, proposals)
+            config_rows = forward_rows
             config_table = QTableWidget(len(config_rows), 6)
             set_localized_accessible_name(config_table, "Forwarding configuration table")
             config_table.setHorizontalHeaderLabels(
@@ -4756,38 +4230,13 @@ class MainWindow(QMainWindow):
             config_table.setMinimumSize(1000, 260)
             config_table.setAlternatingRowColors(True)
             config_table.horizontalHeader().setStretchLastSection(True)
-            for row_index, row in enumerate(config_rows):
-                field = fields_by_key[row.key]
-                current = (
-                    json.dumps(row.current_value, ensure_ascii=False)
-                    if row.present
-                    else "Not reported"
-                )
-                values = (
-                    field.label,
-                    current,
-                    row.origin,
-                    row.impact,
-                    row.support_status,
-                    json.dumps(row.proposed_value, ensure_ascii=False)
-                    if row.key in proposals
-                    else "",
-                )
-                for column, value in enumerate(values):
-                    item = QTableWidgetItem(value)
-                    if column != 5:
-                        item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                    config_table.setItem(row_index, column, item)
-                options_text = f"\nOptions: {', '.join(field.options)}" if field.options else ""
-                tooltip_item = config_table.item(row_index, 0)
-                if tooltip_item is not None:
-                    tooltip_item.setToolTip(
-                        f"{field.help_short}\n\n{field.help_full}\nRecommended: {field.recommended}{options_text}"
-                    )
-                set_localized_tooltip(
-                    config_table.item(row_index, 5),
-                    "Local proposal only. CLI, endpoint and platform support must be verified before replacement.",
-                )
+            fill_session_configuration_table(
+                config_table,
+                forward_rows,
+                fields_by_key,
+                proposals,
+                proposal_tooltip="Local proposal only. CLI, endpoint and platform support must be verified before replacement.",
+            )
             box.addWidget(config_table)
             explanation = label(
                 "Forwarding settings are current read-only values plus a local proposal. Socket overwrite, owner, group and permissions require verified CLI, endpoint and platform support. Existing sessions stay unchanged.",
@@ -4796,7 +4245,6 @@ class MainWindow(QMainWindow):
             )
             explanation.setWordWrap(True)
             box.addWidget(explanation)
-        config_row_keys = tuple(row.key for row in config_rows)
         controls = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
@@ -4804,11 +4252,10 @@ class MainWindow(QMainWindow):
         def accept_dialog() -> None:
             if kind in ("sync", "forward"):
                 try:
-                    proposal_values = {}
-                    for row_index, row_key in enumerate(config_row_keys):
-                        draft_item = config_table.item(row_index, 5)
-                        assert draft_item is not None
-                        proposal_values[row_key] = draft_item.text()
+                    proposal_values = {
+                        row.key: cast(QTableWidgetItem, config_table.item(row_index, 5)).text()
+                        for row_index, row in enumerate(config_rows)
+                    }
                     proposal = build_session_configuration_proposal(
                         kind, sess, fields_by_key, proposal_values
                     )
@@ -5018,8 +4465,8 @@ class MainWindow(QMainWindow):
         audit_path = settings_path().with_name("session-replacement-audit.jsonl")
         self.pending_action = True
 
-        def execute_replacement() -> Any:
-            def audit(event: Any) -> None:
+        def execute_replacement() -> ReplacementReceipt:
+            def audit(event: ReplacementAuditEvent) -> None:
                 record = {
                     "plan_id": event.plan_id,
                     "session_identifier": event.session_identifier,
@@ -5057,7 +4504,7 @@ class MainWindow(QMainWindow):
             )
             return receipt
 
-        def replaced(receipt: Any) -> None:
+        def replaced(receipt: ReplacementReceipt) -> None:
             if receipt.verified and receipt.new_session_identifier:
                 try:
                     self.session_provenance.record(receipt.new_session_identifier, new_arguments)
@@ -5181,7 +4628,7 @@ class MainWindow(QMainWindow):
             translate_text("Copy ID", active_language()), lambda: self.copy_session_id(kind)
         )
         menu.addAction(
-            translate_text("Exportovat JSON…", active_language()),
+            translate_text("Export JSON", active_language()) + "…",
             lambda: self.export_session_json(kind),
         )
         menu.addSeparator()
@@ -5242,9 +4689,9 @@ class MainWindow(QMainWindow):
         set_localized_placeholder(
             self.endpoint_combo.lineEdit(), "Search name, status, server, or path…"
         )
-        if completer := self.endpoint_combo.completer():
-            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
-            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer = cast(QCompleter, self.endpoint_combo.completer())
+        completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.endpoint_combo.currentIndexChanged.connect(self.update_endpoint_details)
         set_localized_tooltip(
             self.endpoint_combo,
@@ -5263,7 +4710,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(intro)
         panes = QHBoxLayout()
         panes.setSpacing(14)
-        self.endpoint_cards: dict[str, EndpointCardWidgets] = {}
+        self.endpoint_cards: dict[str, dict[str, Any]] = {}
         for side in ("left", "right"):
             f, l = card()
             title = label("ALPHA" if side == "left" else "BETA", size=18, bold=True)
@@ -5393,7 +4840,7 @@ class MainWindow(QMainWindow):
             )
             if kind == "sync":
 
-                def count(number: int | None) -> str:
+                def count(number: int | float | None) -> str:
                     return "—" if number is None else f"{number:,}".replace(",", " ")
 
                 scan = (
@@ -6179,7 +5626,7 @@ class MainWindow(QMainWindow):
         for request in pending:
             self.handle_launch_request(request)
 
-    def handle_launch_request(self, message: dict[str, Any]) -> None:
+    def handle_launch_request(self, message: Mapping[str, object]) -> None:
         """Route a validated local CLI or single-instance request in the UI thread."""
         command = message.get("command")
         self.showNormal()
@@ -6293,13 +5740,13 @@ class MainWindow(QMainWindow):
             summary += "\nCLI error: " + snap.error
         self.diag_summary.setText(summary)
         sessions = []
-        session_sources: tuple[
+        observed_sessions: tuple[
             tuple[Literal["sync", "forward"], list[dict[str, Any]], datetime | None], ...
         ] = (
             ("sync", snap.sync, snap.sync_observed_at),
             ("forward", snap.forward, snap.forward_observed_at),
         )
-        for kind, rows, observed_at in session_sources:
+        for kind, rows, observed_at in observed_sessions:
             for raw in rows:
                 if not isinstance(raw, dict) or not isinstance(raw.get("identifier"), str):
                     continue
@@ -6340,26 +5787,57 @@ class MainWindow(QMainWindow):
             and issue.certainty == "confirmed"
         }
         health_now = time.monotonic()
-        health_results = observe_session_health(
-            self.health_tracker,
-            sessions,
-            failed_sessions=failed_sessions,
-            sync_observed_at=snap.sync_observed_at,
-            forward_observed_at=snap.forward_observed_at,
-            command_durations=snap.command_durations,
-            now=health_now,
-        )
+        health_results = []
+        for session in sessions:
+            session_kind = session.identity.kind
+            source_timestamp = (
+                snap.sync_observed_at if session_kind == "sync" else snap.forward_observed_at
+            )
+            timestamp_age = (
+                (datetime.now().astimezone() - source_timestamp).total_seconds()
+                if source_timestamp is not None
+                else None
+            )
+            if (
+                session.stale_reason is not None
+                or timestamp_age is None
+                or not 0 <= timestamp_age <= FRESHNESS_SECONDS
+            ):
+                continue
+            observation_key = (
+                f"{session_kind}:{source_timestamp.isoformat()}"
+                if source_timestamp is not None
+                else f"{session_kind}:stale"
+            )
+            raw_status = session.native_config.get("status")
+            paused = session.native_config.get("paused") is True
+            scan_in_progress = raw_status in (7, "7") or "scan" in session.state.casefold()
+            health_results.append(
+                self.health_tracker.observe(
+                    HealthObservation(
+                        session_identifier=session.identity.identifier,
+                        observation_key=observation_key,
+                        observed_at=session.measured_at,
+                        state=session.state,
+                        confirmed_failure=session.identity.identifier in failed_sessions,
+                        intentional_pause=paused,
+                        scan_in_progress=scan_in_progress,
+                        command_duration_seconds=snap.command_durations.get(f"{session_kind} list"),
+                    ),
+                    now=health_now,
+                )
+            )
         notes = [
             "Authoritative snapshot: "
             + ("yes" if report.authoritative else "NO — refresh required"),
             f"Sessions assessed: {report.session_count}; findings: {report.issue_count}",
             f"Health mode: {self.health_tracker.policy.mode}",
         ]
-        snapshot_observation_key = (snap.sync_observed_at, snap.forward_observed_at)
-        if report.authoritative and snapshot_observation_key != self._doctor_observation_key:
+        snapshot_time_key = (snap.sync_observed_at, snap.forward_observed_at)
+        if report.authoritative and snapshot_time_key != self._doctor_observation_key:
             if self._doctor_observation_key is not None:
                 self._doctor_previous_issue_count = self._doctor_current_issue_count
-            self._doctor_observation_key = snapshot_observation_key
+            self._doctor_observation_key = snapshot_time_key
             self._doctor_current_issue_count = report.issue_count
         if not report.authoritative:
             notes.append("Trend: unavailable; snapshot is stale or incomplete")
@@ -6657,118 +6135,12 @@ class MainWindow(QMainWindow):
             self.report_error(str(exc))
 
     def check_alerts(self, snap: Snapshot) -> None:
-        # Do not misclassify sessions as deleted during a temporary daemon outage.
-        if self.previous_daemon is not None and self.previous_daemon != snap.daemon:
-            self.add_log(
-                "Daemon is responding again" if snap.daemon else "WARNING: Daemon is not responding"
-            )
-        self.previous_daemon = snap.daemon
-        if not snap.daemon:
-            updater = getattr(self, "update_tray_status", None)
-            if updater is not None:
-                updater(snap, {})
-            return
-        from insights import state_transitions
-
-        session_groups = (("sync", snap.sync), ("forward", snap.forward))
-        new_states: dict[tuple[str, str], str] = {}
-        for kind, group in session_groups:
-            for sess in group:
-                identifier = sess.get("identifier")
-                if isinstance(identifier, str):
-                    new_states[(kind, identifier)] = classify(sess, kind)[0]
-        updater = getattr(self, "update_tray_status", None)
-        if updater is not None:
-            updater(snap, new_states)
-        if self.previous_states is not None:
-            for kind, identifier, previous, state in state_transitions(
-                self.previous_states, new_states
-            ):
-                group = snap.sync if kind == "sync" else snap.forward
-                matched_session: dict[str, Any] = next(
-                    (s for s in group if s.get("identifier") == identifier), {}
-                )
-                title = matched_session.get("name") or str(identifier)[:14]
-                if state == "error":
-                    message = f"WARNING: Session {title} needs attention"
-                elif previous == "error":
-                    message = f"Session {title} recovered ({state})"
-                elif state == "paused":
-                    message = f"Session {title} was paused"
-                elif previous == "paused":
-                    message = f"Session {title} resumed"
-                else:
-                    message = f"Session {title}: {previous} → {state}"
-                self.add_log(message)
-        eligible_errors: dict[tuple[str, str], str] = {}
-        for kind, group in (("sync", snap.sync), ("forward", snap.forward)):
-            for sess in group:
-                session_identifier = sess.get("identifier")
-                if not isinstance(session_identifier, str):
-                    continue
-                key = (kind, session_identifier)
-                session_notifications = (
-                    self.conf.get("session_prefs", {})
-                    .get(session_identifier, {})
-                    .get("notifications", True)
-                )
-                if new_states.get(key) == "error" and session_notifications:
-                    eligible_errors[key] = sess.get("name") or session_identifier[:14]
-
-        notifications_allowed = bool(self.conf.get("alerts", True)) and self.tray.isVisible()
-        if notifications_allowed:
-            notifications_allowed = not quiet_hours_active(
-                datetime.now(),
-                enabled=bool(self.conf.get("quiet_hours_enabled", False)),
-                start=str(self.conf.get("quiet_hours_start", "22:00")),
-                end=str(self.conf.get("quiet_hours_end", "07:00")),
-            )
-        gate = getattr(self, "session_notification_gate", None)
-        if gate is None:
-            gate = SessionNotificationGate()
-            self.session_notification_gate = gate
-        desktop_messages = []
-        desktop_keys: list[tuple[str, str]] = []
-        has_issue = False
-        for notification in gate.update(
-            eligible_errors,
-            now=time.monotonic(),
-            notifications_allowed=notifications_allowed,
-        ):
-            eligible = [
-                (key, title)
-                for key, title in zip(notification.session_keys, notification.titles, strict=True)
-                if (self.conf.get("session_prefs", {}).get(key[1], {}).get("notifications", True))
-            ]
-            if not eligible:
-                continue
-            desktop_keys.extend(key for key, _title in eligible)
-            titles = tuple(title for _key, title in eligible)
-            if notification.kind == "issue":
-                has_issue = True
-                message = (
-                    f"{translate_text('Session needs attention', active_language())}: {titles[0]}"
-                    if len(titles) == 1
-                    else f"{len(titles)} {translate_text('sessions need attention', active_language())}"
-                )
-            else:
-                message = (
-                    f"{translate_text('Session recovered', active_language())}: {titles[0]}"
-                    if len(titles) == 1
-                    else f"{len(titles)} {translate_text('sessions recovered', active_language())}"
-                )
-            desktop_messages.append(translate_text(message, active_language()))
-        if desktop_messages:
-            self._last_notification_session_keys = tuple(dict.fromkeys(desktop_keys))
-            self.tray.showMessage(
-                translate_text("Mutagen Control — Issue", active_language()),
-                "\n".join(desktop_messages),
-                QSystemTrayIcon.MessageIcon.Warning
-                if has_issue
-                else QSystemTrayIcon.MessageIcon.Information,
-                7000,
-            )
-        self.previous_states = new_states
+        check_session_alerts(
+            self,
+            snap,
+            classify_session=classify,
+            quiet_hours=quiet_hours_active,
+        )
 
     def create_session(self, kind: str) -> None:
         if self.demo:
@@ -7035,7 +6407,7 @@ class MainWindow(QMainWindow):
         if create_plan is not None:
             self.add_log("Action preview approved: mutagen " + " ".join(create_plan.argv))
 
-        def do() -> Any:
+        def do() -> str:
             if register_plan is not None:
                 client.execute(
                     "daemon",
@@ -7053,7 +6425,7 @@ class MainWindow(QMainWindow):
                 action_plan=daemon_plan or create_plan,
             )
 
-        def success(output: Any) -> None:
+        def success(output: str) -> None:
             created = getattr(client, "last_created_session", None)
             if created is not None:
                 created_kind, created_id, create_arguments = created

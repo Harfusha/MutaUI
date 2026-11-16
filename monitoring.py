@@ -97,7 +97,7 @@ class ForwardTrafficMeter:
 class HistoryStore:
     """SQLite time series with bounded retention and aggregated chart queries."""
 
-    def __init__(self, path: Path | str = ":memory:", retention_hours: int = 48):
+    def __init__(self, path: Path | str = ":memory:", retention_hours: int = 48) -> None:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
@@ -185,7 +185,8 @@ class HistoryStore:
                 (now - hours * 3600, now),
             )
         ]
-        return measurement_summary(rows)
+        summary: dict[str, Any] = measurement_summary(rows)
+        return summary
 
     def export_csv(self, path: Path | str, hours: float = 24.0, now: float | None = None) -> None:
         """Export full-resolution samples for the selected period, not chart averages."""
@@ -301,7 +302,8 @@ def statistics_from_file(
                 (now - hours * 3600, now),
             )
         ]
-        return measurement_summary(rows)
+        summary: dict[str, Any] = measurement_summary(rows)
+        return summary
     finally:
         connection.close()
 

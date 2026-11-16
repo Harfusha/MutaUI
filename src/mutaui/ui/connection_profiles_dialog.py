@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -24,19 +25,19 @@ from connection_profiles import (
     ProfileStoreError,
     duplicate_profile,
 )
-from mutaui.ui.dialog_components import (
-    add_localized_item,
-    add_localized_row,
-    button,
-    label,
-    localized_checkbox,
-)
 from mutaui.ui.localization import (
     set_localized_accessible_name,
     set_localized_placeholder,
     set_localized_title,
 )
 from mutaui.ui.preferences import active_language, translate_text
+from mutaui.ui.widgets.basic import (
+    add_localized_item,
+    add_localized_row,
+    button,
+    label,
+    localized_checkbox,
+)
 
 
 class ConnectionProfilesDialog(QDialog):
@@ -87,9 +88,7 @@ class ConnectionProfilesDialog(QDialog):
     def selected_profile(self) -> ConnectionProfile | None:
         row = self.table.currentRow()
         item = self.table.item(row, 0) if row >= 0 else None
-        if item is None:
-            return None
-        profile = item.data(Qt.ItemDataRole.UserRole)
+        profile = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         return profile if isinstance(profile, ConnectionProfile) else None
 
     def refresh(self, *_args: object) -> None:
@@ -191,8 +190,6 @@ class ConnectionProfilesDialog(QDialog):
         profile = self.selected_profile()
         if profile is None:
             return
-        from dataclasses import replace
-
         try:
             self.store.update(replace(profile, favorite=not profile.favorite))
         except (ProfileStoreError, OSError) as exc:

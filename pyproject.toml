@@ -125,10 +125,15 @@ files = [
     "log_stream.py",
     "insights.py",
     "monitoring.py",
+    "verify_source.py",
 ]
 follow_imports = "skip"
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
 module = ["AppKit", "Foundation"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["psutil"]
 ignore_missing_imports = true

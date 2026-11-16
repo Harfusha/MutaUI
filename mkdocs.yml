@@ -22,6 +22,7 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Screenshots: screenshots.md
+  - Privacy and local data: privacy.md
   - Getting started:
       - Install and upgrade: installation.md
       - Windows: getting-started/windows.md

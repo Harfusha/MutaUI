@@ -158,7 +158,7 @@ def find_qt_layout_misuses(source: str) -> list[str]:
     return problems
 
 
-def verify():
+def verify() -> None:
     if not ((3, 11) <= sys.version_info[:2] < (3, 14)):
         raise RuntimeError("Use Python 3.11 through 3.13")
     for name in (*MODULES, *FILES):

@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QPoint
-from PySide6.QtGui import QCloseEvent, QTextDocument
+from PySide6.QtGui import QCloseEvent, QFontDatabase, QTextDocument
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -29,7 +29,9 @@ from PySide6.QtWidgets import (
 import app as app_module
 import mutaui.services.instance_lifecycle as instance_lifecycle
 import mutaui.ui.session_dialog as session_dialog_module
-import mutaui.ui.ssh_profile_dialog as ssh_dialog_module
+import mutaui.ui.ssh_profile_manager as ssh_dialog_module
+import mutaui.ui.tray_status as tray_status_module
+from mutaui.ui.session_configuration_table import fill_session_configuration_table
 
 
 @pytest.fixture
@@ -40,6 +42,11 @@ def qapp():
 @pytest.fixture
 def window(tmp_path, monkeypatch, qapp):
     monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(
+        session_dialog_module,
+        "_settings_path_provider",
+        lambda: app_module.settings_path(),
+    )
     monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
     instance = app_module.MainWindow(demo=True)
     yield instance
@@ -67,6 +74,65 @@ def test_quick_navigator_filters_words_and_selects_page(window):
     navigator.choose()
     assert navigator.target is None
     navigator.close()
+
+
+def test_dashboard_fits_narrow_window_without_horizontal_scroll(window, qapp):
+    if os.name == "nt":
+        font_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        for font_name in ("segoeui.ttf", "seguisym.ttf", "seguiemj.ttf"):
+            font_file = font_dir / font_name
+            if font_file.is_file():
+                QFontDatabase.addApplicationFont(str(font_file))
+    window.set_ui_mode("advanced")
+    window.apply_theme("dark")
+    window.apply_ui_language("cs")
+    window.resize(1200, 675)
+    window.show()
+    qapp.processEvents()
+    window.apply_snapshot(window.snapshot)
+    window.set_page(0)
+    qapp.processEvents()
+
+    dashboard_scroll = window.pages.widget(0)
+    assert dashboard_scroll.horizontalScrollBar().maximum() == 0, (
+        f"window={window.size()}, pages={window.pages.size()}, "
+        f"viewport={dashboard_scroll.viewport().size()}, body={dashboard_scroll.widget().size()}"
+    )
+
+
+def test_session_dialog_is_exported_from_its_ui_module():
+    from mutaui.ui.session_dialog import SessionDialog
+
+    assert SessionDialog is app_module.SessionDialog
+
+
+def test_legacy_ui_modules_reexport_canonical_implementations():
+    from mutaui.ui.dialog_components import label as legacy_label
+    from mutaui.ui.portable_import_dialog import PortableImportPreviewDialog as legacy_import_dialog
+    from mutaui.ui.portable_import_preview import PortableImportPreviewDialog
+    from mutaui.ui.ssh_profile_dialog import SSHProfileManagerDialog as legacy_ssh_dialog
+    from mutaui.ui.ssh_profile_manager import SSHProfileManagerDialog
+    from mutaui.ui.widgets.basic import label
+
+    assert legacy_label is label
+    assert legacy_import_dialog is PortableImportPreviewDialog
+    assert legacy_ssh_dialog is SSHProfileManagerDialog
+
+
+def test_global_yaml_actions_are_exported_from_their_ui_module():
+    from mutaui.ui import global_config_editor
+
+    assert callable(global_config_editor.browse_global_config)
+    assert callable(global_config_editor.load_global_config)
+    assert callable(global_config_editor.show_global_yaml_recovery)
+    assert callable(global_config_editor.preview_global_config)
+
+
+def test_settings_migration_actions_are_exported_from_their_ui_module():
+    from mutaui.ui import settings_migration
+
+    assert callable(settings_migration.migrate_local_settings)
+    assert callable(settings_migration.rollback_local_settings_migration)
 
 
 def test_quick_navigator_exposes_commands_and_session_match(window):
@@ -644,6 +710,47 @@ def test_refresh_monitor_charts_runs_database_work_in_workers(monkeypatch):
     assert fake_window._stats_pending is False
 
 
+def test_worker_result_callback_runs_in_gui_thread(qapp):
+    gui_thread_id = threading.get_ident()
+    delivered = []
+    pool = app_module.QThreadPool()
+    fake_window = SimpleNamespace(
+        workers=set(),
+        _shutdown_pending=False,
+        pool=pool,
+        report_error=lambda message: delivered.append(("error", message, threading.get_ident())),
+    )
+
+    app_module.MainWindow.submit(
+        fake_window,
+        threading.get_ident,
+        lambda result: delivered.append(("result", result, threading.get_ident())),
+        on_done=lambda: delivered.append(("done", None, threading.get_ident())),
+    )
+
+    def fail_in_worker():
+        raise RuntimeError(str(threading.get_ident()))
+
+    app_module.MainWindow.submit(
+        fake_window,
+        fail_in_worker,
+        lambda result: delivered.append(("unexpected result", result, threading.get_ident())),
+        on_error=lambda message: delivered.append(("error", message, threading.get_ident())),
+        on_done=lambda: delivered.append(("done", None, threading.get_ident())),
+    )
+
+    assert pool.waitForDone(2_000)
+    qapp.processEvents()
+
+    result = next(item for item in delivered if item[0] == "result")
+    error = next(item for item in delivered if item[0] == "error")
+    assert result[1] != gui_thread_id
+    assert int(error[1]) != gui_thread_id
+    assert len([item for item in delivered if item[0] == "done"]) == 2
+    assert all(item[2] == gui_thread_id for item in delivered)
+    assert fake_window.workers == set()
+
+
 def test_refresh_monitor_charts_defers_stats_when_cache_is_fresh():
     events = []
     fake_window = SimpleNamespace(
@@ -674,7 +781,8 @@ def test_refresh_monitor_charts_defers_stats_when_cache_is_fresh():
     assert events == ["monitor"]
 
 
-def test_refresh_resources_uses_demo_values_and_deduplicates_pending_work():
+def test_refresh_resources_uses_demo_values_and_localizes_worker_errors(monkeypatch):
+    monkeypatch.setattr(app_module, "active_language", lambda: "en")
     events = []
     demo_window = SimpleNamespace(
         demo=True,
@@ -688,10 +796,13 @@ def test_refresh_resources_uses_demo_values_and_deduplicates_pending_work():
     assert pending_window._resource_pending is True
 
     sampled = []
+    error_callbacks = []
+    tooltips = []
     worker = SimpleNamespace(sample_detailed=lambda: "sample")
 
     def submit(function, on_result, on_error=None, on_done=None):
         sampled.append(function())
+        error_callbacks.append(on_error)
         on_result("metrics")
         if on_done:
             on_done()
@@ -701,11 +812,46 @@ def test_refresh_resources_uses_demo_values_and_deduplicates_pending_work():
         _resource_pending=False,
         sampler=worker,
         submit=submit,
+        footer=SimpleNamespace(setToolTip=tooltips.append),
         apply_resource_metrics=lambda values: sampled.append(values),
     )
     app_module.MainWindow.refresh_resources(live_window)
+    error_callbacks[0]("unavailable")
     assert sampled == ["sample", "metrics"]
     assert live_window._resource_pending is False
+    assert tooltips == ["Process monitoring: unavailable"]
+
+
+def test_onboarding_local_test_error_uses_translated_prefix(monkeypatch):
+    monkeypatch.setattr(app_module, "active_language", lambda: "en")
+
+    class Label:
+        text = ""
+
+        def __init__(self):
+            self.properties = {}
+
+        def setProperty(self, key, value):
+            self.properties[key] = value
+
+        def property(self, key):
+            return self.properties.get(key)
+
+        def setText(self, value):
+            self.text = value
+
+    callbacks = []
+    window = SimpleNamespace(
+        _onboarding_pending_client=None,
+        client=SimpleNamespace(binary="mutagen"),
+        onboarding_test_status=Label(),
+        submit=lambda _work, _result, on_error=None, on_done=None: callbacks.append(on_error),
+    )
+
+    app_module.MainWindow.run_onboarding_local_test(window)
+    callbacks[0]("permission denied")
+
+    assert window.onboarding_test_status.text == "Test failed: permission denied"
 
 
 @pytest.mark.parametrize(
@@ -713,13 +859,18 @@ def test_refresh_resources_uses_demo_values_and_deduplicates_pending_work():
     [
         (None, "History: demo mode", None),
         (SimpleNamespace(last_error="disk error", dropped=2), "History: write error", "disk error"),
-        (SimpleNamespace(last_error="", dropped=3), "History: skipped 3 samples", None),
+        (
+            SimpleNamespace(last_error="", dropped=3),
+            "Number of skipped history samples: 3",
+            None,
+        ),
         (SimpleNamespace(last_error="", dropped=0), "History: saving continuously", None),
     ],
 )
 def test_apply_resource_metrics_updates_history_status_and_snapshot(
-    recorder, expected_status, expected_tooltip
+    recorder, expected_status, expected_tooltip, monkeypatch
 ):
+    monkeypatch.setattr(app_module, "active_language", lambda: "en")
     events = []
 
     class Label:
@@ -1333,6 +1484,12 @@ def test_settings_page_is_lazy_without_changing_its_route(window):
     assert window.pages.widget(5) is not None
 
 
+def test_settings_page_builder_is_exported_from_its_ui_module():
+    from mutaui.ui.settings_page import build_settings_page
+
+    assert app_module.build_settings_page is build_settings_page
+
+
 def test_settings_exposes_ssh_and_portable_data_tools(window):
     window.set_page(5)
     titles = {button.text() for button in window.findChildren(app_module.QPushButton)}
@@ -1634,6 +1791,38 @@ def test_session_settings_save_uses_controller_for_typed_proposal(window, monkey
     assert window.conf["session_prefs"]["sync-1"]["configuration_proposal"] == {
         "watch.pollingInterval": 30
     }
+
+
+@pytest.mark.parametrize("kind", ["sync", "forward"])
+def test_session_configuration_table_keeps_native_values_read_only(kind, qapp):
+    if kind == "sync":
+        fields = app_module.SYNC_CONFIG_FIELDS
+        rows = app_module.session_configuration_rows({}, {})
+        proposal_tooltip = (
+            "Local proposal only. Installed Mutagen support must be verified before replacement."
+        )
+    else:
+        fields = app_module.FORWARD_CONFIG_FIELDS
+        rows = app_module.forward_configuration_rows({}, {})
+        proposal_tooltip = "Local proposal only. CLI, endpoint and platform support must be verified before replacement."
+    table = QTableWidget(len(rows), 6)
+
+    fill_session_configuration_table(
+        table,
+        rows,
+        {field.key: field for field in fields},
+        {},
+        proposal_tooltip=proposal_tooltip,
+    )
+
+    assert table.rowCount() == len(rows)
+    assert table.item(0, 0).text() == fields[0].label
+    assert all(
+        not table.item(0, column).flags() & app_module.Qt.ItemFlag.ItemIsEditable
+        for column in range(5)
+    )
+    assert table.item(0, 5).flags() & app_module.Qt.ItemFlag.ItemIsEditable
+    assert table.item(0, 5).toolTip() == proposal_tooltip
 
 
 def test_basic_advanced_switch_preserves_in_progress_settings_drafts(window):
@@ -4921,7 +5110,7 @@ def test_export_session_json_handles_cancel_success_and_write_failure(monkeypatc
             True,
             False,
             True,
-            ["★ Remove from Favorites", "Copy ID", "Exportovat JSON…"],
+            ["★ Remove from Favorites", "Copy ID", "Export JSON…"],
         ),
         (
             "sync",
@@ -4931,7 +5120,7 @@ def test_export_session_json_handles_cancel_success_and_write_failure(monkeypatc
             [
                 "☆ Add to Favorites",
                 "Copy ID",
-                "Exportovat JSON…",
+                "Export JSON…",
                 "Resume",
                 "Sync Now",
                 "Enable Start at Sign-In",
@@ -4942,7 +5131,7 @@ def test_export_session_json_handles_cancel_success_and_write_failure(monkeypatc
             False,
             False,
             False,
-            ["☆ Add to Favorites", "Copy ID", "Exportovat JSON…", "Pause"],
+            ["☆ Add to Favorites", "Copy ID", "Export JSON…", "Pause"],
         ),
     ],
 )
@@ -5663,6 +5852,49 @@ def test_check_alerts_requires_session_and_tray_preferences(
     assert "needs attention" in logs[1]
 
 
+def test_grouped_session_notification_localizes_interpolated_count(monkeypatch):
+    from mutaui.services.session_notification_gate import SessionNotificationGate
+    from mutaui.ui import session_alerts
+
+    monkeypatch.setattr(session_alerts, "active_language", lambda: "cs")
+    ticks = iter((0.0, 10.0, 11.0))
+    monkeypatch.setattr(session_alerts.time, "monotonic", lambda: next(ticks))
+    messages = []
+    tray = SimpleNamespace(isVisible=lambda: True, showMessage=lambda *args: messages.append(args))
+    window = SimpleNamespace(
+        previous_daemon=True,
+        previous_states=None,
+        conf={"alerts": True, "session_prefs": {}},
+        tray=tray,
+        session_notification_gate=SessionNotificationGate(),
+        add_log=lambda _message: None,
+    )
+    snapshot = app_module.Snapshot(
+        daemon=True,
+        sync=[
+            {"identifier": "session-a", "name": "Alpha"},
+            {"identifier": "session-b", "name": "Beta"},
+        ],
+    )
+
+    for _ in range(2):
+        session_alerts.check_alerts(
+            window,
+            snapshot,
+            classify_session=lambda _session, _kind: ("error", "error"),
+            quiet_hours=lambda *_args, **_kwargs: False,
+        )
+    session_alerts.check_alerts(
+        window,
+        app_module.Snapshot(daemon=True, sync=[]),
+        classify_session=lambda _session, _kind: ("error", "error"),
+        quiet_hours=lambda *_args, **_kwargs: False,
+    )
+
+    assert messages[0][1] == "Počet relací vyžadujících pozornost: 2"
+    assert messages[1][1] == "Počet obnovených relací: 2"
+
+
 @pytest.mark.parametrize(
     ("previous", "state", "expected"),
     [
@@ -5752,7 +5984,7 @@ def test_tray_status_updates_icon_and_localized_tooltip(monkeypatch):
         _tray_status_icon=lambda status: f"icon:{status}",
     )
     monkeypatch.setattr(
-        app_module, "set_localized_tooltip", lambda _tray, text: tooltip.append(text)
+        tray_status_module, "set_localized_tooltip", lambda _tray, text: tooltip.append(text)
     )
 
     app_module.MainWindow.update_tray_status(

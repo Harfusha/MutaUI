@@ -238,7 +238,7 @@ def measure_main_window(count: int, repetitions: int = 5) -> dict[str, object]:
                         window.close()
                         window.history.close()
                         window.deleteLater()
-                        QCoreApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
+                        QApplication.sendPostedEvents(window, QEvent.Type.DeferredDelete)
         finally:
             app_module.settings_path = original_settings_path
 

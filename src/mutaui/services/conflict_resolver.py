@@ -254,35 +254,46 @@ def _apply_manual_resolution(
         raise ConflictResolutionError("ALPHA file changed after preview; nothing was modified.")
     if _file_evidence(plan.beta_root, plan.relative_path).sha256 != plan.beta.sha256:
         raise ConflictResolutionError("BETA file changed after preview; nothing was modified.")
-    backup_directory.mkdir()
-    alpha_bytes = plan.alpha.path.read_bytes()
-    beta_bytes = plan.beta.path.read_bytes()
-    if (
-        hashlib.sha256(alpha_bytes).hexdigest() != plan.alpha.sha256
-        or hashlib.sha256(beta_bytes).hexdigest() != plan.beta.sha256
-    ):
-        return ManualResolutionReceipt(
-            backup_directory, None, False, False, False, "File changed during backup."
-        )
-    for name, payload in (("alpha.backup", alpha_bytes), ("beta.backup", beta_bytes)):
-        with (backup_directory / name).open("xb") as stream:
-            stream.write(payload)
+    try:
+        backup_directory.mkdir()
+        alpha_bytes = plan.alpha.path.read_bytes()
+        beta_bytes = plan.beta.path.read_bytes()
+        if (
+            hashlib.sha256(alpha_bytes).hexdigest() != plan.alpha.sha256
+            or hashlib.sha256(beta_bytes).hexdigest() != plan.beta.sha256
+        ):
+            return ManualResolutionReceipt(
+                backup_directory, None, False, False, False, "File changed during backup."
+            )
+        for name, payload in (("alpha.backup", alpha_bytes), ("beta.backup", beta_bytes)):
+            with (backup_directory / name).open("xb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+        (backup_directory / "alpha.backup").chmod(stat.S_IREAD)
+        (backup_directory / "beta.backup").chmod(stat.S_IREAD)
+        manifest = {
+            "session_identifier": plan.session_identifier,
+            "relative_path_sha256": record["relative_path_sha256"],
+            "alpha_sha256": plan.alpha.sha256,
+            "beta_sha256": plan.beta.sha256,
+            "native_digest": plan.native_digest,
+        }
+        with (backup_directory / "manifest.json").open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(manifest, sort_keys=True))
             stream.flush()
             os.fsync(stream.fileno())
-    (backup_directory / "alpha.backup").chmod(stat.S_IREAD)
-    (backup_directory / "beta.backup").chmod(stat.S_IREAD)
-    manifest = {
-        "session_identifier": plan.session_identifier,
-        "relative_path_sha256": record["relative_path_sha256"],
-        "alpha_sha256": plan.alpha.sha256,
-        "beta_sha256": plan.beta.sha256,
-        "native_digest": plan.native_digest,
-    }
-    with (backup_directory / "manifest.json").open("x", encoding="utf-8") as stream:
-        stream.write(json.dumps(manifest, sort_keys=True))
-        stream.flush()
-        os.fsync(stream.fileno())
-    (backup_directory / "manifest.json").chmod(stat.S_IREAD)
+        (backup_directory / "manifest.json").chmod(stat.S_IREAD)
+    except OSError as exc:
+        return ManualResolutionReceipt(
+            backup_directory,
+            None,
+            False,
+            False,
+            False,
+            f"Backup preparation failed ({type(exc).__name__}); source files were not modified.",
+            False,
+        )
     if current_native_digest(plan.session_identifier, plan.relative_path) != plan.native_digest:
         return ManualResolutionReceipt(
             backup_directory, None, False, False, False, "Conflict changed; backups retained."
