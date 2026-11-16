@@ -7,6 +7,7 @@ import pytest
 from mutaui.domain.models import SessionIdentity, SessionSnapshot
 from mutaui.services.reconfiguration import (
     build_reconfiguration_preview,
+    native_config_fingerprint,
     validate_native_command_snapshot,
 )
 
@@ -64,6 +65,32 @@ def test_complete_command_snapshot_round_trips_losslessly_for_exact_id():
     assert not result.unknown_configuration_paths
     assert result.snapshot_inputs_complete
     assert len(result.source_sha256) == 64
+
+
+def test_native_config_fingerprint_ignores_runtime_counters_only():
+    session = {
+        "identifier": "sync-exact-123",
+        "name": "source name",
+        "configuration": {"mode": "two-way-safe"},
+        "alpha": {"protocol": 0, "path": "/alpha", "connected": True, "files": 1},
+        "beta": {"protocol": 0, "path": "/beta"},
+        "status": "watching",
+        "successfulCycles": 1,
+    }
+    active = {
+        **session,
+        "status": "scanning",
+        "successfulCycles": 2,
+        "alpha": {"protocol": 0, "path": "/alpha", "connected": False, "files": 4},
+    }
+
+    assert native_config_fingerprint(session) == native_config_fingerprint(active)
+
+    active["configuration"] = {"mode": "one-way-safe"}
+    assert native_config_fingerprint(session) != native_config_fingerprint(active)
+    active["configuration"] = session["configuration"]
+    active["alpha"] = {"protocol": 0, "path": "/different", "connected": False, "files": 4}
+    assert native_config_fingerprint(session) != native_config_fingerprint(active)
 
 
 def test_missing_original_arguments_or_unknown_fields_fail_closed():

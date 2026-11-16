@@ -73,8 +73,53 @@ def _canonical_json(value: object) -> str:
     )
 
 
+_RUNTIME_SESSION_FIELDS = frozenset(
+    {
+        "status",
+        "successfulCycles",
+        "lastSuccessfulCycle",
+        "lastError",
+        "problems",
+        "transitionProblems",
+        "files",
+        "directories",
+        "symbolicLinks",
+        "totalFileSize",
+        "conflicts",
+        "excludedConflicts",
+    }
+)
+_RUNTIME_ENDPOINT_FIELDS = frozenset(
+    {
+        "connected",
+        "scanned",
+        "directories",
+        "files",
+        "symbolicLinks",
+        "totalFileSize",
+        "scanProblems",
+        "transitionProblems",
+        "problems",
+        "lastError",
+    }
+)
+_SESSION_ENDPOINT_FIELDS = frozenset(
+    {"alpha", "beta", "configurationSource", "configurationDestination"}
+)
+
+
 def native_config_fingerprint(value: object) -> str:
-    """Return the same canonical digest used to validate a native snapshot."""
+    """Fingerprint configuration and identity, excluding mutable runtime metadata."""
+    if isinstance(value, Mapping):
+        value = {
+            key: (
+                {name: item for name, item in child.items() if name not in _RUNTIME_ENDPOINT_FIELDS}
+                if key in _SESSION_ENDPOINT_FIELDS and isinstance(child, Mapping)
+                else child
+            )
+            for key, child in value.items()
+            if key not in _RUNTIME_SESSION_FIELDS
+        }
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 

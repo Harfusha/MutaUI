@@ -20,7 +20,7 @@ def test_reviewed_hash_entries_still_point_to_hashes() -> None:
             if entry["type"] != "Hex High Entropy String":
                 continue
             count += 1
-            path = Path(filename)
+            path = Path(filename.replace("\\", "/"))
             assert path.is_file(), f"Reviewed hash file no longer exists: {filename}"
             lines = path.read_text(encoding="utf-8").splitlines()
             position = int(entry["line_number"])
