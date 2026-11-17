@@ -1,15 +1,15 @@
 # MutaUI — F3 agent continuation and acceptance contract
 
-**Audit started:** 2026-11-15
-**Repository:** https://github.com/Harfusha/MutaUI  
-**Current working branch:** `master` (the PR branch is already integrated)
-**Review:** https://github.com/Harfusha/MutaUI/pull/1 (merged and closed as `de5b9b1`)  
-**Baseline audit:** `101796a28971a40fbc5cb45e154abb5016e6d192`  
-**Canonical specification:** `docs/audits/F3_AGENT_REMAINING.md`
+- **Audit started:** 2026-11-15
+- **Repository:** [Harfusha/MutaUI](https://github.com/Harfusha/MutaUI)
+- **Current working branch:** `master` (the PR branch is already integrated)
+- **Review:** [PR #1](https://github.com/Harfusha/MutaUI/pull/1) (merged and closed as `de5b9b1`)
+- **Baseline audit:** `101796a28971a40fbc5cb45e154abb5016e6d192`
+- **Canonical specification:** `docs/audits/F3_AGENT_REMAINING.md`
 
 ## Current continuation checkpoint — 2026-11-17
 
-- At checkpoint start on 2026-11-17, `origin/master` was `ae4b1b3b41965e3a4e0a28092de00126ff497add`. Run #87 passed all five jobs on that SHA. Follow-up commit `4648a2e80f9fb4dab18b08bc960b7b185bf816e7` updated the Node 24 action refs; Checks run #88 passed all five jobs on that exact commit with no Node.js 20 deprecation warnings. Documentation commit `6ce5324f436dd045fdecb2e2df55332a717df004` refreshed this checkpoint; run #89 passed all five jobs on that exact SHA.
+- At checkpoint start on 2026-11-17, `origin/master` was `ae4b1b3b41965e3a4e0a28092de00126ff497add`. Run #87 passed all five jobs on that SHA. Follow-up commit `4648a2e80f9fb4dab18b08bc960b7b185bf816e7` updated the Node 24 action refs; Checks run #88 passed all five jobs on that exact commit with no Node.js 20 deprecation warnings. Documentation commit `6ce5324f436dd045fdecb2e2df55332a717df004` refreshed this checkpoint; run #89 passed all five jobs on that exact SHA. Commit `7965d752f38cf752c0d0615e56a9f4bcfe7e059f` added the owner-selected MIT license, third-party LGPL notices, and a release gate that blocks while LGPL review is pending; run #90 passed all five jobs on that exact SHA.
 - Hosted [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) completed successfully on exactly `eda6078`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349) completed successfully on exactly `ecbeef5`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) completed successfully on exactly `3e29dcf` across all four OS jobs and security checks; the new Linux OpenSSH disconnect/reconnect integration test passed.
@@ -282,10 +282,9 @@ Read-only GitHub recheck still shows draft PR #1 at `7715f64` and run #66 as the
 
 ## Current local candidate validation — 2026-11-17
 
-- Main checkout: C:/Ostatní/MutagenApp, branch `master`, commit and `origin/master` at `4648a2e80f9fb4dab18b08bc960b7b185bf816e7`. Checks run #88 passed all five jobs on that exact SHA.
-- After `git fetch origin`, `audit/f3-hardening-2026-11-15` / `origin/audit/f3-hardening-2026-11-15` at `ac4c304` was 27 commits behind master and 0 ahead. `origin/fix/ci-platform-tests-notarization-20261115` at `855110a` was 69 behind and 0 ahead. Both branches contain no master-missing commits. The attached audit worktree remains on the former branch.
-- Current code includes the preferences-controller extraction, abrupt daemon process-crash recovery, schema-2 dirty-tree evidence validation, and durable tray-idle/CLI-launch metrics. Run #88 passed the committed application-code candidate; no physical/device acceptance follows from it.
-- `uv run python scripts/ci/run_static_checks.py`: PASS after workflow and audit edits. YAML lint passes for LF-normalized workflow content; the Windows checkout holds CRLF for `release.yml`. `actionlint` is unavailable locally; run #88's dependency/workflow/YAML/secret job passed.
-- Workflow refs use checkout v7, setup-python v7, upload-artifact v7, and download-artifact v8. Run #88 produced test reports on Ubuntu, Windows, macOS ARM and macOS Intel.
-- Run #88 passed all four OS jobs plus dependency/workflow/YAML/secret checks with no Node.js 20 deprecation warnings. Three non-failure notices covered the upcoming Ubuntu 26 migration and macOS ARM queue capacity.
-- Still open: signed Windows install/upgrade, macOS notarization/Gatekeeper, Linux installed GUI, DPI/accessibility/screen-reader review, live cross-platform fault/latency tests, reference-hardware metrics, 8-hour soak, Qt LGPL legal review, signing secrets (still absent in GitHub settings), and release/tag acceptance.
+- Main checkout: C:/Ostatní/MutagenApp, branch `master`, commit and `origin/master` at `7965d752f38cf752c0d0615e56a9f4bcfe7e059f`. Checks run #90 passed all five jobs on that exact SHA.
+- `audit/f3-hardening-2026-11-15` / `origin/audit/f3-hardening-2026-11-15` at `ac4c304` is 29 commits behind master and 0 ahead. `origin/fix/ci-platform-tests-notarization-20261115` at `855110a` is 71 behind and 0 ahead. Neither contains master-missing commits. The attached audit worktree remains on the former branch with only an untracked local Hub plan artifact.
+- Current code includes the preferences-controller extraction, abrupt daemon process-crash recovery, schema-2 dirty-tree evidence validation, durable tray-idle/CLI-launch metrics, and the owner-selected MIT metadata/notice packaging. Run #90 passed; this does not provide physical/device acceptance.
+- `uv run pytest tests/test_release_license_gate.py -q`: 4 passed. `uv lock --check`, `uv run python scripts/ci/run_static_checks.py`, and `git diff --check` passed. Native Bash/Inno/macOS package compilation was unavailable on this Windows host.
+- Workflow refs use checkout v7, setup-python v7, upload-artifact v7, and download-artifact v8. Run #90 passed Ubuntu, Windows, macOS ARM, macOS Intel, and dependency/workflow/YAML/secret checks.
+- Still open: signed Windows install/upgrade, macOS notarization/Gatekeeper, Linux installed GUI, DPI/accessibility/screen-reader review, live cross-platform fault/latency tests, reference-hardware metrics, 8-hour soak, Qt LGPL legal review, signing secrets (GitHub settings still has none), and release/tag acceptance.
