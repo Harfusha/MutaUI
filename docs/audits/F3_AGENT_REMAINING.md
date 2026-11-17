@@ -60,12 +60,12 @@ The following changes are committed. Current repository CI is recorded above; th
 | CI history | PR workflow cancels its own superseded runs instead of accumulating unbounded runner jobs; release workflow is independent | Final-sha five-job matrix, not earlier canceled runs |
 | Security baseline | Public SHA/commit false positives point to actual source lines; orphaned build-script digest entry dropped; an automated check detects future stale hash positions | `detect-secrets-hook` must succeed and synthetic credential must still be rejected |
 | Evidence | JUnit parser handles leaf suites, mixed nested suites and parent-direct cases exactly once; rejects impossible counters | Full suite/coverage evidence from tested commit |
-| Release policy | `scripts/ci/check_release_license.py` halts release if owner has not selected a license and retained third-party notice | **Owner decision is still outstanding**; passing this file check is not legal certification |
+| Release policy | `scripts/ci/check_release_license.py` requires the owner-selected project license, third-party notices, and `LGPL distribution review: APPROVED` before release | **MIT is selected; LGPL distribution review is pending.** Confirm source delivery, relinking/installation information, and package notices; the gate blocks while pending |
 | Daemon cleanup | Polls for acknowledged, completed shutdown before removing disposable test data; retains diagnostic state if stop is ambiguous | Real CLI repeat-cycle tests on four OS targets |
 
 ### CI and release gates
 
-The older handoff snapshot recorded an incomplete matrix. Checks run #88 passed all five repository CI jobs on exact commit `4648a2e80f9fb4dab18b08bc960b7b185bf816e7` after the Node 24 action updates. This proves repository CI only. Signed installs, notarization, physical GUI/accessibility, soak, owner licensing and release approval remain open; do not claim them from CI.
+Checks run #92 passed all five repository CI jobs on exact commit `64b3bec347659910ee1f91f748afa8e01e80e1b4`. This proves repository CI only. Signed installs, notarization, physical GUI/accessibility, soak, LGPL review and release approval remain open; do not claim them from CI.
 
 The remaining F3 task table below is an acceptance worklist. Several tasks now have code written; they still require real-OS/signing verification and therefore remain open.
 
@@ -135,7 +135,7 @@ Since the preceding handoff, **six additional implementation commits** were adde
 
 ## Release prerequisites that an agent cannot legitimately invent
 
-The owner must decide the license; provide Apple Developer ID, notary API credentials, Windows code-signing certificate through approved GitHub Actions secrets; and accept target platform GUI/a11y behavior. No credentials belong in commits, support bundles or logs.
+The project owner selected MIT. Before a binary release, an owner/legal reviewer must approve Qt/PySide and Paramiko LGPL fulfillment, including source delivery, relinking/installation information, and notices in every package. The owner must also provide Apple Developer ID, notary API credentials, and Windows code-signing certificate through GitHub Actions secrets, then accept target-platform GUI/accessibility behavior. No credentials belong in commits, support bundles, or logs.
 
 ## Commands and verification
 
