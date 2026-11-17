@@ -9,11 +9,12 @@
 
 ## Current continuation checkpoint — 2026-11-17
 
-- Main checkout and `origin/master` are at `40585436b527b583a437d252f40d9b0ffb720326`. Worktree tip `ac4c304c69bccfd2dfb94d30755473e7d3fc26da` and remote branch `fix/ci-platform-tests-notarization-20261115` at `855110a` are ancestors of `master`.
+- Main checkout and `origin/master` are at `ca5137b706f24dcbbecbe85f5305f9b8751900f4`. Worktree tip `ac4c304c69bccfd2dfb94d30755473e7d3fc26da` and remote branch `fix/ci-platform-tests-notarization-20261115` at `855110a` are ancestors of `master`.
 - Hosted [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) completed successfully on exactly `eda6078`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349) completed successfully on exactly `ecbeef5`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) completed successfully on exactly `3e29dcf` across all four OS jobs and security checks; the new Linux OpenSSH disconnect/reconnect integration test passed.
 - Hosted [Checks run #84](https://github.com/Harfusha/MutaUI/actions/runs/43981197608) completed successfully on exactly `40585436b527b583a437d252f40d9b0ffb720326`; Windows, Ubuntu, macOS ARM, macOS Intel and dependency/workflow/YAML/secret jobs all passed.
+- Hosted [Checks run #85](https://github.com/Harfusha/MutaUI/actions/runs/43986151501) completed successfully on exactly `ca5137b706f24dcbbecbe85f5305f9b8751900f4`; all five jobs passed.
 - Local Windows/Python 3.12 verification: `uv run python scripts/ci/run_tests.py` passed **1,606 tests**, 0 failures/skips, branch coverage **3,384/3,554 (95.22%)**, total coverage **96.61%**. `uv run python scripts/ci/run_static_checks.py` passed, including strict mypy across 95 source files. Run #82 includes the isolated-daemon recovery test.
 - The daemon recovery test stops and restarts only its disposable Mutagen daemon. The existing 10-cycle lifecycle test passed in #83 on all hosted OSes. IPv6/Unicode SSH parsing and remote symlink escape tests already exist; hosted Linux OpenSSH acceptance and disconnect/reconnect recovery passed in #83. Windows host has no `sshd`; this integration case runs on Ubuntu CI.
 - **Still open:** actual signed Windows upgrade/install, macOS notarization and Gatekeeper, Linux target-distribution GUI install, cross-platform physical GUI/accessibility acceptance, an 8-hour soak, live network fault matrices, owner license selection/signing credentials, and final release/tag acceptance.
@@ -26,9 +27,11 @@ This is a continuation of the 2026-11-15 F3 audit, **not a claim that the audit 
 
 MutaUI is a control GUI for the **native Mutagen CLI**. Preserve exact session IDs, native lossless settings, fail-closed SSH host keys, per-action consent, no unintended daemon autostart, never execute `--all` for an individual session, and keep `MANUAL_RESOLUTION_ENABLED=False` until destructive conflict-resolution acceptance is independently proven. No production release from a failed matrix.
 
-## Implemented in PR #1 — must still be verified
+## F3 implementation and baseline verification criteria
 
-| Area | Changes in the PR | Required verification |
+The table preserves the original handoff checklist; current hosted results are in the continuation checkpoint above.
+
+| Area | Changes in the PR | Baseline verification criteria |
 | --- | --- | --- |
 | F3-001 security | Individually classified non-secret hashes; normalized POSIX baseline paths and shifted line numbers; synthetic high-entropy negative probe uses a temporary baseline | Security job PASS with `detect-secrets-hook` unchanged and no new undisclosed fingerprints |
 | F3-002/F3-003 daemon | Per-client immutable copy of subprocess environment; short isolated data directories; deterministic lifecycle probes and no global HOME changes | Real Mutagen CLI 0.18.1 start/list/stop loops on Windows, Linux, macOS Intel and ARM |
@@ -42,13 +45,13 @@ MutaUI is a control GUI for the **native Mutagen CLI**. Preserve exact session I
 | QA evidence | JUnit nested suite counts are not double counted; impossible test/coverage counters rejected; generated report cannot claim signed release | Unit tests and current SHA-hosted CI evidence |
 | CI permissions | Routine PR CI `contents: read`, no release attestation privileges | Workflow audit; release-only signing privileges |
 
-**Status rule:** "Implemented" means code exists in the review branch; it does not imply hosted CI, visual QA, or release verification.
+**Status rule:** "Implemented" means code exists in the review branch. The baseline table is not a current pass/fail report; use the continuation checkpoint above for hosted CI and owner-controlled gates.
 
 ## Further remediation applied after the initial F3 handoff
 
-The following source changes are **committed but await hosted CI evidence**:
+The following changes are committed. Current repository CI is recorded above; this table preserves the original evidence targets and still-open owner gates.
 
-| Area | Implementation | Remaining evidence |
+| Area | Implementation | Original evidence target / remaining gate |
 | --- | --- | --- |
 | Windows upgrade | `scripts/ci/select_upgrade_baseline.py` now chooses a genuine prior stable GitHub Release installer by semantic version. The release workflow checks download origin, declared SHA-256, Windows Authenticode and the publisher identity before running an in-place upgrade. It fails instead of silently using a clean-install test for later versions | Unit tests and a native signed prior-to-current upgrade with preserved user settings |
 | Windows upgrade API | Full authenticated, bounded-pagination GitHub Release query with explicit failure on API error, missing historical asset, downgrade, untrusted URL and malformed hash | Actual history and signed artifacts required |
@@ -59,9 +62,9 @@ The following source changes are **committed but await hosted CI evidence**:
 | Release policy | `scripts/ci/check_release_license.py` halts release if owner has not selected a license and retained third-party notice | **Owner decision is still outstanding**; passing this file check is not legal certification |
 | Daemon cleanup | Polls for acknowledged, completed shutdown before removing disposable test data; retains diagnostic state if stop is ambiguous | Real CLI repeat-cycle tests on four OS targets |
 
-### Important CI state at handoff
+### CI and release gates
 
-As of the latest source inspection, GitHub Actions had not completed checks for the newest branch commit. GitHub may cancel older PR runs by design. **Do not merge, tag or publish until the exact final head SHA has all five jobs green.** A canceled, queued or stale run is never PASS.
+The older handoff snapshot recorded an incomplete matrix. Current hosted result is run #85 above: all five jobs passed on `ca5137b706f24dcbbecbe85f5305f9b8751900f4`. This proves the repository CI gate only. Signed installs, notarization, physical GUI/accessibility, soak, owner licensing and release approval remain open; do not claim them from CI.
 
 The remaining F3 task table below is an acceptance worklist. Several tasks now have code written; they still require real-OS/signing verification and therefore remain open.
 
