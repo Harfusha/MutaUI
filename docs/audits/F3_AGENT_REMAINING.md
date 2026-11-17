@@ -9,10 +9,11 @@
 
 ## Current continuation checkpoint — 2026-11-17
 
-- Main checkout is `master` at `3e29dcfd4a5163b45cee45fab43f3d340e377d5c`; `origin/master` matched after fetch. Worktree tip `ac4c304c69bccfd2dfb94d30755473e7d3fc26da` and remote branch `fix/ci-platform-tests-notarization-20261115` at `855110a` are ancestors of `master`.
+- Main checkout and `origin/master` are at `40585436b527b583a437d252f40d9b0ffb720326`. Worktree tip `ac4c304c69bccfd2dfb94d30755473e7d3fc26da` and remote branch `fix/ci-platform-tests-notarization-20261115` at `855110a` are ancestors of `master`.
 - Hosted [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) completed successfully on exactly `eda6078`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349) completed successfully on exactly `ecbeef5`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) completed successfully on exactly `3e29dcf` across all four OS jobs and security checks; the new Linux OpenSSH disconnect/reconnect integration test passed.
+- Hosted [Checks run #84](https://github.com/Harfusha/MutaUI/actions/runs/43981197608) completed successfully on exactly `40585436b527b583a437d252f40d9b0ffb720326`; Windows, Ubuntu, macOS ARM, macOS Intel and dependency/workflow/YAML/secret jobs all passed.
 - Local Windows/Python 3.12 verification: `uv run python scripts/ci/run_tests.py` passed **1,606 tests**, 0 failures/skips, branch coverage **3,384/3,554 (95.22%)**, total coverage **96.61%**. `uv run python scripts/ci/run_static_checks.py` passed, including strict mypy across 95 source files. Run #82 includes the isolated-daemon recovery test.
 - The daemon recovery test stops and restarts only its disposable Mutagen daemon. The existing 10-cycle lifecycle test passed in #83 on all hosted OSes. IPv6/Unicode SSH parsing and remote symlink escape tests already exist; hosted Linux OpenSSH acceptance and disconnect/reconnect recovery passed in #83. Windows host has no `sshd`; this integration case runs on Ubuntu CI.
 - **Still open:** actual signed Windows upgrade/install, macOS notarization and Gatekeeper, Linux target-distribution GUI install, cross-platform physical GUI/accessibility acceptance, an 8-hour soak, live network fault matrices, owner license selection/signing credentials, and final release/tag acceptance.

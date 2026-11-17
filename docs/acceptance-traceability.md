@@ -9,7 +9,7 @@ Status definitions:
 
 ## Environment verification summary
 
-- **Hosted baseline:** `master` at `3e29dcfd4a5163b45cee45fab43f3d340e377d5c`; [Checks run #83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) succeeded on that exact SHA across Windows, Ubuntu, macOS ARM, macOS Intel, and dependency/workflow/YAML/secret checks. Earlier runs [#81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) and [#82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349) also passed.
+- **Hosted baseline:** `master` at `40585436b527b583a437d252f40d9b0ffb720326`; [Checks run #84](https://github.com/Harfusha/MutaUI/actions/runs/43981197608) succeeded on that exact SHA across Windows, Ubuntu, macOS ARM, macOS Intel, and dependency/workflow/YAML/secret checks. Earlier runs [#81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399), [#82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349), and [#83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) also passed.
 - **Local environment:** Windows 11 x64, Python 3.12.10, PySide6-Essentials 6.8.3, pytest 9.2.0, Coverage.py 7.1.0.
 - **Local verification:** `uv run python scripts/ci/run_tests.py` passed 1,606 tests, 0 failures/skips; branch coverage is 95.22% and total coverage 96.61%. The isolated-daemon recovery test passed hosted in #82; Linux OpenSSH server disconnect/reconnect recovery passed in #83.
 - **Test suite:** `uv run python scripts/ci/run_tests.py` passed **1,606 tests**, 0 failed/skipped. Branch coverage is **3,384/3,554 (95.22%)** and total coverage is **96.61%**.
