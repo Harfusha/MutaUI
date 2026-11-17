@@ -14,8 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -54,8 +54,8 @@ jobs:
       VERSION: ${{ github.ref_name }}
       QT_QPA_PLATFORM: offscreen
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -94,7 +94,7 @@ jobs:
       - name: Run synthetic session model performance canary
         run: python benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json
       - name: Upload release performance canary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-benchmark-${{ matrix.os }}
           path: benchmark-results/session-table.json
@@ -107,7 +107,7 @@ jobs:
       - name: Generate exact-commit release test evidence
         run: python scripts/ci/generate_acceptance_report.py --output test-results/acceptance.md
       - name: Upload release test evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-release-test-evidence-${{ matrix.os }}
           path: |
@@ -398,7 +398,7 @@ jobs:
         with:
           subject-path: dist/*
       - name: Upload release package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-release-${{ matrix.os }}
           path: dist/
@@ -413,8 +413,8 @@ jobs:
       contents: write
       attestations: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: mutaui-release-*
           path: release-assets

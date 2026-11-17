@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -48,7 +48,7 @@ jobs:
           fi
       - name: Save scanner baseline diff for forensic review
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-secret-baseline-review
           path: .secrets.baseline
@@ -63,8 +63,8 @@ jobs:
       matrix:
         os: [windows-latest, macos-latest, macos-15-intel, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -101,14 +101,14 @@ jobs:
       - name: Run synthetic session model performance canary
         run: python benchmarks/session_table_benchmark.py --output benchmark-results/session-table.json
       - name: Upload documentation site artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-documentation-site-${{ matrix.os }}
           path: site/
           if-no-files-found: error
           retention-days: 7
       - name: Upload performance canary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-performance-${{ matrix.os }}
           path: benchmark-results/session-table.json
@@ -126,7 +126,7 @@ jobs:
         run: python scripts/ci/generate_acceptance_report.py --output test-results/acceptance.md
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-test-report-${{ matrix.os }}
           path: |
@@ -218,7 +218,7 @@ jobs:
           shasum -a 256 "${files[@]}" > dist/SHA256SUMS.txt
       - name: Upload packaged self-test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-self-test-${{ matrix.os }}
           path: ${{ runner.temp }}/mutagen-control-self-test.log
@@ -226,7 +226,7 @@ jobs:
           retention-days: 7
       - name: Upload Windows SBOM
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-windows-sbom
           path: dist/*.sbom.cdx.json
@@ -234,7 +234,7 @@ jobs:
           retention-days: 14
       - name: Upload Linux packages
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-linux-packages
           path: |
@@ -246,7 +246,7 @@ jobs:
           retention-days: 14
       - name: Upload macOS disk image
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-macos-dmg-${{ matrix.os }}
           path: |
