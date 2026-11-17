@@ -21,6 +21,7 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayIcon={app}\{#MyAppExeName}
 DisableProgramGroupPage=yes
+LicenseFile=..\..\LICENSE
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -38,6 +39,10 @@ Name: "explorersendto"; Description: "{cm:ExplorerSendToTask}"; GroupDescription
 
 [Files]
 Source: "..\..\dist-fast\MutagenControl\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\NOTICE.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\licenses\LGPL-3.0.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
+Source: "..\..\licenses\LGPL-2.1.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Mutagen Control"; Filename: "{app}\{#MyAppExeName}"

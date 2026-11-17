@@ -9,7 +9,7 @@
 
 ## Current continuation checkpoint — 2026-11-17
 
-- At checkpoint start on 2026-11-17, `origin/master` was `ae4b1b3b41965e3a4e0a28092de00126ff497add`. Run #87 passed all five jobs on that SHA. Follow-up commit `4648a2e80f9fb4dab18b08bc960b7b185bf816e7` updated the Node 24 action refs; Checks run #88 passed all five jobs on that exact commit with no Node.js 20 deprecation warnings.
+- At checkpoint start on 2026-11-17, `origin/master` was `ae4b1b3b41965e3a4e0a28092de00126ff497add`. Run #87 passed all five jobs on that SHA. Follow-up commit `4648a2e80f9fb4dab18b08bc960b7b185bf816e7` updated the Node 24 action refs; Checks run #88 passed all five jobs on that exact commit with no Node.js 20 deprecation warnings. Documentation commit `6ce5324f436dd045fdecb2e2df55332a717df004` refreshed this checkpoint; run #89 passed all five jobs on that exact SHA.
 - Hosted [Checks run #81](https://github.com/Harfusha/MutaUI/actions/runs/43974893399) completed successfully on exactly `eda6078`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #82](https://github.com/Harfusha/MutaUI/actions/runs/43978069349) completed successfully on exactly `ecbeef5`: Ubuntu, Windows, macOS ARM, macOS Intel and dependency/workflow/YAML/secret checks all passed.
 - Hosted [Checks run #83](https://github.com/Harfusha/MutaUI/actions/runs/43979743248) completed successfully on exactly `3e29dcf` across all four OS jobs and security checks; the new Linux OpenSSH disconnect/reconnect integration test passed.
@@ -18,7 +18,7 @@
 - Hosted [Checks run #86](https://github.com/Harfusha/MutaUI/actions/runs/44016838155) completed successfully on exactly `72cf4782d09020ed669ed76a2ac7bfa807a25a2a` on attempt 2; all five jobs passed. Attempt 1 failed only the macOS Intel disk-image step with `hdiutil: create failed - Resource busy`; rerunning that job succeeded without source changes, so this is recorded as a transient runner failure, not a product-code fix.
 - Historical local verification on the then-dirty candidate based at `72cf4782d09020ed669ed76a2ac7bfa807a25a2a`: `uv run python scripts/ci/run_tests.py` passed 1,615 tests with 0 failures/skips, 95.32% branch coverage, and 96.65% total coverage. Static checks and the synthetic-secret rejection also passed then. Its `working_tree_dirty: true` manifest is historical local evidence; run #87 above covers the committed candidate.
 - Isolated-daemon tests cover graceful stop/restart and abrupt process-crash recovery; the new crash-recovery case passes locally. The existing 10-cycle lifecycle test passed in #83 on all hosted OSes. IPv6/Unicode SSH parsing, remote symlink escape, Linux OpenSSH and disconnect/reconnect acceptance passed in #83. Windows host has no `sshd`; this integration case runs on Ubuntu CI.
-- **Still open:** signed Windows upgrade/install, macOS notarization/Gatekeeper, Linux target-distribution GUI, physical DPI/accessibility, live network fault/latency matrix, tray-idle and CLI-spawn measurements, reference-hardware metrics, 8-hour soak, owner license/signing credentials, and final release/tag acceptance.
+- **Still open:** signed Windows upgrade/install, macOS notarization/Gatekeeper, Linux target-distribution GUI, physical DPI/accessibility, live network fault/latency matrix, tray-idle and CLI-spawn measurements, reference-hardware metrics, 8-hour soak, Qt LGPL legal review and signing-secret verification, and final release/tag acceptance.
 
 The older continuation entries below are historical snapshots and their reported dirty roots, commits, counts and CI runs do not describe the current checkout.
 
@@ -130,7 +130,7 @@ Since the preceding handoff, **six additional implementation commits** were adde
 | F3-022 | P2 | **External acceptance open.** Real visual/a11y QA is still required on each OS across DPI 100/125/150/200, themes, languages, screen readers and keyboard-only navigation |
 | F3-023 | P2 | **Runtime CPU/RSS, tray-idle, and CLI-launch instrumentation implemented locally.** Per-sample tray-idle seconds and Mutagen CLI launches are stored in SQLite and CSV; legacy rows remain unknown. Reference-hardware measurements and an 8-hour soak require real runtime evidence. |
 | F3-024 | P2 | **Implemented locally, platform proof open.** Platform setup docs, actual UI screenshots, privacy-safe support exports and capability matrix exist. Clean installed-user screenshots and target-distribution walkthroughs remain open |
-| F3-025 | Owner | **Release gate added.** Owner still must select/authorize LICENSE and verify redistribution terms, especially Qt LGPL; no license was invented |
+| F3-025 | Owner | **MIT selected and LICENSE added.** Verify Qt/PySide LGPL source delivery, relinking/replacement, installation information, and notices for each package before release; frozen-package legal review remains open |
 | F3-026 | P1 | Final single-SHA signed release acceptance with current security evidence, all platform test matrices, installer acceptance and maintained version/tag |
 
 ## Release prerequisites that an agent cannot legitimately invent
@@ -288,4 +288,4 @@ Read-only GitHub recheck still shows draft PR #1 at `7715f64` and run #66 as the
 - `uv run python scripts/ci/run_static_checks.py`: PASS after workflow and audit edits. YAML lint passes for LF-normalized workflow content; the Windows checkout holds CRLF for `release.yml`. `actionlint` is unavailable locally; run #88's dependency/workflow/YAML/secret job passed.
 - Workflow refs use checkout v7, setup-python v7, upload-artifact v7, and download-artifact v8. Run #88 produced test reports on Ubuntu, Windows, macOS ARM and macOS Intel.
 - Run #88 passed all four OS jobs plus dependency/workflow/YAML/secret checks with no Node.js 20 deprecation warnings. Three non-failure notices covered the upcoming Ubuntu 26 migration and macOS ARM queue capacity.
-- Still open: signed Windows install/upgrade, macOS notarization/Gatekeeper, Linux installed GUI, DPI/accessibility/screen-reader review, live cross-platform fault/latency tests, reference-hardware metrics, 8-hour soak, owner license/Qt LGPL decision, signing secrets, and release/tag acceptance.
+- Still open: signed Windows install/upgrade, macOS notarization/Gatekeeper, Linux installed GUI, DPI/accessibility/screen-reader review, live cross-platform fault/latency tests, reference-hardware metrics, 8-hour soak, Qt LGPL legal review, signing secrets (still absent in GitHub settings), and release/tag acceptance.

@@ -25,8 +25,15 @@ def verify_release_legal_files(root: Path) -> None:
         raise ValueError("LICENSE is missing substantive terms")
     if any(token in content.casefold() for token in ("choose a license", "license goes here")):
         raise ValueError("LICENSE still contains placeholder instructions")
-    if not notices_file.is_file() or len(notices_file.read_text(encoding="utf-8").strip()) < 100:
+    if not notices_file.is_file():
         raise ValueError("NOTICE.md is missing substantive third-party attribution")
+    notices = notices_file.read_text(encoding="utf-8").strip()
+    if len(notices) < 100:
+        raise ValueError("NOTICE.md is missing substantive third-party attribution")
+    if "lgpl distribution review: approved" not in notices.casefold():
+        raise ValueError(
+            "LGPL distribution review must be marked APPROVED in NOTICE.md before release"
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, OSError, UnicodeError) as exc:
         print(f"Release legal preflight blocked: {exc}", file=sys.stderr)
         return 1
-    print("LICENSE and NOTICE files present; manual compliance review is still required.")
+    print("LICENSE and NOTICE files present; LGPL distribution review is approved.")
     return 0
 
 

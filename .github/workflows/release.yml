@@ -233,8 +233,10 @@ jobs:
         run: |
           version="${VERSION#v}"
           arch="$(uname -m)"
-          mkdir -p dist/dmg-root
+          mkdir -p dist/dmg-root/licenses
           ditto dist-platform/MutagenControl.app dist/dmg-root/MutagenControl.app
+          cp LICENSE NOTICE.md dist/dmg-root/
+          cp licenses/LGPL-*.txt dist/dmg-root/licenses/
           ln -s /Applications dist/dmg-root/Applications
           hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-${version}-macos-${arch}.dmg"
           rm -rf dist/dmg-root
@@ -264,6 +266,7 @@ jobs:
           mount="$RUNNER_TEMP/mutaui-dmg"
           mkdir -p "$mount"
           hdiutil attach "dist/MutagenControl-${release_version}-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$mount"
+          for file in LICENSE NOTICE.md licenses/LGPL-3.0.txt licenses/LGPL-2.1.txt; do test -s "$mount/$file"; done
           spctl --assess --type execute --verbose=2 "$mount/MutagenControl.app"
           python scripts/run_self_test.py "$mount/MutagenControl.app/Contents/MacOS/MutagenControl"
           hdiutil detach "$mount"
@@ -277,6 +280,7 @@ jobs:
           bash packaging/linux/build-packages.sh dist-platform/MutagenControl dist
           APPIMAGE_EXTRACT_AND_RUN=1 "dist/MutagenControl-${release_version}-linux-x86_64.AppImage" --self-test
           sudo dpkg -i "dist/MutagenControl-${release_version}-linux-amd64.deb"
+          for file in LICENSE NOTICE.md licenses/LGPL-3.0.txt licenses/LGPL-2.1.txt; do test -s "/usr/share/doc/mutagen-control/$file"; done
           python scripts/run_self_test.py /usr/bin/mutagen-control
       - name: Verify Windows packages
         if: runner.os == 'Windows'
@@ -355,6 +359,11 @@ jobs:
             ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed"
           }
 
+          foreach ($legalFile in @('LICENSE', 'NOTICE.md', 'licenses\LGPL-3.0.txt', 'licenses\LGPL-2.1.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $installDir $legalFile))) {
+              throw "Installed legal file missing: $legalFile"
+            }
+          }
           $uninstaller = Join-Path $installDir 'unins000.exe'
           & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
           if ($LASTEXITCODE -ne 0) { throw "Uninstaller failed: $LASTEXITCODE" }
@@ -364,8 +373,17 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:VERSION.TrimStart('v')
+          $portable = 'dist-fast/MutagenControl'
+          Copy-Item -LiteralPath 'LICENSE','NOTICE.md' -Destination $portable
+          $licenseDir = Join-Path $portable 'licenses'
+          New-Item -ItemType Directory -Force -Path $licenseDir | Out-Null
+          Copy-Item -Path 'licenses/LGPL-*.txt' -Destination $licenseDir
           Compress-Archive -Path './dist-fast/MutagenControl' -DestinationPath "dist/MutagenControl-$env:VERSION-windows-x64-portable.zip"
           Copy-Item './dist/MutagenControl.exe' "dist/MutagenControl-$env:VERSION-windows-x64.exe"
+          Copy-Item 'LICENSE' "dist/MutagenControl-$env:VERSION-windows-x64-LICENSE.txt"
+          Copy-Item 'NOTICE.md' "dist/MutagenControl-$env:VERSION-windows-x64-THIRD-PARTY-NOTICES.md"
+          Copy-Item 'licenses/LGPL-3.0.txt' "dist/MutagenControl-$env:VERSION-windows-x64-LGPL-3.0.txt"
+          Copy-Item 'licenses/LGPL-2.1.txt' "dist/MutagenControl-$env:VERSION-windows-x64-LGPL-2.1.txt"
       - name: Generate Windows package SBOM
         if: runner.os == 'Windows'
         uses: anchore/sbom-action@v0.24.3

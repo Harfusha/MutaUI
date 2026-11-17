@@ -1,6 +1,7 @@
 [project]
 name = "mutagen-control"
 version = "8.2.0"
+license = "MIT"
 description = "Desktop management for Mutagen synchronization and forwarding sessions"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

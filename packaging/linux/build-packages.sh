@@ -9,6 +9,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_BUNDLE="$(cd "$ROOT/$APP_BUNDLE" && pwd)"
 OUTPUT_DIR="$ROOT/$OUTPUT_DIR"
 ASSETS="$ROOT/packaging/linux"
+copy_legal_notices() {
+  local destination="$1"
+  mkdir -p "$destination/licenses"
+  cp "$ROOT/LICENSE" "$ROOT/NOTICE.md" "$destination/"
+  cp "$ROOT"/licenses/LGPL-*.txt "$destination/licenses/"
+  test -s "$destination/LICENSE"
+  test -s "$destination/NOTICE.md"
+  test -s "$destination/licenses/LGPL-3.0.txt"
+  test -s "$destination/licenses/LGPL-2.1.txt"
+}
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
 
@@ -17,6 +27,7 @@ mkdir -p "$OUTPUT_DIR"
 
 APPDIR="$STAGING/MutagenControl.AppDir"
 mkdir -p "$APPDIR/usr/bin/mutagen-control" "$APPDIR/usr/share/icons/hicolor/scalable/apps"
+copy_legal_notices "$APPDIR/usr/share/doc/mutagen-control"
 cp -a "$APP_BUNDLE/." "$APPDIR/usr/bin/mutagen-control/"
 cp "$ASSETS/AppRun" "$APPDIR/AppRun"
 cp "$ASSETS/mutagen-control-appimage.desktop" "$APPDIR/mutagen-control.desktop"
@@ -27,6 +38,7 @@ chmod 755 "$APPDIR/AppRun"
 DEB="$STAGING/deb"
 mkdir -p "$DEB/DEBIAN" "$DEB/opt/mutagen-control" "$DEB/usr/bin" \
   "$DEB/usr/share/applications" "$DEB/usr/share/icons/hicolor/scalable/apps"
+copy_legal_notices "$DEB/usr/share/doc/mutagen-control"
 cp -a "$APP_BUNDLE/." "$DEB/opt/mutagen-control/"
 cp "$ASSETS/mutagen-control.desktop" "$DEB/usr/share/applications/mutagen-control.desktop"
 cp "$ASSETS/mutagen-control.svg" "$DEB/usr/share/icons/hicolor/scalable/apps/mutagen-control.svg"
