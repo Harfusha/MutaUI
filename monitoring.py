@@ -22,6 +22,8 @@ METRIC_COLUMNS = (
     "processes",
     "active_sessions",
     "problem_sessions",
+    "tray_idle_seconds",
+    "cli_launches",
 )
 
 
@@ -57,6 +59,8 @@ class Sample:
     processes: int | None = None
     active_sessions: int | None = None
     problem_sessions: int | None = None
+    tray_idle_seconds: float | None = None
+    cli_launches: int | None = None
 
 
 class ForwardTrafficMeter:
@@ -111,8 +115,14 @@ class HistoryStore:
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS metrics (ts REAL PRIMARY KEY, cpu REAL, memory REAL, "
             "read_rate REAL, write_rate REAL, forward_out_rate REAL, forward_in_rate REAL, "
-            "processes INTEGER, active_sessions INTEGER, problem_sessions INTEGER)"
+            "processes INTEGER, active_sessions INTEGER, problem_sessions INTEGER, "
+            "tray_idle_seconds REAL, cli_launches INTEGER)"
         )
+        # Older local histories lack these measurements; preserve rows as unknown.
+        existing_metric_cols = {row[1] for row in self.db.execute("PRAGMA table_info(metrics)")}
+        for column, kind in (("tray_idle_seconds", "REAL"), ("cli_launches", "INTEGER")):
+            if column not in existing_metric_cols:
+                self.db.execute(f"ALTER TABLE metrics ADD COLUMN {column} {kind}")
         self.db.execute(
             "CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, "
             "ts REAL NOT NULL, severity TEXT NOT NULL, message TEXT NOT NULL)"

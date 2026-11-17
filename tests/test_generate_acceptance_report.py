@@ -205,6 +205,7 @@ def test_ci_evidence_rejects_tampered_junit_and_wrong_run(tmp_path: Path, monkey
     junit.write_text('<testsuite tests="1" failures="0" errors="0" skipped="0"/>')
     coverage.write_text('<coverage branches-covered="96" branches-valid="100"/>')
     monkeypatch.setattr("scripts.ci.evidence_manifest.verified_git_sha", lambda: "expected-commit")
+    monkeypatch.setattr("scripts.ci.evidence_manifest.working_tree_is_dirty", lambda: False)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", "expected-commit")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
@@ -229,6 +230,7 @@ def test_ci_evidence_refuses_wrong_checkout(tmp_path: Path, monkeypatch):
     junit.write_text("<testsuite tests='1'/>")
     coverage.write_text("<coverage branches-covered='96' branches-valid='100'/>")
     monkeypatch.setattr("scripts.ci.evidence_manifest.verified_git_sha", lambda: "actual")
+    monkeypatch.setattr("scripts.ci.evidence_manifest.working_tree_is_dirty", lambda: False)
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("GITHUB_SHA", "expected")
     monkeypatch.setenv("GITHUB_RUN_ID", "12345")
@@ -237,6 +239,49 @@ def test_ci_evidence_refuses_wrong_checkout(tmp_path: Path, monkeypatch):
     with pytest.raises(ValueError, match="does not match"):
         create_evidence_manifest(junit, coverage)
     assert not (tmp_path / "evidence.json").exists()
+
+
+def test_ci_evidence_refuses_dirty_checkout(tmp_path: Path, monkeypatch):
+    from scripts.ci import evidence_manifest
+
+    junit = tmp_path / "pytest.xml"
+    coverage = tmp_path / "coverage.xml"
+    junit.write_text("<testsuite tests='1'/>")
+    coverage.write_text("<coverage branches-covered='96' branches-valid='100'/>")
+    monkeypatch.setattr(evidence_manifest, "verified_git_sha", lambda: "expected")
+    monkeypatch.setattr(evidence_manifest, "working_tree_is_dirty", lambda: True, raising=False)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_SHA", "expected")
+    monkeypatch.setenv("GITHUB_RUN_ID", "12345")
+
+    import pytest
+
+    with pytest.raises(ValueError, match="dirty"):
+        evidence_manifest.create_evidence_manifest(junit, coverage)
+    assert not (tmp_path / "evidence.json").exists()
+
+
+def test_local_evidence_records_dirty_checkout(tmp_path: Path, monkeypatch):
+    import json
+
+    from scripts.ci import evidence_manifest
+
+    junit = tmp_path / "pytest.xml"
+    coverage = tmp_path / "coverage.xml"
+    junit.write_text("<testsuite tests='1'/>")
+    coverage.write_text("<coverage branches-covered='96' branches-valid='100'/>")
+    monkeypatch.setattr(evidence_manifest, "verified_git_sha", lambda: "base-commit")
+    monkeypatch.setattr(evidence_manifest, "working_tree_is_dirty", lambda: True, raising=False)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+
+    manifest_path = evidence_manifest.create_evidence_manifest(junit, coverage)
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema"] == 2
+    assert manifest["working_tree_dirty"] is True
+    assert not evidence_manifest.verify_evidence_manifest(
+        junit, coverage, expected_commit="base-commit", expected_run_id="local"
+    )
 
 
 def test_report_requires_matching_ci_evidence_even_when_xml_passes(tmp_path: Path, monkeypatch):

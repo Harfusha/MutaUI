@@ -82,12 +82,23 @@ def test_writes_metrics_and_events_then_flushes_on_close(tmp_path):
     recorder = AsyncRecorder(path, batch_size=16, flush_seconds=0.01)
     t = time.time()
     for i in range(70):
-        assert recorder.add(Sample(ts=t + i * 0.001, cpu=i, memory=i * 4096))
+        assert recorder.add(
+            Sample(
+                ts=t + i * 0.001,
+                cpu=i,
+                memory=i * 4096,
+                tray_idle_seconds=0.25 if i == 0 else None,
+                cli_launches=3 if i == 0 else None,
+            )
+        )
     assert recorder.add_event("start", "info", now=t)
     assert recorder.add_remote("host", t, {"cpu": 19.0, "agent_count": 1})
     assert recorder.close()
     store = HistoryStore(path)
     assert store.db.execute("SELECT COUNT(*) FROM metrics").fetchone()[0] == 70
+    assert store.db.execute(
+        "SELECT tray_idle_seconds, cli_launches FROM metrics ORDER BY ts LIMIT 1"
+    ).fetchone() == (0.25, 3)
     assert store.db.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
     assert store.db.execute("SELECT COUNT(*) FROM remote_metrics").fetchone()[0] == 1
     store.close()

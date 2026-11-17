@@ -74,6 +74,37 @@ def test_store_persistence_aggregate_and_export(tmp_path):
     store.close()
 
 
+def test_history_migrates_tray_and_cli_metrics_without_backfilling(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "metrics.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "CREATE TABLE metrics (ts REAL PRIMARY KEY, cpu REAL, memory REAL, "
+            "read_rate REAL, write_rate REAL, forward_out_rate REAL, forward_in_rate REAL, "
+            "processes INTEGER, active_sessions INTEGER, problem_sessions INTEGER)"
+        )
+        db.execute(
+            "INSERT INTO metrics VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (1000, 20, 100, 0, 0, 0, 0, 1, 1, 0),
+        )
+
+    store = HistoryStore(path)
+    store.add(Sample(ts=1001, tray_idle_seconds=0.75, cli_launches=2))
+    assert store.db.execute(
+        "SELECT ts, tray_idle_seconds, cli_launches FROM metrics ORDER BY ts"
+    ).fetchall() == [(1000.0, None, None), (1001.0, 0.75, 2)]
+
+    export = tmp_path / "metrics.csv"
+    store.export_csv(export, now=1002)
+    with export.open(encoding="utf-8-sig", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert rows[0]["tray_idle_seconds"] == ""
+    assert rows[0]["cli_launches"] == ""
+    assert rows[1]["tray_idle_seconds"] == "0.75"
+    assert rows[1]["cli_launches"] == "2"
+
+
 def test_settings_and_history_recover_after_process_crash(tmp_path):
     from settings import load_settings
 
@@ -93,7 +124,8 @@ store = HistoryStore(root / "metrics.sqlite3")
 store.add(Sample(ts=1000, cpu=20, memory=100, read_rate=25, processes=1, active_sessions=1))
 store.db.execute("BEGIN IMMEDIATE")
 store.db.execute(
-    "INSERT INTO metrics VALUES (?,?,?,?,?,?,?,?,?,?)",
+    "INSERT INTO metrics (ts, cpu, memory, read_rate, write_rate, forward_out_rate, "
+    "forward_in_rate, processes, active_sessions, problem_sessions) VALUES (?,?,?,?,?,?,?,?,?,?)",
     (1001, 99, 999, 0, 0, 0, 0, 1, 1, 0),
 )
 (root / "crashed").write_text("ready", encoding="ascii")

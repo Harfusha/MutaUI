@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -342,6 +343,17 @@ class MutagenClient:
         )
         self.action_planner = action_planner or ActionPlanner(now=time.monotonic)
         self.last_created_session: tuple[str, str, tuple[str, ...]] | None = None
+        self._cli_launch_lock = threading.Lock()
+        self._cli_launch_count = 0
+
+    @property
+    def cli_launch_count(self) -> int:
+        with self._cli_launch_lock:
+            return self._cli_launch_count
+
+    def _record_cli_launch(self) -> None:
+        with self._cli_launch_lock:
+            self._cli_launch_count += 1
 
     @staticmethod
     def session_preflight_fingerprint(sessions: list[dict[str, Any]]) -> str:
@@ -713,11 +725,13 @@ class MutagenClient:
                 shell=False,
             )
         except subprocess.TimeoutExpired as exc:
+            self._record_cli_launch()
             raise MutagenCommandTimeout(
                 f"Command timed out after {timeout} s. Check your connection and SSH authentication."
             ) from exc
         except OSError as exc:
             raise MutagenLaunchError(f"Failed to launch Mutagen: {exc}") from exc
+        self._record_cli_launch()
         if result.returncode:
             detail = (result.stderr or result.stdout or f"Exit code: {result.returncode}").strip()
             raise MutagenCommandError(detail[:1600])

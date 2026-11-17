@@ -6,6 +6,7 @@ import os
 import shutil
 from pathlib import Path
 
+import psutil
 import pytest
 
 from tests.support.mutagen_daemon import IsolatedMutagenDaemon
@@ -15,6 +16,16 @@ def _mutagen_binary() -> str | None:
     return (
         os.environ.get("MUTAGEN_BINARY") or shutil.which("mutagen") or shutil.which("mutagen.exe")
     )
+
+
+def _isolated_daemon_process(daemon: IsolatedMutagenDaemon) -> psutil.Process:
+    matches = []
+    for process in psutil.process_iter(["pid", "environ"]):
+        environment = process.info.get("environ") or {}
+        if environment.get("MUTAGEN_DATA_DIRECTORY") == str(daemon.data_dir):
+            matches.append(process)
+    assert len(matches) == 1
+    return matches[0]
 
 
 @pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
@@ -64,6 +75,22 @@ def test_isolated_daemon_recovers_after_external_stop(tmp_path: Path) -> None:
         assert isinstance(daemon.client.list_sessions("sync"), list)
 
     assert daemon.phase == "stopped"
+
+
+@pytest.mark.skipif(not _mutagen_binary(), reason="Mutagen CLI is not installed")
+def test_isolated_daemon_recovers_after_process_crash(tmp_path: Path) -> None:
+    binary = _mutagen_binary()
+    assert binary is not None
+    daemon = IsolatedMutagenDaemon(binary, tmp_path / "process-crash-recovery")
+
+    with daemon:
+        crashed_process = _isolated_daemon_process(daemon)
+        crashed_process.kill()
+        crashed_process.wait(timeout=daemon.stop_timeout)
+
+        daemon.start()
+        assert daemon.phase == "ready"
+        assert isinstance(daemon.client.list_sessions("sync"), list)
 
 
 def test_isolated_daemon_timeout_records_diagnostics(

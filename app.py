@@ -64,7 +64,6 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QDesktopServices,
-    QGuiApplication,
     QHideEvent,
     QIcon,
     QKeySequence,
@@ -224,15 +223,14 @@ from mutaui.ui.performance_tuning import (
 )
 from mutaui.ui.portable_import_preview import PortableImportPreviewDialog
 from mutaui.ui.preferences import (
-    ADVANCED_ROUTE_IDS,
+    ADVANCED_ROUTE_IDS,  # noqa: F401 -- retained as app module compatibility export
     active_language,
-    resolve_theme,
     set_active_language,
-    theme_stylesheet,
     translate,
     translate_route,
     translate_text,
 )
+from mutaui.ui.preferences_controller import PreferencesController
 from mutaui.ui.project_viewer import NativeProjectManagerDialog
 from mutaui.ui.session_alerts import check_alerts as check_session_alerts
 from mutaui.ui.session_configuration_table import fill_session_configuration_table
@@ -723,6 +721,7 @@ class SupportBundleDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, demo: bool = False, *, history_path: str | Path | None = None) -> None:
         super().__init__()
+        self.preferences_controller = PreferencesController(self, stylesheet=CSS)
         self.demo = demo
         self.settings_load = load_settings(settings_path())
         self.conf = self.settings_load.values
@@ -824,6 +823,10 @@ class MainWindow(QMainWindow):
         self._table_signatures: dict[str, Any] = {}
         self._tail_render_pending = False
         self._eco_hidden = False
+        self._tray_idle_mode = False
+        self._tray_idle_started_at: float | None = None
+        self._tray_idle_seconds_pending = 0.0
+        self._last_recorded_cli_launch_count = 0
         # Mode stays in memory only; changing it never writes settings or Mutagen data.
         self.ui_mode = "basic"
         self.ui_language = self.conf.get("language", "en")
@@ -894,10 +897,28 @@ class MainWindow(QMainWindow):
 
     def update_polling_mode(self) -> None:
         self._eco_hidden = not self.isVisible() or self.isMinimized()
+        tray_idle = self._eco_hidden and bool(self.conf.get("eco_tray", True))
+        now = time.monotonic()
+        if tray_idle != self._tray_idle_mode:
+            if self._tray_idle_mode and self._tray_idle_started_at is not None:
+                self._tray_idle_seconds_pending += max(0.0, now - self._tray_idle_started_at)
+            self._tray_idle_started_at = now if tray_idle else None
+            self._tray_idle_mode = tray_idle
         if hasattr(self, "metric_timer"):
             self.metric_timer.setInterval(self.metric_period_ms())
         if hasattr(self, "timer"):
             self.timer.setInterval(self.poll_period_ms())
+
+    def tray_idle_seconds(self) -> float:
+        now = time.monotonic()
+        elapsed = self._tray_idle_seconds_pending
+        if self._tray_idle_mode and self._tray_idle_started_at is not None:
+            elapsed += max(0.0, now - self._tray_idle_started_at)
+        return round(elapsed, 3)
+
+    def commit_tray_idle_sample(self) -> None:
+        self._tray_idle_seconds_pending = 0.0
+        self._tray_idle_started_at = time.monotonic() if self._tray_idle_mode else None
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -1182,147 +1203,13 @@ class MainWindow(QMainWindow):
             self.conf["check_updates_on_startup"] = previous_update_preference
 
     def set_ui_mode(self, mode: str) -> None:
-        self.ui_mode = mode if mode in {"basic", "advanced"} else "basic"
-        advanced = self.ui_mode == "advanced"
-        visible_sections: set[str] = set()
-        section_route: str | None = None
-        for route, nav_button in zip(PAGE_ROUTES, self.nav, strict=True):
-            if route.section:
-                section_route = route.route_id
-            route_visible = advanced or route.route_id not in ADVANCED_ROUTE_IDS
-            nav_button.setVisible(route_visible)
-            if section_route is not None and route_visible:
-                visible_sections.add(section_route)
-        for route_id, section_label in self.nav_section_labels.items():
-            section_label.setVisible(route_id in visible_sections)
-        if (
-            not advanced
-            and hasattr(self, "pages")
-            and PAGE_ROUTES[self.pages.currentIndex()].route_id in ADVANCED_ROUTE_IDS
-        ):
-            self.set_page(0)
+        self.preferences_controller.set_ui_mode(mode)
 
     def apply_theme(self, theme: str) -> None:
-        try:
-            system_is_light = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Light
-        except (AttributeError, RuntimeError):
-            system_is_light = False
-        resolved = resolve_theme(theme, system_is_light=system_is_light)
-        self.setStyleSheet(theme_stylesheet(CSS, resolved))
+        self.preferences_controller.apply_theme(theme)
 
     def apply_ui_language(self, language: str) -> None:
-        self.ui_language = set_active_language(language)
-        for health_ring in self.findChildren(HealthRing):
-            health_ring.set_ui_language(self.ui_language)
-        for widget in (self, *self.findChildren(QWidget)):
-            source_tooltip = widget.property("mutauiSourceTooltip")
-            if isinstance(source_tooltip, str):
-                czech_tooltip = widget.property("mutauiCzechTooltip")
-                widget.setToolTip(czech_tooltip if self.ui_language == "cs" else source_tooltip)
-            source_placeholder = widget.property("mutauiSourcePlaceholder")
-            if isinstance(source_placeholder, str):
-                czech_placeholder = widget.property("mutauiCzechPlaceholder")
-                widget.setPlaceholderText(
-                    czech_placeholder if self.ui_language == "cs" else source_placeholder
-                )
-            source_title = widget.property("mutauiSourceTitle")
-            if isinstance(source_title, str):
-                czech_title = widget.property("mutauiCzechTitle")
-                localized_title = czech_title if self.ui_language == "cs" else source_title
-                if widget.property("mutauiTitleKind") == "page":
-                    widget.setTitle(localized_title)
-                else:
-                    widget.setWindowTitle(localized_title)
-            source_accessible_name = widget.property("mutauiSourceAccessibleName")
-            if isinstance(source_accessible_name, str):
-                czech_accessible_name = widget.property("mutauiCzechAccessibleName")
-                widget.setAccessibleName(
-                    czech_accessible_name if self.ui_language == "cs" else source_accessible_name
-                )
-        for widget in (
-            *self.findChildren(QWidget),
-            *self.findChildren(QAction),
-        ):
-            source_text = widget.property("mutauiSourceText")
-            if isinstance(source_text, str):
-                czech_text = widget.property("mutauiCzechText")
-                localized = czech_text if self.ui_language == "cs" else source_text
-                widget.setText(
-                    localized
-                    if isinstance(localized, str)
-                    else translate_text(source_text, self.ui_language)
-                )
-        for combo in self.findChildren(QComboBox):
-            for index in range(combo.count()):
-                source_item = combo.itemData(index, _LOCALIZED_ITEM_ROLE)
-                if isinstance(source_item, str):
-                    combo.setItemText(index, translate_text(source_item, self.ui_language))
-        for table in self.findChildren(QTableWidget):
-            for column in range(table.columnCount()):
-                header_item = table.horizontalHeaderItem(column)
-                if header_item is None:
-                    continue
-                source_header = header_item.data(_LOCALIZED_ITEM_ROLE)
-                if isinstance(source_header, str):
-                    header_item.setText(translate_text(source_header, self.ui_language))
-        for table in self.findChildren(QTableView):
-            model = table.model()
-            if isinstance(model, SessionTableModel):
-                model.set_ui_language(self.ui_language)
-        for index, route in enumerate(PAGE_ROUTES):
-            title = translate_route(route.route_id, "title", self.ui_language, route.title)
-            tooltip = translate_route(route.route_id, "tooltip", self.ui_language, route.tooltip)
-            self.nav[index].setText(f"{route.glyph}    {title}")
-            self.nav[index].setToolTip(tooltip)
-            section_label = self.nav_section_labels.get(route.route_id)
-            if section_label is not None and route.section:
-                section_label.setText(translate_text(route.section, self.ui_language))
-        current_route = PAGE_ROUTES[self.pages.currentIndex()]
-        self.page_name.setText(
-            translate_route(current_route.route_id, "title", self.ui_language, current_route.title)
-        )
-        self.page_caption.setText(
-            translate_route(
-                current_route.route_id,
-                "caption",
-                self.ui_language,
-                current_route.caption,
-            )
-        )
-        if hasattr(self, "last_metrics"):
-            metrics = self.last_metrics
-            self.gui_usage_label.setText(
-                f"{translate_text('Application load', self.ui_language)}: CPU "
-                f"{metrics.get('gui_cpu', 0):.1f} %  ·  "
-                f"RAM {human_bytes(metrics.get('gui_memory', 0))}  ·  "
-                f"{translate_text('measured for the UI process, not Mutagen', self.ui_language)}"
-            )
-        if hasattr(self, "_last_monitor_stats") and self._stats_cache_range is not None:
-            self.apply_statistics(self._last_monitor_stats, self._stats_cache_range)
-        if hasattr(self, "monitor_labels") and hasattr(self, "last_metrics"):
-            self.monitor_labels["traffic"].setText(
-                f"{translate_text('outbound', self.ui_language)} "
-                f"{human_bytes(self.traffic_rates[0])}/s · "
-                f"{translate_text('inbound', self.ui_language)} "
-                f"{human_bytes(self.traffic_rates[1])}/s"
-            )
-            active, problems = self.session_counts
-            self.monitor_labels["sessions"].setText(
-                f"{active} {translate_text('active', self.ui_language)} · "
-                f"{problems} {translate_text('issues', self.ui_language)}"
-            )
-        if hasattr(self, "mode_selector"):
-            for index, mode in enumerate(("basic", "advanced")):
-                self.mode_selector.setItemText(index, translate(f"mode.{mode}", self.ui_language))
-        if hasattr(self, "theme_input"):
-            labels = ("system", "light", "dark")
-            for index, theme in enumerate(labels):
-                self.theme_input.setItemText(
-                    index, translate(f"appearance.{theme}", self.ui_language)
-                )
-            self.language_input.setItemText(0, translate("appearance.english", self.ui_language))
-            self.language_input.setItemText(1, translate("appearance.czech", self.ui_language))
-        self.update_endpoint_sessions(self.snapshot)
+        self.preferences_controller.apply_ui_language(language)
 
     def create_ui(self) -> None:
         root = QWidget()
@@ -3277,6 +3164,7 @@ class MainWindow(QMainWindow):
             self.traffic_rates if self.demo or self._traffic_sample_pending else (None, None)
         )
         self._traffic_sample_pending = False
+        cli_launch_count = self.client.cli_launch_count
         sample = Sample(
             ts=time.time(),
             cpu=cpu,
@@ -3288,17 +3176,25 @@ class MainWindow(QMainWindow):
             processes=count,
             active_sessions=active,
             problem_sessions=problems,
+            tray_idle_seconds=self.tray_idle_seconds(),
+            cli_launches=max(0, cli_launch_count - self._last_recorded_cli_launch_count),
         )
+        recorded = False
         if self.recorder is not None:
-            if not self.recorder.add(sample):
+            recorded = self.recorder.add(sample)
+            if not recorded:
                 set_localized_tooltip(self.footer, "History writer is no longer available")
             elif self.recorder.last_error:
                 self.footer.setToolTip("History: " + self.recorder.last_error)
         else:
             try:
                 self.history.add(sample)
+                recorded = True
             except sqlite3.Error as exc:
                 self.footer.setToolTip(str(exc))
+        if recorded:
+            self._last_recorded_cli_launch_count = cli_launch_count
+            self.commit_tray_idle_sample()
         self.cpu_value.setText(f"{cpu:.1f} %")
         self.mem_value.setText(human_bytes(ram))
         if hasattr(self, "monitor_labels"):

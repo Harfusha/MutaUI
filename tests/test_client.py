@@ -163,6 +163,7 @@ def test_exec_without_shell_and_readonly_env(monkeypatch, tmp_path):
     monkeypatch.setattr(mutagen_client.subprocess, "run", fake_run)
     client = MutagenClient(str(exe))
     assert client.list_sessions("sync") == []
+    assert client.cli_launch_count == 1
     cmd, kwargs = captured[0]
     assert cmd[0] == str(exe)
     assert cmd[1:] == ["sync", "list", "--template", "{{ json . }}"]
@@ -642,6 +643,7 @@ def test_command_translates_timeout_and_launch_errors(tmp_path, monkeypatch):
     )
     with pytest.raises(MutagenCommandTimeout, match="timed out after 35 s"):
         client.command(["version"])
+    assert client.cli_launch_count == 1
 
     monkeypatch.setattr(
         mutagen_client.subprocess,
@@ -650,6 +652,7 @@ def test_command_translates_timeout_and_launch_errors(tmp_path, monkeypatch):
     )
     with pytest.raises(MutagenLaunchError, match="launch failed"):
         client.command(["version"])
+    assert client.cli_launch_count == 1
 
 
 def test_command_timeout_terminates_real_child_process(tmp_path):

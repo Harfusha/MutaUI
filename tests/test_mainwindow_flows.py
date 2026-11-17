@@ -932,6 +932,10 @@ def test_apply_resource_metrics_updates_history_status_and_snapshot(
         session_counts=(2, 1),
         traffic_rates=(0, 0),
         _traffic_sample_pending=False,
+        client=SimpleNamespace(cli_launch_count=0),
+        _last_recorded_cli_launch_count=0,
+        tray_idle_seconds=lambda: 0.0,
+        commit_tray_idle_sample=lambda: None,
         cpu_value=Label(),
         mem_value=Label(),
         history=history,
@@ -989,6 +993,10 @@ def test_apply_resource_metrics_shows_alerts_only_when_enabled_and_tray_visible(
         session_counts=(0, 0),
         traffic_rates=(0, 0),
         _traffic_sample_pending=False,
+        client=SimpleNamespace(cli_launch_count=0),
+        _last_recorded_cli_launch_count=0,
+        tray_idle_seconds=lambda: 0.0,
+        commit_tray_idle_sample=lambda: None,
         cpu_value=label,
         mem_value=label,
         history=SimpleNamespace(add=lambda _sample: None),
@@ -3806,8 +3814,7 @@ def test_apply_snapshot_marks_offline_and_partial_sessions_without_dropping_know
 
 def test_apply_snapshot_refreshes_version_cache_on_expiry(window, monkeypatch):
     window.demo = False
-    now = iter((1000.0, 1000.0, 1000.0))
-    monkeypatch.setattr(app_module.time, "monotonic", lambda: next(now))
+    monkeypatch.setattr(app_module.time, "monotonic", lambda: 1000.0)
     window._version_cache = ("0.17.0", 100.0, window.snapshot.binary)
     snapshot = app_module.Snapshot(
         binary=window.snapshot.binary,

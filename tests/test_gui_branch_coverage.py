@@ -286,6 +286,9 @@ def test_history_clear_respects_optional_recorder() -> None:
 def test_polling_update_handles_optional_timers() -> None:
     intervals: list[int] = []
     window = SimpleNamespace(
+        _tray_idle_mode=False,
+        _tray_idle_started_at=None,
+        _tray_idle_seconds_pending=0.0,
         isVisible=lambda: True,
         isMinimized=lambda: False,
         metric_period_ms=lambda: 2500,

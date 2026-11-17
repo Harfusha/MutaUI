@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def file_sha256(path: Path) -> str:
@@ -38,19 +38,37 @@ def verified_git_sha() -> str:
     ).strip()
 
 
+def working_tree_is_dirty() -> bool:
+    git_binary = shutil.which("git")
+    if not git_binary:
+        raise FileNotFoundError("Git executable required for verified provenance")
+    return bool(
+        subprocess.check_output(
+            [git_binary, "status", "--porcelain", "--untracked-files=all"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        ).strip()
+    )
+
+
 def create_evidence_manifest(junit_path: Path, coverage_path: Path) -> Path:
     """Create an atomic manifest only for existing, newly validated artifacts."""
     commit = verified_git_sha()
+    dirty = working_tree_is_dirty()
     if os.environ.get("GITHUB_ACTIONS") == "true":
         expected = os.environ.get("GITHUB_SHA")
         if not expected or commit != expected:
             raise ValueError("CI checkout does not match GITHUB_SHA")
+        if dirty:
+            raise ValueError("CI checkout is dirty")
         if not os.environ.get("GITHUB_RUN_ID"):
             raise ValueError("CI run ID is required for evidence provenance")
     manifest_path = junit_path.parent / "evidence.json"
     manifest: dict[str, Any] = {
         "schema": SCHEMA_VERSION,
         "commit": commit,
+        "working_tree_dirty": dirty,
         "ci_run_id": os.environ.get("GITHUB_RUN_ID", "local"),
         "junit_sha256": file_sha256(junit_path),
         "coverage_sha256": file_sha256(coverage_path),
@@ -82,6 +100,7 @@ def verify_evidence_manifest(
             isinstance(data, dict)
             and data.get("schema") == SCHEMA_VERSION
             and data.get("commit") == expected_commit
+            and data.get("working_tree_dirty") is False
             and data.get("ci_run_id") == expected_run_id
             and data.get("junit_sha256") == file_sha256(junit_path)
             and data.get("coverage_sha256") == file_sha256(coverage_path)
