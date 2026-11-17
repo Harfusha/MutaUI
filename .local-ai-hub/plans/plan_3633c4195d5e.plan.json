@@ -1,0 +1,173 @@
+{
+  "default_target_ref": "refs/heads/master",
+  "description": "MutaUI HANDOFF V5 remains active on master. Run #90 passed all five jobs on exact SHA 7965d752f38cf752c0d0615e56a9f4bcfe7e059f; run #91 passed on 664cdbd8f36eeaaf9977c9237f71ec537b9270d5; run #92 passed on 64b3bec347659910ee1f91f748afa8e01e80e1b4. Commit 8b111993818fd9abb0ac6cdb6ae715c746eef6b1 clarifies current LGPL and release blockers; docs-only run #93 (ID 44133561389) is queued on its exact SHA. Focused tests (4), lock/static checks and Markdown lint passed. MIT is selected, but LGPL legal approval and all signing/notary secrets are still absent; secure prompt was skipped. Native platform acceptance, physical accessibility/hardware, live network/hooks and soak remain open. Both work branches have zero commits ahead of master. Keep lifecycle active and continue on C:\\Ostatní\\MutagenApp master.",
+  "id": "plan_3633c4195d5e",
+  "lifecycle": "active",
+  "schema_version": 1,
+  "spec_refs": [],
+  "tasks": {
+    "task_branch_integration": {
+      "acceptance_criteria": [
+        "Every change in every worktree is reviewed and committed without loss.",
+        "Each relevant branch is pushed to its matching remote.",
+        "All intended branches are integrated into master; conflicts or duplicate commits are resolved or documented.",
+        "Worktrees are clean after integration and removed only then.",
+        "Final branch, remote, and worktree state is verified."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Inspect all local branches and worktrees, commit and push changes, integrate branches into master, and remove worktrees only after clean verification.",
+      "kind": "code",
+      "next_action": "Inventory all Git branches and worktrees; compare local and remote commits and inspect dirty/untracked files.",
+      "title": "Commit, push and integrate every branch/worktree",
+      "work_status": "in_progress"
+    },
+    "task_f3_audit_checkpoint": {
+      "acceptance_criteria": [
+        "Checkpoint zachovává historický baseline ae4b1b3b41965e3a4e0a28092de00126ff497add a run #87.",
+        "Checkpoint uvádí run #88 na 4648a2e80f9fb4dab18b08bc960b7b185bf816e7, run #89 na 6ce5324f436dd045fdecb2e2df55332a717df004, run #90 na 7965d752f38cf752c0d0615e56a9f4bcfe7e059f a run #91 na 664cdbd8f36eeaaf9977c9237f71ec537b9270d5; všechny exact-SHA checks prošly pěti joby.",
+        "Otevřené F3 acceptance gates zůstávají označeny otevřené bez receipt."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Aktualizovat F3 audit checkpoint podle aktuálního masteru a exact-SHA CI evidence.",
+      "kind": "code",
+      "next_action": "Ověřit exact-SHA CI run #93 (ID 44133561389) na 8b111993818fd9abb0ac6cdb6ae715c746eef6b1; potom uzavřít dokumentační checkpoint.",
+      "title": "Opravit zastaralý auditní checkpoint",
+      "work_status": "in_progress"
+    },
+    "task_f3_linux_acceptance": {
+      "acceptance_criteria": [
+        "AppImage a deb clean install/run/uninstall; user files retain/remove behavior správný.",
+        "File-manager integration passes na Ubuntu a target Fedora."
+      ],
+      "blocker": "Native Ubuntu/Fedora installed-user sessions required.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Ověřit clean GUI AppImage/deb install/run/uninstall, retained files a file-manager integration na Ubuntu a target Fedora.",
+      "kind": "code",
+      "next_action": "Spustit clean installed-user walkthrough na target Ubuntu/Fedora versions.",
+      "title": "Linux installed GUI acceptance",
+      "work_status": "blocked"
+    },
+    "task_f3_macos_acceptance": {
+      "acceptance_criteria": [
+        "macOS app a DMG signatures validní; notarization accepted.",
+        "Gatekeeper launch passes na Intel i ARM."
+      ],
+      "blocker": "Apple Developer ID/notary secrets a native Intel/ARM verification required.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Podepsat app/DMG, získat notary acceptance a ověřit Gatekeeper launch na Intel a ARM.",
+      "kind": "code",
+      "next_action": "Po Apple credentials spustit exact release candidate na Intel/ARM.",
+      "title": "macOS signing, notarization and Gatekeeper",
+      "work_status": "blocked"
+    },
+    "task_f3_network_hooks": {
+      "acceptance_criteria": [
+        "Cross-platform live latency/fault matrix passes.",
+        "Installed-user project hook validates consent and rejects unsafe/unapproved behavior."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Získat live network fault/latency důkazy a potvrdit installed-user project-hook consent.",
+      "kind": "code",
+      "next_action": "Po potvrzení runner/device availability spustit target OS matrix a uchovat candidate-bound receipts.",
+      "title": "Live network faults and installed hook acceptance",
+      "work_status": "ready"
+    },
+    "task_f3_node24_actions": {
+      "acceptance_criteria": [
+        "checkout v7.0.1, setup-python v7.1.0, upload-artifact v7.0.2, download-artifact v8.0.2 nebo kompatibilní Node 24 refs jsou použity.",
+        "Upload/download workflow kompatibilita a release attestation zachována.",
+        "Přesný hosted CI SHA projde bez Node 20 deprecation warnings."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Odstranit GitHub Actions Node 20 warnings v ci.yml/release.yml pomocí ověřených kompatibilních verzí.",
+      "kind": "code",
+      "next_action": "Run #88 passed all five jobs on exact SHA 4648a2e80f9fb4dab18b08bc960b7b185bf816e7 with no Node.js 20 deprecation warnings; run #89 passed all five jobs on exact documentation SHA 6ce5324f436dd045fdecb2e2df55332a717df004.",
+      "title": "Aktualizovat Actions na Node 24",
+      "work_status": "completed"
+    },
+    "task_f3_owner_license_secrets": {
+      "acceptance_criteria": [
+        "Owner určí exact SPDX; LICENSE a Qt LGPL redistribution/notice obligations jsou ověřeny.",
+        "Windows a Apple signing/notary secret names existují v GitHub repository secrets; hodnoty nejsou v chatu, repu ani logu."
+      ],
+      "blocker": "Chrome ověřil, že Harfusha/MutaUI nemá repository ani environment secrets. Bezpečný formulář pro osm skutečných hodnot byl přeskočen; žádné secret hodnoty nebyly získány. Qt/PySide/Paramiko LGPL distribuce, relinking a source delivery stále čekají na právní review.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Získat owner-approved SPDX volbu, LICENSE/Qt LGPL review a ověřit osm GitHub Actions secret names bez čtení hodnot.",
+      "kind": "code",
+      "next_action": "Owner vloží osm signing/notary repository secrets přímo do GitHub Actions settings a dokončí LGPL distribution review; znovu ověřit jen názvy, nikdy hodnoty.",
+      "title": "Owner license and GitHub signing prerequisites",
+      "work_status": "blocked"
+    },
+    "task_f3_physical_acceptance": {
+      "acceptance_criteria": [
+        "DPI 100/125/150/200, themes, EN/CS, screen readers a keyboard-only verified na required OS.",
+        "Reference CPU/RSS, tray idle a CLI launch metrics mají candidate-bound runtime receipt.",
+        "8-hour soak bez unexplained crash, orphan process nebo data loss."
+      ],
+      "blocker": "Fyzická zařízení/displays/screen readers a 8-hour runtime required.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Uzavřít DPI/accessibility matrix, reference-hardware metrics a 8-hour runtime soak.",
+      "kind": "code",
+      "next_action": "Na target OS zařízeních projít DPI, themes, EN/CS, screen readers a keyboard-only; zaznamenat metrics/soak.",
+      "title": "Physical GUI, accessibility, hardware and soak",
+      "work_status": "blocked"
+    },
+    "task_f3_release_acceptance": {
+      "acceptance_criteria": [
+        "Nový tag matches app version and pyproject; exact-tag workflow passes security, platform tests, package smoke, checksums, SBOMs, attestations and signing/notarization.",
+        "Published assets verified against provenance, signatures/checksums and release metadata.",
+        "Plan closed only after every criterion has authentic current evidence."
+      ],
+      "blocker": "Owner license, signing credentials, native platform acceptance, and next release version/tag approval remain open.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Spustit jednu release tag verzi přes všechny gate checks a ověřit publikované assety.",
+      "kind": "code",
+      "next_action": "Až všechny upstream gates projdou, schválit novou verzi/tag, spustit workflow a ověřit assets/signatures/checksums.",
+      "title": "Exact-tag signed release",
+      "work_status": "blocked"
+    },
+    "task_f3_repo_scope": {
+      "acceptance_criteria": [
+        "Každá repo-level F3-013—024 má fresh source/test evidence na master SHA.",
+        "Žádná zjištěná repo-level vada nezůstává; targeted tests/statics a exact-SHA CI pass.",
+        "F3-018 live and F3-019—024 physical proof zůstávají samostatnými owner/runtime tasks."
+      ],
+      "blocker": null,
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Prověřit implementaci a testy proti přesnému Handoff V5; opravit jen doložené vady.",
+      "kind": "code",
+      "next_action": "Použít indexed current source/impact; ověřit každou repo-level F3 položku proti current master evidence.",
+      "title": "Dovést repo-level F3-013—024 audit",
+      "work_status": "in_progress"
+    },
+    "task_f3_windows_acceptance": {
+      "acceptance_criteria": [
+        "App i installer mají validní Authenticode a správnou publisher identity.",
+        "Fresh install, upgrade, data/migration retention a rollback procházejí na native Windows."
+      ],
+      "blocker": "Windows signing certificate secrets a native Windows install/upgrade session required.",
+      "clarifications": [],
+      "depends_on": [],
+      "description": "Ověřit Authenticode, clean install a upgrade z předchozí stabilní verze včetně dat, migrací a rollbacku.",
+      "kind": "code",
+      "next_action": "Po owner secrets spustit na native Windows a zachovat podpisový i runtime receipt.",
+      "title": "Signed Windows install and upgrade acceptance",
+      "work_status": "blocked"
+    }
+  },
+  "title": "MutaUI F3 — HANDOFF V5 completion and release acceptance"
+}
