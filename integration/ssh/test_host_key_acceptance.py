@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import getpass
+import hashlib
+import json
 import shutil
 import socket
 import subprocess
@@ -13,6 +15,11 @@ from pathlib import Path
 import pytest
 
 import ssh_profiles
+from mutaui.services.remote_inspector import (
+    ParamikoRemoteInspector,
+    RemoteInspectionError,
+    RemoteInspectionRequest,
+)
 from ssh_profiles import test_ssh_connection as check_ssh_connection
 
 
@@ -53,6 +60,7 @@ class OpenSSHFixture:
                     "AllowTcpForwarding no",
                     "AllowAgentForwarding no",
                     "X11Forwarding no",
+                    "Subsystem sftp internal-sftp",
                     "UsePAM no",
                     "UseDNS no",
                     "StrictModes no",
@@ -225,3 +233,49 @@ def test_real_ssh_recovers_after_server_network_flap(openssh_server: OpenSSHFixt
     reconnected = check_ssh_connection(server.client_alias)
     assert reconnected.success
     assert not reconnected.host_key_error
+
+
+@pytest.mark.parametrize(
+    ("pinned_key", "expected_phase"),
+    (("host_key_a", "completed"), ("wrong_host_key", "failed")),
+)
+def test_real_sftp_inspection_enforces_host_key_and_audits_read(
+    openssh_server: OpenSSHFixture,
+    tmp_path: Path,
+    pinned_key: str,
+    expected_phase: str,
+) -> None:
+    server = openssh_server
+    server.pin(getattr(server, pinned_key))
+    remote_root = tmp_path / "remote-endpoint"
+    remote_root.mkdir()
+    payload = b"conflict copy owned by this test\n"
+    (remote_root / "conflict.txt").write_bytes(payload)
+    audit_path = tmp_path / "remote-inspection.jsonl"
+    request = RemoteInspectionRequest(
+        hostname="127.0.0.1",
+        username=getpass.getuser(),
+        endpoint_root=remote_root.as_posix(),
+        relative_path="conflict.txt",
+        known_hosts_path=server.known_hosts_path,
+        private_key_path=tmp_path / "client",
+        port=server.port,
+        max_bytes=1024,
+        audit_path=audit_path,
+    )
+
+    inspector = ParamikoRemoteInspector()
+    if expected_phase == "completed":
+        with inspector.inspect(request, consent=True) as artifact:
+            assert artifact.remote_path == f"{remote_root.as_posix()}/conflict.txt"
+            assert artifact.local_path.read_bytes() == payload
+            assert artifact.size_bytes == len(payload)
+            assert artifact.sha256 == hashlib.sha256(payload).hexdigest()
+    else:
+        with pytest.raises(RemoteInspectionError):
+            inspector.inspect(request, consent=True)
+
+    records = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines()]
+    assert [record["phase"] for record in records] == ["prepared", expected_phase]
+    assert "username" not in records[-1]
+    assert "remote_path" not in records[-1]

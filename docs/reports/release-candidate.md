@@ -1,5 +1,7 @@
 # Release candidate audit — 2026-11-14
 
+> **Historical snapshot — superseded for current release status.** This decision applies only to the 2026-11-14 candidate and local evidence. It is not release authorization or current candidate status. Use [the 2026-11-17 remaining-work handoff](../audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e`. Keep this report as historical evidence.
+
 **Decision: CANDIDATE VERIFIED LOCALLY. NOT RELEASED TO PRODUCTION PENDING EXTERNAL HOSTED SECRETS AND SIGNING.**
 
 This report records all local verification evidence, rebuilt distribution artifacts, and remaining external gates. It does not authorize public distribution without explicit user credentials and license selection.

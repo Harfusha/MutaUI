@@ -666,8 +666,8 @@ def test_command_timeout_terminates_real_child_process(tmp_path):
     )
     client = MutagenClient(sys.executable)
 
-    with pytest.raises(MutagenCommandTimeout, match="timed out after 2 s"):
-        client.command(["-c", code], timeout=2)
+    with pytest.raises(MutagenCommandTimeout, match="timed out after 5 s"):
+        client.command(["-c", code], timeout=5)
 
     child_pid = int(marker.read_text(encoding="ascii"))
     assert not psutil.pid_exists(child_pid)

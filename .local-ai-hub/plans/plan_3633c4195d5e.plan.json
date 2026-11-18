@@ -1,6 +1,6 @@
 {
   "default_target_ref": "refs/heads/master",
-  "description": "MutaUI HANDOFF V5 remains active on master. Run #90 passed all five jobs on exact SHA 7965d752f38cf752c0d0615e56a9f4bcfe7e059f; run #91 passed on 664cdbd8f36eeaaf9977c9237f71ec537b9270d5; run #92 passed on 64b3bec347659910ee1f91f748afa8e01e80e1b4. Commit 8b111993818fd9abb0ac6cdb6ae715c746eef6b1 clarifies current LGPL and release blockers; docs-only run #93 (ID 44133561389) is queued on its exact SHA. Focused tests (4), lock/static checks and Markdown lint passed. MIT is selected, but LGPL legal approval and all signing/notary secrets are still absent; secure prompt was skipped. Native platform acceptance, physical accessibility/hardware, live network/hooks and soak remain open. Both work branches have zero commits ahead of master. Keep lifecycle active and continue on C:\\Ostatní\\MutagenApp master.",
+  "description": "Kanonický aktivní plán. Revize 2 zahrnuje F3_REMAINING_WORK_2026-11-17.md, F3_AGENT_REMAINING.md, roadmap, implementation-inventory, acceptance-traceability (AC-001–040, E01–22, PR-001–041, G0–G4), authoritative integration specs, security and release audits. Aktuální F3 handoff převažuje nad starší snapshots; všechny historické otevřené důkazy musí být přiděleny do existujících gates. Před změnami ověřit local/remote HEAD a run #93 attempt 2. Rozšířené external gates: Mutagen version matrix; macOS/Linux live daemon faults and forwards; SSH/SFTP host-key, reconnect, symlink and multi-endpoint latency; independent Support Bundle privacy review; Session Doctor real incident comparison; reference SSD/performance, multi-user usability, macOS sleep/wake, Linux desktop outside Ubuntu. Owner/legal LGPL and eight named signing secrets; physical OS/install/accessibility/soak; exact-tag release last. Destructive live conflict tests stay disabled. Node 24 and verified completed remediation stay closed. No release without exact current receipts.",
   "id": "plan_3633c4195d5e",
   "lifecycle": "active",
   "schema_version": 1,
@@ -8,77 +8,85 @@
   "tasks": {
     "task_branch_integration": {
       "acceptance_criteria": [
-        "Every change in every worktree is reviewed and committed without loss.",
-        "Each relevant branch is pushed to its matching remote.",
-        "All intended branches are integrated into master; conflicts or duplicate commits are resolved or documented.",
-        "Worktrees are clean after integration and removed only then.",
-        "Final branch, remote, and worktree state is verified."
+        "Every branch/worktree difference and dirty/untracked file is documented and preserved.",
+        "Only actual branch-only commits are integrated/pushed; no duplicate/no-op merge.",
+        "Worktrees removed only after clean verified integration; local Hub plan artifacts are preserved.",
+        "Final local/remote branch state is verified."
       ],
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
-      "description": "Inspect all local branches and worktrees, commit and push changes, integrate branches into master, and remove worktrees only after clean verification.",
+      "description": "Verify current master/origin and branches before deciding if integration work exists; preserve the local Hub plan artifacts. Do not repeat commits already contained in master.",
       "kind": "code",
-      "next_action": "Inventory all Git branches and worktrees; compare local and remote commits and inspect dirty/untracked files.",
-      "title": "Commit, push and integrate every branch/worktree",
-      "work_status": "in_progress"
+      "next_action": "Verified current main/master at 01b6ccb19ddba1dd4ab7e0e2887d920d91334afb, matching GitHub master commit 01b6ccb. GitHub compare shows audit/f3-hardening-2026-11-15 and fix/ci-platform-tests-notarization-20261115 fully contained in master with no branch-only diff. `git worktree list --porcelain` shows only C:\\Ostatní\\MutagenApp; previously referenced audit worktree path is absent. Hub git_status preserves 13 modified, unstaged paths; none staged/untracked and no conflicts. No integration or cleanup action is needed.",
+      "title": "Reconcile branches and worktrees without losing changes",
+      "work_status": "completed"
     },
     "task_f3_audit_checkpoint": {
       "acceptance_criteria": [
-        "Checkpoint zachovává historický baseline ae4b1b3b41965e3a4e0a28092de00126ff497add a run #87.",
-        "Checkpoint uvádí run #88 na 4648a2e80f9fb4dab18b08bc960b7b185bf816e7, run #89 na 6ce5324f436dd045fdecb2e2df55332a717df004, run #90 na 7965d752f38cf752c0d0615e56a9f4bcfe7e059f a run #91 na 664cdbd8f36eeaaf9977c9237f71ec537b9270d5; všechny exact-SHA checks prošly pěti joby.",
-        "Otevřené F3 acceptance gates zůstávají označeny otevřené bez receipt."
+        "Current local/master/origin SHAs, dirty state, branches and worktrees reconciled.",
+        "Run #93 attempt 2 terminal outcome verified on exact SHA; classify attempt-1 hdiutil failure from attempt-2 log.",
+        "Historical runs #87–92 retained as history, never substituted for current candidate receipts.",
+        "Outdated report, traceability, inventory, roadmap, review-plan and composite F3 audit files identify historical/superseded scope and link to current status.",
+        "Older continuation snapshots, including future-dated 2026-11-18 entry, are not treated as current evidence."
       ],
       "blocker": null,
       "clarifications": [],
       "depends_on": [],
-      "description": "Aktualizovat F3 audit checkpoint podle aktuálního masteru a exact-SHA CI evidence.",
+      "description": "Refresh F3 checkpoint only from current source, GitHub run attempt, exact SHA and owner gate evidence. Mark stale release/acceptance snapshots and old implementation checklists clearly as historical without deleting audit evidence.",
       "kind": "code",
-      "next_action": "Ověřit exact-SHA CI run #93 (ID 44133561389) na 8b111993818fd9abb0ac6cdb6ae715c746eef6b1; potom uzavřít dokumentační checkpoint.",
-      "title": "Opravit zastaralý auditní checkpoint",
-      "work_status": "in_progress"
+      "next_action": "User-selected goal is functional app and CI; signed-release gates deferred. Handoff updated 2026-11-17 22:32 UTC; SHA-256 97c87c0c39da48e01a16b6aa50aa8e2c345a529342cafdffad9d8db7c9e3ece7. Current master/run #95/crosswalk reconciled. Local full pytest: 1,617 passed; static checks and app self-test with checksum-verified Mutagen 0.18.1 passed; Mutagen integration 12/12; Linux SSH/SFTP integration 5/5 in disposable OpenSSH container, including wrong-key rejection and audit redaction. Hosted CI run #95 predates unpushed changes. Current Hub status: 15 unstaged paths, no staged/untracked files or conflicts.",
+      "title": "Reconcile current F3 checkpoint and label historical snapshots",
+      "work_status": "completed"
     },
     "task_f3_linux_acceptance": {
       "acceptance_criteria": [
-        "AppImage a deb clean install/run/uninstall; user files retain/remove behavior správný.",
-        "File-manager integration passes na Ubuntu a target Fedora."
+        "AppImage a DEB install/run/uninstall prochází na Ubuntu a cílové Fedora verzi; data retention/removal odpovídá dokumentaci.",
+        "File-manager integration projde v Nautilus i Dolphin dle podporované matice.",
+        "Každá další deklarovaná Linux distribuce mimo Ubuntu má clean-user smoke; neověřená distribuce je výslovně mimo podporu."
       ],
-      "blocker": "Native Ubuntu/Fedora installed-user sessions required.",
+      "blocker": "Native Linux target sessions and clean user accounts required.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Ověřit clean GUI AppImage/deb install/run/uninstall, retained files a file-manager integration na Ubuntu a target Fedora.",
+      "description": "Clean-user release acceptance AppImage/DEB v Ubuntu a cílové Fedoře; doplnit podporované distribuce mimo Ubuntu podle PR-034/E14, bez obecného tvrzení 'Linux'.",
       "kind": "code",
-      "next_action": "Spustit clean installed-user walkthrough na target Ubuntu/Fedora versions.",
-      "title": "Linux installed GUI acceptance",
+      "next_action": "CI run #95 on Ubuntu 26.04 x86-64 built AppImage and DEB, self-tested the AppImage, installed the DEB, and passed packaged self-test. Still verify clean-user desktop/file-manager behavior and declare any supported distro/version range; other distros remain unverified.",
+      "title": "Linux installed-user and distro acceptance",
       "work_status": "blocked"
     },
     "task_f3_macos_acceptance": {
       "acceptance_criteria": [
-        "macOS app a DMG signatures validní; notarization accepted.",
-        "Gatekeeper launch passes na Intel i ARM."
+        "App/DMG podpisy platné; notarization accepted and stapled.",
+        "Gatekeeper clean-user launch passes on Intel and Apple Silicon.",
+        "Native project/SSH and sleep-wake acceptance receipts attached to exact candidate."
       ],
-      "blocker": "Apple Developer ID/notary secrets a native Intel/ARM verification required.",
+      "blocker": "Apple Developer ID/notary secrets and native Intel/ARM devices required.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Podepsat app/DMG, získat notary acceptance a ověřit Gatekeeper launch na Intel a ARM.",
+      "description": "Developer ID signing, notarization, Gatekeeper and native runtime acceptance for Intel and Apple Silicon.",
       "kind": "code",
-      "next_action": "Po Apple credentials spustit exact release candidate na Intel/ARM.",
-      "title": "macOS signing, notarization and Gatekeeper",
+      "next_action": "Hosted macOS ARM and Intel Checks #95 passed on exact SHA 01b6ccb19ddba1dd4ab7e0e2887d920d91334afb: each 1,616 tests passed, branch coverage 95.15%, total 96.58%; hosted demo and DMG verification passed. No Developer ID signing, notarization, Gatekeeper, clean-user launch or native sleep/wake evidence. Need owner secrets and native Intel/Apple Silicon acceptance.",
+      "title": "macOS signing, notarization and native acceptance",
       "work_status": "blocked"
     },
     "task_f3_network_hooks": {
       "acceptance_criteria": [
-        "Cross-platform live latency/fault matrix passes.",
-        "Installed-user project hook validates consent and rejects unsafe/unapproved behavior."
+        "Installed-user project hook ověřuje přesný souhlas; odmítnutí i změna cíle fail-closed.",
+        "AC-008/013/019: isolated real Mutagen mixed project/non-project sessions, exact-ID behavior, failed replacement recovery na Windows/macOS/Linux.",
+        "AC-014/015: live forwarding bind/port conflict a Unix socket leave/explicit overwrite na macOS/Linux.",
+        "G2/AC-009: SSH host-key, key setup a disconnect/reconnect/network flapping na Windows/macOS plus aktuální hosted Linux evidence.",
+        "G3/AC-023/E11: SSH/SFTP traversal/symlink containment napříč platformami a multi-endpoint latency trial.",
+        "Network fault/latency matrix doložena pro každou cílovou platformu a přesný candidate SHA.",
+        "Destructive live conflict tests remain disabled; no real user session/files mutated."
       ],
-      "blocker": null,
+      "blocker": "The local Windows host has no sshd and cannot establish cross-platform live targets. Linux CI now runs a test-owned OpenSSH/SFTP fixture, but external-host, multi-platform latency/fault, installed-user hook-consent, and packaged runtime acceptance remain open.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Získat live network fault/latency důkazy a potvrdit installed-user project-hook consent.",
+      "description": "Uzavřít G2/G3/AC live matrix s kandidátním SHA: reálný Mutagen, forward/socket, network fault/reconnect, SSH host-key, remote inspection containment, SFTP latency. Nový lokální důkaz: Windows + Mutagen 0.18.1, izolovaný project hook se odmítne bez shell consentu; při explicitním shell consentu proběhne hook, sync i terminate. Zbývající kandidátní CI/cross-platform síťová matice stále otevřená. Pouze izolované test sessions; nikdy netestovat destruktivní zásahy na uživatelských datech.",
       "kind": "code",
-      "next_action": "Po potvrzení runner/device availability spustit target OS matrix a uchovat candidate-bound receipts.",
-      "title": "Live network faults and installed hook acceptance",
-      "work_status": "ready"
+      "next_action": "Added Subsystem sftp internal-sftp to the existing isolated OpenSSH fixture and a real ParamikoRemoteInspector test: pinned host key allows reading one test-owned bounded file; wrong key is rejected; audit redaction is checked. The complete integration/ssh suite passed 5/5 in 2.24s in a disposable Python 3.12/OpenSSH container; static checks passed. `.github/workflows/ci.yml` already runs integration/ssh on Linux, but hosted run #95 predates this unpushed change. Existing CI run #95's SSH host-key tests (3) are separate Linux evidence. Still need cross-platform SSH/SFTP/network-fault and latency, project-hook consent in installed-user flow, and native macOS/Windows runtime acceptance.",
+      "title": "Live Mutagen, SSH/SFTP and project-hook acceptance",
+      "work_status": "blocked"
     },
     "task_f3_node24_actions": {
       "acceptance_criteria": [
@@ -97,77 +105,87 @@
     },
     "task_f3_owner_license_secrets": {
       "acceptance_criteria": [
-        "Owner určí exact SPDX; LICENSE a Qt LGPL redistribution/notice obligations jsou ověřeny.",
-        "Windows a Apple signing/notary secret names existují v GitHub repository secrets; hodnoty nejsou v chatu, repu ani logu."
+        "LGPL review explicitly covers source delivery/offer, relinking or replaceable libraries, installation information for Windows one-file and all package notices.",
+        "NOTICE.md release gate remains PENDING until real owner/legal approval.",
+        "The following names exist in GitHub Actions repository secrets: WINDOWS_SIGNING_CERT_BASE64, WINDOWS_SIGNING_CERT_PASSWORD, APPLE_DEVELOPER_ID_CERT_P12_BASE64, APPLE_DEVELOPER_ID_CERT_PASSWORD, APPLE_DEVELOPER_ID_APPLICATION, APPLE_NOTARY_API_KEY_P8_BASE64, APPLE_NOTARY_API_KEY_ID, APPLE_NOTARY_ISSUER_ID.",
+        "Secret values never appear in chat, source, artifacts or logs."
       ],
-      "blocker": "Chrome ověřil, že Harfusha/MutaUI nemá repository ani environment secrets. Bezpečný formulář pro osm skutečných hodnot byl přeskočen; žádné secret hodnoty nebyly získány. Qt/PySide/Paramiko LGPL distribuce, relinking a source delivery stále čekají na právní review.",
+      "blocker": "No repository/environment Actions secrets; package-specific owner/legal LGPL review remains incomplete.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Získat owner-approved SPDX volbu, LICENSE/Qt LGPL review a ověřit osm GitHub Actions secret names bez čtení hodnot.",
+      "description": "Owner-selected MIT project license exists. Owner/legal must approve Qt/PySide 6.8.3 LGPLv3 and Paramiko 5.1.0 LGPLv2.1 obligations for each frozen package, including corresponding source/offer, relinking/library replacement, Windows one-file installation info, and notices. Owner enters signing secrets directly in GitHub Settings; never request/store values.",
       "kind": "code",
-      "next_action": "Owner vloží osm signing/notary repository secrets přímo do GitHub Actions settings a dokončí LGPL distribution review; znovu ověřit jen názvy, nikdy hodnoty.",
-      "title": "Owner license and GitHub signing prerequisites",
+      "next_action": "User selected a functional application and CI, not a signed public release. This release-only gate is deferred and does not block the active target. Do not configure secrets in this goal or change NOTICE.md from PENDING. Reopen only if the user later requests a signed binary release.",
+      "title": "Owner legal review and signing prerequisites",
       "work_status": "blocked"
     },
     "task_f3_physical_acceptance": {
       "acceptance_criteria": [
-        "DPI 100/125/150/200, themes, EN/CS, screen readers a keyboard-only verified na required OS.",
-        "Reference CPU/RSS, tray idle a CLI launch metrics mají candidate-bound runtime receipt.",
-        "8-hour soak bez unexplained crash, orphan process nebo data loss."
+        "AC-003/030/E02: DPI 100/125/150/200, themes, EN/CS, keyboard-only, NVDA/JAWS/VoiceOver a scaled UI review na cílových OS.",
+        "G1: independent multi-user usability trial dokončen a nálezy uzavřeny či přiděleny.",
+        "G0/AC-027/PR-037: reference-hardware SSD audit, CPU/RSS, tray-idle, CLI-spawn a 1k/5k session performance receipts.",
+        "PR-033: native macOS sleep/wake lifecycle verified.",
+        "PR-034/E14: file-manager integration ověřena na podporovaných Linux distribucích mimo Ubuntu; podporované distro matrix aktualizována.",
+        "8-hour soak na reálném kandidátu bez nevysvětleného pádu, orphan procesu nebo ztráty dat."
       ],
-      "blocker": "Fyzická zařízení/displays/screen readers a 8-hour runtime required.",
+      "blocker": "Target physical devices, screen-readers, independent users and reference hardware remain unavailable; local synthetic run does not satisfy physical acceptance.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Uzavřít DPI/accessibility matrix, reference-hardware metrics a 8-hour runtime soak.",
+      "description": "Externí acceptance z G0/G1/G4 a AC/E/PR matic: assistive technology, usability, reference hardware, power/lifecycle, Linux desktop coverage and soak.",
       "kind": "code",
-      "next_action": "Na target OS zařízeních projít DPI, themes, EN/CS, screen readers a keyboard-only; zaznamenat metrics/soak.",
-      "title": "Physical GUI, accessibility, hardware and soak",
+      "next_action": "Hosted Checks #95 on exact SHA 01b6ccb19ddba1dd4ab7e0e2887d920d91334afb: 1,616 passed on Windows, Ubuntu, macOS ARM, macOS Intel; branch coverage 95.32%, 95.12%, 95.15%, 95.15%; total coverage 96.65%, 96.57%, 96.58%, 96.58%. Ubuntu real OpenSSH host-key acceptance: 3 passed. Supplemental local Windows 11 offscreen benchmark on AMD64 Family 25 Model 97, 8 cores/16 threads, 32 GB; CPython 3.12.10/PySide 6.8.3: 30 reps, 0 model resets at 1k/5k; unchanged p95 6.174/38.461 ms, one-row 6.447/39.145 ms, structural 12.948/73.004 ms; RSS 57.5→92.1 MB, USS 59.3 MB; storage type unknown. Synthetic/offscreen and hosted CI do not satisfy reference hardware, installed GUI, live runtime, accessibility/usability or soak gates. Still need native OS, screen-reader/usability, reference-hardware and 8-hour soak receipts.",
+      "title": "Physical UX, accessibility and reference-hardware acceptance",
       "work_status": "blocked"
     },
     "task_f3_release_acceptance": {
       "acceptance_criteria": [
-        "Nový tag matches app version and pyproject; exact-tag workflow passes security, platform tests, package smoke, checksums, SBOMs, attestations and signing/notarization.",
-        "Published assets verified against provenance, signatures/checksums and release metadata.",
-        "Plan closed only after every criterion has authentic current evidence."
+        "MIT project license and LGPL obligations for exact package set legally approved; release preflight no longer pending.",
+        "Exact version tag matches app and pyproject; zero-skip security/platform/package/coverage checks pass on that exact tag.",
+        "Windows/macOS signatures and notarization valid; Linux acceptance passes for every declared supported distro.",
+        "Checksums, SBOMs, attestations, signatures, provenance, notes and published assets match tag.",
+        "No tag/publication before every dependency has authentic current receipt; close plan only after final verification."
       ],
-      "blocker": "Owner license, signing credentials, native platform acceptance, and next release version/tag approval remain open.",
+      "blocker": "Owner/legal approval, signing secrets, external reviews, native platform acceptance, hardware and tag approval required.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Spustit jednu release tag verzi přes všechny gate checks a ověřit publikované assety.",
+      "description": "Release only after repo audit/crosswalk, owner and LGPL review, live Mutagen/SSH/SFTP/hooks, each supported OS, accessibility/usability, privacy and real-incident evidence, and hardware gates pass for the intended candidate.",
       "kind": "code",
-      "next_action": "Až všechny upstream gates projdou, schválit novou verzi/tag, spustit workflow a ověřit assets/signatures/checksums.",
-      "title": "Exact-tag signed release",
+      "next_action": "Deferred by user scope selection on 2026-11-17: current goal is a functional application and CI, not a signed public release. No tag, publish, checksum/SBOM/attestation publication, or release secrets are needed for this target. Reopen only if the user later requests public release.",
+      "title": "Exact-tag signed release — final gate",
       "work_status": "blocked"
     },
     "task_f3_repo_scope": {
       "acceptance_criteria": [
-        "Každá repo-level F3-013—024 má fresh source/test evidence na master SHA.",
-        "Žádná zjištěná repo-level vada nezůstává; targeted tests/statics a exact-SHA CI pass.",
-        "F3-018 live and F3-019—024 physical proof zůstávají samostatnými owner/runtime tasks."
+        "F3-013–024: každý repo-level nález má fresh source/test evidence na přesném master SHA; žádná doložená vada nezůstává.",
+        "Každé otevřené AC-001–040, E01–22, PR-001–041 a G0–G4 je přiděleno existujícímu úkolu nebo blockeru; hotové položky neotevírat.",
+        "Mutagen current/previous supported CLI version matrix a native capability gates mají doložené výsledky.",
+        "AC-020/E09 real-fleet incident comparison and AC-028/E20 independent Support Bundle privacy review stay open without dated external evidence.",
+        "Historická evidence/current handoff conflicts and exact candidate SHA documented."
       ],
-      "blocker": null,
+      "blocker": "Independent privacy review and anonymized fleet incidents require external evidence. Hosted CI on current dirty changes needs authorized integration/push. Installed-user, cross-platform and physical acceptance require target environments/devices. Signing/legal release gates are deferred by user scope.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Prověřit implementaci a testy proti přesnému Handoff V5; opravit jen doložené vady.",
+      "description": "Dovést F3-013–024 repo audit a zkonsolidovat otevřenou traceability z acceptance-traceability a implementation-inventory: E01–22, PR-001–041, AC-001–040 a G0–G4. Fresh source/test/CI evidence or explicit mapping to runtime, owner, physical, privacy or release tasks. Zkontrolovat native Mutagen version/capability matrix. Obtain independent Support Bundle privacy review and compare Session Doctor rules with real-world fleet incidents; document evidence or explicit blocker.",
       "kind": "code",
-      "next_action": "Použít indexed current source/impact; ověřit každou repo-level F3 položku proti current master evidence.",
-      "title": "Dovést repo-level F3-013—024 audit",
-      "work_status": "in_progress"
+      "next_action": "Repository crosswalk and Mutagen 0.18.1 capability evidence recorded in docs/audits/F3_REMAINING_WORK_2026-11-17.md. Independent Support Bundle privacy review and real fleet incidents were explicitly unavailable; tracked as external evidence blockers, not claimed passed. Hosted CI on current uncommitted diff remains separate and awaits push approval.",
+      "title": "Repo audit and complete acceptance crosswalk",
+      "work_status": "completed"
     },
     "task_f3_windows_acceptance": {
       "acceptance_criteria": [
-        "App i installer mají validní Authenticode a správnou publisher identity.",
-        "Fresh install, upgrade, data/migration retention a rollback procházejí na native Windows."
+        "App and installer Authenticode signatures valid with expected publisher identity.",
+        "Fresh install and upgrade from genuine previous stable installer pass.",
+        "User data/migration retained correctly; rollback works; uninstall follows documented data choice."
       ],
-      "blocker": "Windows signing certificate secrets a native Windows install/upgrade session required.",
+      "blocker": "Windows signing secret and native clean-user install/upgrade session required.",
       "clarifications": [],
       "depends_on": [],
-      "description": "Ověřit Authenticode, clean install a upgrade z předchozí stabilní verze včetně dat, migrací a rollbacku.",
+      "description": "Signed Authenticode app/installer and clean-user install/upgrade from a genuine previous release, with user data retention and rollback.",
       "kind": "code",
-      "next_action": "Po owner secrets spustit na native Windows a zachovat podpisový i runtime receipt.",
-      "title": "Signed Windows install and upgrade acceptance",
+      "next_action": "Hosted Windows Checks #95 passed on exact SHA 01b6ccb19ddba1dd4ab7e0e2887d920d91334afb: 1,616 tests passed, branch coverage 95.32%, total 96.65%; hosted demo/package checks passed. This does not verify signed Authenticode installation. Still need owner signing identity, clean-user install, upgrade from a real prior release, data-retention and rollback evidence.",
+      "title": "Windows signing, install, upgrade and rollback",
       "work_status": "blocked"
     }
   },
-  "title": "MutaUI F3 — HANDOFF V5 completion and release acceptance"
+  "title": "MutaUI — Consolidated Completion and Release Acceptance"
 }

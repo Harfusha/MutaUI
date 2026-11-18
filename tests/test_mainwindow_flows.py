@@ -5712,6 +5712,34 @@ def test_support_bundle_routes_local_self_check(window, monkeypatch):
     assert calls == ["run"]
 
 
+def test_session_log_snapshot_detects_events_beyond_export_cap(window, tmp_path, monkeypatch):
+    output = tmp_path / "session-logs.json"
+    observed = {}
+
+    monkeypatch.setattr(
+        app_module.QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(output), ""),
+    )
+    monkeypatch.setattr(
+        window.history,
+        "events",
+        lambda **kwargs: (
+            observed.update(limit=kwargs["limit"])
+            or [(float(i), "info", f"event-{i}") for i in range(kwargs["limit"])]
+        ),
+    )
+    monkeypatch.setattr(window, "add_log", lambda *_args, **_kwargs: None)
+
+    window.export_session_log_snapshot()
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert observed["limit"] == 501
+    assert report["event_count"] == 501
+    assert report["event_count_capped"] is True
+    assert len(report["events"]) == 500
+
+
 def test_advanced_sync_settings_exposes_optional_performance_assistant(
     window, tmp_path, monkeypatch
 ):

@@ -1,5 +1,7 @@
 # MutaUI — F3 agent continuation and acceptance contract
 
+> **Historical composite audit log — not current release status.** Use [F3_REMAINING_WORK_2026-11-17.md](F3_REMAINING_WORK_2026-11-17.md) (updated 2026-11-18) and active Hub plan `plan_3633c4195d5e` for current state. This file retains older checkpoints; its dated results do not describe the current checkout. The 2026-11-18 entry postdates the audit baseline and remains unverified unless matched to current evidence.
+
 - **Audit started:** 2026-11-15
 - **Repository:** [Harfusha/MutaUI](https://github.com/Harfusha/MutaUI)
 - **Current working branch:** `master` (the PR branch is already integrated)
@@ -270,7 +272,7 @@ The Hub impact and secret-scan actions were blocked because preprocessing mode w
 
 Read-only GitHub recheck: [PR #1 checks](https://github.com/Harfusha/MutaUI/pull/1/checks) remains a draft at head `7715f64`. The security/dependency/workflow/YAML/secret job succeeded on Nov 15. [Checks run #66](https://github.com/Harfusha/MutaUI/actions/runs/43738015537) still reports only 1 of 4 matrix jobs completed, `checks (macos-15-intel)` exited 1, and test-report artifacts were not found. Detailed logs require GitHub sign-in and were not available. This run does not validate the current dirty local `f94e63c` worktree.
 
-## Session configuration proposal extraction — 2026-11-18
+## UNVERIFIED POST-AUDIT ENTRY — 2026-11-18
 
 For F3-014—016, extracted typed form-text parsing and draft validation from `MainWindow.open_session_preferences` into `src/mutaui/services/session_configuration.py`. The Qt dialog still owns layout, save/cancel flow, and user-facing error reporting; proposal parsing still uses the existing `SyncConfigurationDraft` / `ForwardConfigurationDraft` validators. Added pure sync/forward service tests and a MainWindow save-path test.
 

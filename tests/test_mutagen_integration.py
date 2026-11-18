@@ -2,6 +2,7 @@
 
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -22,6 +23,7 @@ from mutaui.adapters.cli_executor import LegacyMutagenExecutor
 from mutaui.adapters.mutagen_snapshot import from_legacy_session
 from mutaui.projects.native_project import load_native_project
 from mutaui.projects.project_actions import (
+    ProjectActionError,
     execute_project_action,
     plan_project_action,
     prepare_action_plan,
@@ -1081,10 +1083,23 @@ def test_native_project_start_and_terminate_against_isolated_mutagen(
     beta.mkdir()
     (alpha / "project-check.txt").write_text("project integration\n", encoding="utf-8")
     project_file = tmp_path / "mutagen.yml"
-    project_file.write_text(
-        "sync:\n  integration:\n    alpha: ./alpha\n    beta: ./beta\n",
+    hook_script = tmp_path / "project-hook.py"
+    hook_script.write_text(
+        "from pathlib import Path\n"
+        "Path(__file__).with_name('hook-ran.txt').write_text('ran', encoding='utf-8')\n",
         encoding="utf-8",
     )
+    hook_command = (
+        subprocess.list2cmdline([sys.executable, str(hook_script)])
+        if os.name == "nt"
+        else shlex.join([sys.executable, str(hook_script)])
+    )
+    project_file.write_text(
+        "sync:\n  integration:\n    alpha: ./alpha\n    beta: ./beta\n"
+        f"beforeCreate:\n  - {json.dumps(hook_command)}\n",
+        encoding="utf-8",
+    )
+    hook_marker = tmp_path / "hook-ran.txt"
     audit_path = tmp_path / "project-audit.jsonl"
     monkeypatch.setenv("MUTAGEN_DATA_DIRECTORY", str(daemon_data))
     monkeypatch.setenv("MUTAGEN_DISABLE_AUTOSTART", "0")
@@ -1092,7 +1107,7 @@ def test_native_project_start_and_terminate_against_isolated_mutagen(
     executor = LegacyMutagenExecutor(client)
     planner = ActionPlanner(now=time.monotonic)
 
-    def run_project_action(action):
+    def run_project_action(action, *, shell_consent=False):
         project_plan = plan_project_action(load_native_project(project_file), action)
         action_plan = prepare_action_plan(project_plan, planner)
         action_plan = planner.consent(
@@ -1105,6 +1120,7 @@ def test_native_project_start_and_terminate_against_isolated_mutagen(
             project_plan,
             executor,
             consent=True,
+            shell_consent=shell_consent,
             audit_path=audit_path,
             action_planner=planner,
             action_plan=action_plan,
@@ -1112,8 +1128,30 @@ def test_native_project_start_and_terminate_against_isolated_mutagen(
 
     try:
         _start_daemon_ready(client)
-        start_receipt = run_project_action("start")
+        project_plan = plan_project_action(load_native_project(project_file), "start")
+        action_plan = prepare_action_plan(project_plan, planner)
+        action_plan = planner.consent(
+            action_plan.plan_id,
+            consent=True,
+            current_preflight_fingerprint=project_plan.project_sha256,
+            typed_confirmation=action_plan.typed_confirmation,
+        )
+        with pytest.raises(ProjectActionError, match="project hooks or shell commands"):
+            execute_project_action(
+                project_plan,
+                executor,
+                consent=True,
+                shell_consent=False,
+                audit_path=audit_path,
+                action_planner=planner,
+                action_plan=action_plan,
+            )
+        planner.cancel(action_plan.plan_id)
+        assert not hook_marker.exists()
+
+        start_receipt = run_project_action("start", shell_consent=True)
         assert start_receipt.verified, start_receipt.postcheck_error
+        assert hook_marker.read_text(encoding="utf-8") == "ran"
         deadline = time.monotonic() + 20
         while not (beta / "project-check.txt").is_file() and time.monotonic() < deadline:
             time.sleep(0.2)

@@ -9,6 +9,7 @@ from mutaui.projects.native_project import (
     ProjectSession,
     load_native_project,
 )
+from mutaui.projects.project_actions import prepare_action_plan
 from mutaui.services.action_planner import ActionPlanner
 from mutaui.ui.project_viewer import (
     NativeProjectActionDialog,
@@ -201,6 +202,43 @@ def test_project_action_preview_lists_hooks_and_resets_consent_on_change(tmp_pat
     dialog.action.setCurrentText("list")
     assert not dialog.consent.isChecked()
     assert not dialog.shell_consent.isChecked()
+
+
+def test_project_action_missing_shell_consent_cancels_planner_lock(tmp_path, monkeypatch):
+    _app()
+    project = tmp_path / "mutagen.yml"
+    project.write_text("sync: {}\nbeforeCreate:\n  - echo test\n", encoding="utf-8")
+
+    class Executor:
+        def __init__(self):
+            self.calls = []
+
+        def run(self, argv, *, timeout_seconds, readonly=False):
+            self.calls.append(argv)
+            raise AssertionError("Missing shell consent must not execute the CLI.")
+
+    executor = Executor()
+    planner = ActionPlanner(now=lambda: 1.0)
+    dialog = NativeProjectActionDialog(
+        load_native_project(project), executor, tmp_path / "project-actions.jsonl", planner
+    )
+    dialog.action.setCurrentText("start")
+    preview_plan = prepare_action_plan(dialog.current_plan(), planner)
+    typed_confirmation = preview_plan.typed_confirmation
+    planner.cancel(preview_plan.plan_id)
+
+    monkeypatch.setattr(QInputDialog, "getText", lambda *_args: (typed_confirmation, True))
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    dialog.consent.setChecked(True)
+
+    dialog.execute()
+
+    assert warnings == ["Explicit consent is required for project hooks or shell commands."]
+    assert executor.calls == []
+    assert planner.audit[-1].decision == "cancelled"
+    retry_plan = prepare_action_plan(dialog.current_plan(), planner)
+    planner.cancel(retry_plan.plan_id)
 
 
 def test_replica_project_start_typed_confirmation_cancel_never_runs(tmp_path, monkeypatch):

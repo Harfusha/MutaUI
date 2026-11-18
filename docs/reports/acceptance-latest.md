@@ -1,5 +1,7 @@
 # Acceptance and Verification Evidence Report
 
+> **Historical snapshot — superseded for current status.** Generated 2026-11-15 for dirty commit `592cf7d`; its hosted-CI status is not current. Use [the 2026-11-17 remaining-work handoff](../audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e` for current blockers. Retain this report as historical evidence only.
+
 **Generated:** 2026-11-15 07:48:09 UTC  
 **Commit:** `592cf7d5fbd3f015ef5354b9e8300da020d58b22` (master)  
 **Working tree dirty:** true  

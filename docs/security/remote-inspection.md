@@ -13,7 +13,7 @@ The Conflict Inspector reads a single SSH/SFTP conflict copy after the operator 
 
 ## Verification limits
 
-Automated coverage uses an injected SSH/SFTP test client. It proves adapter behavior against the test double, not connectivity, server configuration, host-key enrollment, or behavior on a live host. No live SSH host was contacted for that evidence. Paramiko is an application dependency; run packaged runtime acceptance with a trusted disposable test host before claiming live SSH acceptance. The manual checklist and evidence status are tracked in the acceptance traceability report.
+Unit coverage uses an injected SSH/SFTP test client. The Linux integration suite also starts an isolated OpenSSH server and exercises `ParamikoRemoteInspector` over real SFTP: a pinned host key permits a read of a test-owned file, a wrong key is rejected, and audit output is checked for redaction. This proves local protocol integration, not behavior against an external host or a packaged installed application. Cross-platform, installed-user, and network-latency acceptance remain open; the manual checklist and evidence status are tracked in the acceptance traceability report.
 
 ## Hranice zabezpečení vzdálené kontroly
 
@@ -30,4 +30,4 @@ Conflict Inspector čte jednu SSH/SFTP kopii konfliktu až poté, co obsluha vyb
 
 ### Meze ověření
 
-Automatické testy používají vloženého testovacího SSH/SFTP klienta. Ověřují chování adaptéru vůči náhradnímu klientovi, nikoli spojení, konfiguraci serveru, registraci host klíče ani živý host. V rámci těchto důkazů nebyl kontaktován živý SSH host. Paramiko je běhovou závislostí; živé ověření proveď nad zabalenou aplikací a důvěryhodným testovacím hostem před tvrzením o živé podpoře SSH. Ruční checklist a stav důkazů jsou v přehledu akceptace.
+Jednotkové testy používají vloženého testovacího SSH/SFTP klienta. Linuxová integrační sada navíc spouští izolovaný OpenSSH server a přes skutečné SFTP ověřuje `ParamikoRemoteInspector`: připnutý host key dovolí přečíst testovací soubor, chybný klíč je odmítnut a audit neprozrazuje citlivé údaje. To dokládá místní integraci protokolu, nikoli chování vůči externímu hostu nebo zabalené nainstalované aplikaci. Stále chybí ověření na dalších platformách, u nainstalované aplikace a měření latence; ruční checklist a stav důkazů jsou v přehledu akceptace.

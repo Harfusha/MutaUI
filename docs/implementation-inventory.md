@@ -1,5 +1,7 @@
 # MutaUI implementation inventory
 
+> **Historical status snapshot.** This inventory describes its recorded v8.2 baseline; status cells are not current release acceptance. Use [the 2026-11-17 F3 handoff](audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e` for current blockers and gates.
+
 Revision: repository `master`, commit `d1d7326d5c6a297607f2be759b2b10638bb7a1c7` (v8.2). Environment: Python 3.12.10, PySide6 6.8.3, pytest 9.2.0, Coverage.py 7.17.3, checksum-verified Mutagen CLI 0.18.1.
 
 Status definition:

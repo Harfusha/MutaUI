@@ -1,5 +1,7 @@
 # MutaUI Review Remediation Implementation Plan
 
+> **Historical implementation plan — superseded for current tracking.** Its unchecked task boxes are the original work breakdown, not current status. Do not resume from this checklist alone; use [the 2026-11-17 F3 handoff](../../audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Resolve all actionable findings in the supplied MutaUI v8.2 review with safe, testable changes and no broad rewrite.

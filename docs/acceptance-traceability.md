@@ -1,5 +1,7 @@
 # Acceptance Traceability
 
+> **Historical status snapshot.** This matrix remains a useful map of AC/E/PR IDs and historical evidence, but commit IDs, totals, statuses, and “Remaining Proof” are not current. Current open work is [the 2026-11-17 F3 handoff](audits/F3_REMAINING_WORK_2026-11-17.md) plus active Hub plan `plan_3633c4195d5e`.
+
 Status definitions:
 
 - `Verified`: The requirement or scenario is fully implemented in repository code, covered by automated tests under Python 3.12, static/security checks pass, and local/cross-scenario verification is complete with **no remaining proof needed**.

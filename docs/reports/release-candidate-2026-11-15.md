@@ -1,5 +1,7 @@
 # Release candidate audit — 2026-11-15 (Follow-up 592cf7d)
 
+> **Historical snapshot — superseded for current release status.** This decision applies only to commit `592cf7d` and its 2026-11-15 evidence. It is not the current candidate decision. Use [the 2026-11-17 remaining-work handoff](../audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e`. Keep this report as historical evidence.
+
 **Decision: LOCAL EVIDENCE ONLY. HOSTED G0–G4 QUALITY GATES FAIL; RELEASE BLOCKED.**
 
 This report documents local verification evidence and gate disposition following the completion of audit follow-up plan `MutaUI_AUDIT_FOLLOWUP_2026-11-14_592cf7d.md`.

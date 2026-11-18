@@ -5982,7 +5982,7 @@ class MainWindow(QMainWindow):
         ):
             return
         try:
-            events = self.history.events(limit=500)
+            events = self.history.events(limit=501)
             data = session_log_report(
                 events,
                 list(self.tail_lines),

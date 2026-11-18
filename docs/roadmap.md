@@ -1,5 +1,7 @@
 # MutaUI implementation roadmap
 
+> **Historical delivery-status snapshot.** Keep this roadmap as feature order/spec mapping; phase checkboxes and dated implementation notes may lag. Current blockers and release status are in [the 2026-11-17 F3 handoff](audits/F3_REMAINING_WORK_2026-11-17.md) and active Hub plan `plan_3633c4195d5e`.
+
 Source contract: `MutaUI_MASTER_INTEGRATION_PLAN.md` (external specification) and `MutaUI_INTEGRACNI_PLAN_CZ.md` (external specification) (2026-11-12). These files are specifications, not statements of delivered behavior. The master plan's PR-001…041 order governs; the Czech plan adds the implementation, safety, and acceptance detail. Keep these source documents available while closing the roadmap.
 
 AC-001…AC-040 evidence and remaining proof are tracked in [`acceptance-traceability.md`](acceptance-traceability.md). `Partial` does not mean production acceptance; external platform, hardware, SSH, and release evidence stays open until observed.
