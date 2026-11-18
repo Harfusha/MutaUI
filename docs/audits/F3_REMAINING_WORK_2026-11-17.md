@@ -62,7 +62,7 @@ The ID/status tables in `acceptance-traceability.md` and `implementation-invento
 - **G3 / remote safety and transport:** AC-023; E11; PR-029 plus live SFTP/network scenarios map to `task_f3_network_hooks`. Cross-platform symlink and latency trials remain open; destructive live conflict tests stay disabled.
 - **G2/G4 / privacy:** AC-028 and E20 map to `task_f3_repo_scope`; source review found allowlist/consent/bounds. Independent review job `1204b09bbe154fd6a5560e274546c138` ended `outcome_unknown` after the local model timed out; it produced no review result, so independent privacy acceptance remains open.
 - **G0/G4 / packages and release:** AC-001/029/040, E01/E14/E19, PR-005/038/040/041 map to `task_f3_windows_acceptance`, `task_f3_macos_acceptance`, `task_f3_linux_acceptance`, then `task_f3_release_acceptance`. Run #95 is untagged; signing, clean-user retention/rollback, notarization, supported distro walkthroughs, exact-tag artifacts and owner/legal review remain open.
-- **G4 / owner and physical gates:** E16 and F3-022/023/025/026 map to `task_f3_owner_license_secrets`, `task_f3_physical_acceptance`, and final `task_f3_release_acceptance`; secrets stay in GitHub Settings, never chat.
+- **G4 / owner and physical gates:** E16 and F3-022/023/025/026 map to `task_f3_owner_license_secrets`, `task_f3_physical_acceptance`, and final `task_f3_release_acceptance`.
 
 ## Validation limits
 
