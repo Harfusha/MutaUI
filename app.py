@@ -296,7 +296,7 @@ QFrame#sidebar {{ background: #101824; border-right: 1px solid {BORDER}; }}
 QScrollArea#navscroll, QWidget#navcontent {{ background: #101824; border: 0; }}
 QListWidget {{ background:#111D2B; border:1px solid {BORDER}; border-radius:9px; padding:5px; }}
 QListWidget::item {{ padding:12px; margin:2px; border-radius:7px; }}
-QListWidget::item:selected {{ background:#1D4B47; color:{TEAL}; }}
+QListWidget::item:selected {{ background:#1D4B47; color:{TEXT}; }}
 QFrame#card {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 15px; }}
 QFrame#inner {{ background: #182536; border: 1px solid {BORDER}; border-radius: 11px; }}
 QLabel#muted {{ color: {MUTED}; }}
@@ -322,7 +322,8 @@ QPushButton#danger:hover {{ background: #513044; }}
 QPushButton#nav {{ text-align: left; background: transparent; border: 1px solid transparent;
                   color: {MUTED}; border-radius: 9px; padding: 9px 13px; font-size: 13px; }}
 QPushButton#nav:hover {{ background: #1A263A; color: {TEXT}; }}
-QPushButton#nav:checked {{ background: #173A35; border-color: #36685F; color: {TEAL}; font-weight: 800; }}
+QPushButton#nav:checked {{ background: #173A35; border-color: #36685F; color: {TEXT}; font-weight: 800; }}
+QPushButton#nav:focus {{ border-color: {BLUE}; }}
 QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {{ background: #101829; color: {TEXT};
                            border: 1px solid {BORDER}; border-radius: 9px; padding: 7px 11px;
                            min-height: 22px; selection-background-color: #385F6A; }}
@@ -1414,15 +1415,15 @@ class MainWindow(QMainWindow):
                 if path:
                     self.handle_launch_request({"command": "open_project", "path": path})
             elif command in {"focus_session", "flush_session"}:
-                self.focus_session_from_navigator(kind, identifier)
-                if command == "flush_session":
+                found = self.focus_session_from_navigator(kind, identifier)
+                if found and command == "flush_session":
                     self.session_action("sync", "flush")
         elif dialog.target is not None:
             self.set_page(dialog.target)
 
-    def focus_session_from_navigator(self, kind: str, identifier: str) -> None:
+    def focus_session_from_navigator(self, kind: str, identifier: str) -> bool:
         if kind not in {"sync", "forward"} or not identifier:
-            return
+            return False
         self.set_page(1 if kind == "sync" else 2)
         table = self.sync_table if kind == "sync" else self.forward_table
         search = self.sync_search if kind == "sync" else self.forward_search
@@ -1435,9 +1436,11 @@ class MainWindow(QMainWindow):
             self.sync_server_filter.setCurrentIndex(0)
         self.filter_table(kind, "")
         row = table.model().row_for_identifier(identifier)
-        if row >= 0:
-            table.selectRow(row)
-            table.scrollTo(table.model().index(row, 0))
+        if row < 0:
+            return False
+        table.selectRow(row)
+        table.scrollTo(table.model().index(row, 0))
+        return True
 
     def set_page(self, index: int) -> None:
         route = PAGE_ROUTES[index]
@@ -1560,11 +1563,18 @@ class MainWindow(QMainWindow):
             stretch_columns=(0, 2, 3),
             dashboard=True,
         )
-        set_localized_tooltip(self.dashboard_table, "Double-click to view sync details")
-        rr.addWidget(self.dashboard_table)
-        self.dashboard_table.doubleClicked.connect(
-            lambda index: self.dashboard_select(index.row(), index.column())
+        set_localized_tooltip(
+            self.dashboard_table, "Press Enter or double-click to view sync details"
         )
+        rr.addWidget(self.dashboard_table)
+        self.dashboard_table.doubleClicked.connect(self.dashboard_select)
+        for key in ("Return", "Enter"):
+            shortcut = QShortcut(
+                QKeySequence(key), self.dashboard_table, context=Qt.ShortcutContext.WidgetShortcut
+            )
+            shortcut.activated.connect(
+                lambda: self.dashboard_select(self.dashboard_table.currentIndex())
+            )
         # Forward sessions summary row
         fwd_row = QHBoxLayout()
         fwd_row.addWidget(label("Forwarding:", muted=True, size=11))
@@ -1770,6 +1780,7 @@ class MainWindow(QMainWindow):
         header.addStretch()
         search = QLineEdit()
         set_localized_placeholder(search, "Search by name / path…")
+        set_localized_accessible_name(search, "Search by name / path…")
         search.setMaximumWidth(300)
         set_localized_tooltip(search, "Filters table rows by endpoint name or path")
         search.textChanged.connect(partial(self.filter_table, kind))
@@ -1780,6 +1791,7 @@ class MainWindow(QMainWindow):
             add_localized_item(self.sync_server_filter, "All Servers", "__all__")
             self.sync_server_filter.setMinimumWidth(155)
             set_localized_tooltip(self.sync_server_filter, "Filter by remote host")
+            set_localized_accessible_name(self.sync_server_filter, "Filter by remote host")
             self.sync_server_filter.currentIndexChanged.connect(
                 lambda _=None: self.filter_table("sync")
             )
@@ -1799,6 +1811,7 @@ class MainWindow(QMainWindow):
         )
         states.setMinimumWidth(140)
         set_localized_tooltip(states, "Filter sessions by current status")
+        set_localized_accessible_name(states, "Filter sessions by current status")
         states.currentIndexChanged.connect(
             lambda _=None, k=kind: self.session_state_filter_changed(k)
         )
@@ -1828,7 +1841,7 @@ class MainWindow(QMainWindow):
             else ["NAME", "STATUS", "SOURCE", "DESTINATION", "CONNECTION"]
         )
         table = self.make_session_table(fields, 225, stretch_columns=(0, 2, 3), kind=kind)
-        table.selectionModel().selectionChanged.connect(lambda *_args, k=kind: self.on_select(k))
+        table.selectionModel().currentChanged.connect(lambda *_args, k=kind: self.on_select(k))
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(
             lambda point, k=kind: self.session_context_menu(k, point)
@@ -1990,8 +2003,10 @@ class MainWindow(QMainWindow):
         self.tail_info.setWordWrap(True)
         contents.addWidget(self.tail_info)
         filterline = QHBoxLayout()
-        filterline.addWidget(label("Filter:", muted=True))
+        filter_caption = label("Filter:", muted=True)
         self.tail_filter = QLineEdit()
+        filter_caption.setBuddy(self.tail_filter)
+        filterline.addWidget(filter_caption)
         set_localized_placeholder(self.tail_filter, "Text to display in the log…")
         set_localized_tooltip(
             self.tail_filter, "Shows only lines containing the entered text (case-insensitive)"
@@ -3748,18 +3763,15 @@ class MainWindow(QMainWindow):
                 or not meets_server
                 or (only_favorites and identifier not in self.favorites[kind]),
             )
+        current = table.currentIndex()
+        if current.isValid() and table.isRowHidden(current.row()):
+            table.selectionModel().clear()
         self.fit_table_to_rows(table)
 
-    def dashboard_select(self, row: int, col: int) -> None:
-        index = self.dashboard_table.model().index(row, 0)
+    def dashboard_select(self, index: QModelIndex) -> None:
         if index.isValid():
-            self.current_id = index.data(Qt.ItemDataRole.UserRole) or ""
-            self.current_kind = "sync"
-            self.set_page(1)
-            model = self.sync_table.model()
-            match = model.row_for_identifier(self.current_id)
-            if match >= 0:
-                self.sync_table.selectRow(match)
+            identifier = index.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole)
+            self.focus_session_from_navigator("sync", identifier or "")
 
     def on_select(self, kind: str) -> None:
         table = self.sync_table if kind == "sync" else self.forward_table

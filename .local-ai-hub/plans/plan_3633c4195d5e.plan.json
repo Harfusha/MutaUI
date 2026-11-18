@@ -35,7 +35,7 @@
       "depends_on": [],
       "description": "Refresh F3 checkpoint only from current source, GitHub run attempt, exact SHA and owner gate evidence. Mark stale release/acceptance snapshots and old implementation checklists clearly as historical without deleting audit evidence.",
       "kind": "code",
-      "next_action": "User-selected goal is functional app and CI; signed-release gates deferred. Handoff updated 2026-11-17 22:32 UTC; SHA-256 97c87c0c39da48e01a16b6aa50aa8e2c345a529342cafdffad9d8db7c9e3ece7. Current master/run #95/crosswalk reconciled. Local full pytest: 1,617 passed; static checks and app self-test with checksum-verified Mutagen 0.18.1 passed; Mutagen integration 12/12; Linux SSH/SFTP integration 5/5 in disposable OpenSSH container, including wrong-key rejection and audit redaction. Hosted CI run #95 predates unpushed changes. Current Hub status: 15 unstaged paths, no staged/untracked files or conflicts.",
+      "next_action": "Checks #98 passed all five jobs on master 56980c50795a4a60a77074e74fcd53a0fef547e1. Local follow-up fixes hidden or stale session targets, keyboard navigation, accessibility and theme, crash-recovery verification and missing Linux libGL dependency. Windows 1,624 passed with 95.32% branch coverage on the working copy. Static gates passed. Preserve external acceptance and defer signed release.",
       "title": "Reconcile current F3 checkpoint and label historical snapshots",
       "work_status": "completed"
     },
@@ -50,7 +50,7 @@
       "depends_on": [],
       "description": "Clean-user release acceptance AppImage/DEB v Ubuntu a cílové Fedoře; doplnit podporované distribuce mimo Ubuntu podle PR-034/E14, bez obecného tvrzení 'Linux'.",
       "kind": "code",
-      "next_action": "CI run #95 on Ubuntu 26.04 x86-64 built AppImage and DEB, self-tested the AppImage, installed the DEB, and passed packaged self-test. Still verify clean-user desktop/file-manager behavior and declare any supported distro/version range; other distros remain unverified.",
+      "next_action": "Debian 12 disposable-container evidence for the local working tree: Qt-focused 5/5, Mutagen 0.18.1 integration 12/12, OpenSSH/SFTP 5/5, and PyInstaller smoke passed. Built AppImage and DEB. APT brought in declared libgl1 and libdbus-1-3. A single-threaded install retry overcame Docker memory pressure, then both package self-tests passed as an unprivileged user (AppImage extract-and-run) and DEB purge passed. Keep Ubuntu/Fedora native desktop, Nautilus/Dolphin, FUSE, upgrade/retention and signed acceptance open.",
       "title": "Linux installed-user and distro acceptance",
       "work_status": "blocked"
     },
@@ -84,7 +84,7 @@
       "depends_on": [],
       "description": "Uzavřít G2/G3/AC live matrix s kandidátním SHA: reálný Mutagen, forward/socket, network fault/reconnect, SSH host-key, remote inspection containment, SFTP latency. Nový lokální důkaz: Windows + Mutagen 0.18.1, izolovaný project hook se odmítne bez shell consentu; při explicitním shell consentu proběhne hook, sync i terminate. Zbývající kandidátní CI/cross-platform síťová matice stále otevřená. Pouze izolované test sessions; nikdy netestovat destruktivní zásahy na uživatelských datech.",
       "kind": "code",
-      "next_action": "Added Subsystem sftp internal-sftp to the existing isolated OpenSSH fixture and a real ParamikoRemoteInspector test: pinned host key allows reading one test-owned bounded file; wrong key is rejected; audit redaction is checked. The complete integration/ssh suite passed 5/5 in 2.24s in a disposable Python 3.12/OpenSSH container; static checks passed. `.github/workflows/ci.yml` already runs integration/ssh on Linux, but hosted run #95 predates this unpushed change. Existing CI run #95's SSH host-key tests (3) are separate Linux evidence. Still need cross-platform SSH/SFTP/network-fault and latency, project-hook consent in installed-user flow, and native macOS/Windows runtime acceptance.",
+      "next_action": "Working-tree local verification on Debian 12: 12/12 isolated Mutagen 0.18.1 integration tests and 5/5 real OpenSSH/SFTP tests under an unprivileged test account. Windows 0.18.1 passed the complete test gate, and 0.18.0 passed 23 integration/daemon tests. Continue native multi-platform fault/latency and installed-user hook-consent acceptance. Preserve the isolated-data requirement.",
       "title": "Live Mutagen, SSH/SFTP and project-hook acceptance",
       "work_status": "blocked"
     },

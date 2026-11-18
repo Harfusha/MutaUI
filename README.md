@@ -17,7 +17,7 @@ Install Mutagen CLI separately using the [official installation guide](https://m
 - **Does it download or install updates?** No. Release checks are off by default. Enable and save **Settings → Alerts → Check releases on startup** to allow startup checks; the same page offers a manual check while enabled. MutaUI sends no device or session data and never downloads or installs an update.
 - **Will changing a profile rewrite a running session?** No. Profiles set defaults for new sessions. Existing Mutagen configuration is left intact.
 - **Where are downloads and setup help?** Use the project’s GitHub Releases page and the [installation guide](docs/installation.md). For recovery, see [Troubleshooting](docs/troubleshooting.md).
-- **Which license applies?** This checkout has no `LICENSE` or `COPYING` file. Reuse and redistribution terms are therefore unspecified; obtain the project owner’s direction before treating the code as open source.
+- **Which license applies?** MutaUI’s own code is licensed under the [MIT License](LICENSE). Third-party licenses and redistribution notices are listed in [NOTICE.md](NOTICE.md).
 
 For bug reports, use the repository’s Issues tab and include OS version, MutaUI release, Mutagen version, and reproduction steps. Remove credentials, private paths, and host details from logs before sharing them.
 
@@ -61,7 +61,7 @@ The **Basic / Advanced** selector changes which navigation pages are shown for t
 
 **Ignore Presets** are stored separately with ordered rules and backups. The sync wizard can load custom presets, stage `.gitignore`/`.dockerignore` conversion, identify possible `!` overrides, skip unsupported lines, and preview how the current draft treats a relative path. Conversion never edits the source ignore file or deletes files. Path matching is an approximation until checked with the installed Mutagen CLI. Portable bundles validate and preview custom presets before create/replace/skip.
 
-**Settings → Native Mutagen Projects** creates new or inspects existing `mutagen.yml` files. Creation never overwrites. The inspector shows syncs, forwards, defaults, session settings, hooks, custom commands, and debounced external edits. Project actions show exact arguments and hook commands, require explicit consent, and write a local audit. Hook/custom-command actions can run arbitrary shell code; real CLI behavior remains unverified here because Mutagen is not installed.
+**Settings → Native Mutagen Projects** creates new or inspects existing `mutagen.yml` files. Creation never overwrites. The inspector shows syncs, forwards, defaults, session settings, hooks, custom commands, and debounced external edits. Project actions show exact arguments and hook commands, require explicit consent, and write a local audit. Hooks and custom commands can run arbitrary shell code. Isolated integration tests exercise hook consent and project start and termination with Mutagen 0.18.1.
 
 **Per session → Session Settings**: local note, notifications, native sync/forward values, source/impact/help, endpoint-specific fields, and proposed replacement values. Socket overwrite, owner, group, and permission drafts stay in MutaUI's local preferences. Existing sessions remain unchanged; fields needing installed CLI, endpoint, or platform verification are marked unverified.
 

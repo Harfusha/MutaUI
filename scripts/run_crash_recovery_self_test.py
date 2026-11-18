@@ -39,7 +39,8 @@ def _crash_fixture(appdata: Path) -> None:
         getattr(Sample(ts=uncommitted_ts, cpu=99.0), column) for column in METRIC_COLUMNS
     )
     store.db.execute(
-        "INSERT INTO metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", uncommitted_values
+        "INSERT INTO metrics VALUES (" + ",".join("?" for _ in uncommitted_values) + ")",  # noqa: S608 - only placeholders are generated
+        uncommitted_values,
     )
     settings_path.write_bytes(b"{")
     marker = appdata / "crash-fixture.json"

@@ -36,6 +36,7 @@ from ignore_presets import (
 from mutaui.services.session_configuration import build_session_arguments
 from mutaui.ui.ignore_rules import IgnoreConversionDialog
 from mutaui.ui.localization import (
+    set_localized_accessible_name,
     set_localized_placeholder,
     set_localized_text,
     set_localized_title,
@@ -294,6 +295,7 @@ class SessionDialog(QDialog):
             elif saved_ignores.warnings:
                 self.ignore_store_warning = " ".join(saved_ignores.warnings)
             self.ignore_preset.addItems(list(self.ignore_presets))
+            set_localized_accessible_name(self.ignore_preset, "Ignore preset")
             self.ignore_preset.activated.connect(self.apply_ignore_preset)
             preset_row = QHBoxLayout()
             preset_row.addWidget(self.ignore_preset)

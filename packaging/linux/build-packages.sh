@@ -54,7 +54,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Mutagen Control contributors
-Depends: libc6, libstdc++6, libx11-6, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-shape0, libxcb-xfixes0, libxcb-xinerama0, libegl1, libfontconfig1
+Depends: libc6, libstdc++6, libx11-6, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-shape0, libxcb-xfixes0, libxcb-xinerama0, libegl1, libgl1, libdbus-1-3, libfontconfig1
 Description: Desktop control center for the Mutagen CLI
  A PySide6 desktop application for inspecting and managing local Mutagen sessions.
 CONTROL

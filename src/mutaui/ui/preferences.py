@@ -715,6 +715,7 @@ _TEXT_CATALOG = {
 }
 
 _TOOLTIP_CATALOG = {
+    "Press Enter or double-click to view sync details": "Stiskněte Enter nebo dvojklikem otevřete podrobnosti synchronizace",
     "Checked: ignore VCS directories. Unchecked: propagate them. Partially checked: inherit global and Mutagen defaults.": "Zaškrtnuto: ignorovat adresáře VCS. Prázdné: synchronizovat je. Částečně: převzít globální výchozí hodnoty Mutagenu.",
     "Confirm a separate recoverable copy exists before using destructive replica mode.": "Před destruktivním režimem repliky potvrďte existenci samostatné obnovitelné kopie.",
     "ALPHA: local or remote path.\nSSH: user@host:/path  |  Docker: docker://name/path": "ALPHA: místní nebo vzdálená cesta.\nSSH: uživatel@hostitel:/cesta  |  Docker: docker://název/cesta",
@@ -993,6 +994,10 @@ _LIGHT_COLORS = {
     "#101824": "#EDF1F5",
     "#111D2B": "#FFFFFF",
     "#182536": "#F0F3F7",
+    "#1A263A": "#E2EAF2",
+    "#173A35": "#DDF2EA",
+    "#1D4B47": "#DDF2EA",
+    "#36685F": "#699B90",
     "#101829": "#FFFFFF",
     "#17243A": "#FFFFFF",
     "#182136": "#F4F6F8",

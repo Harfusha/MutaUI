@@ -71,8 +71,11 @@ def localized_label(text: str) -> QLabel:
     return result
 
 
-def add_localized_row(form: QFormLayout, text: str, *fields: QWidget) -> None:
-    form.addRow(localized_label(text), *fields)
+def add_localized_row(form: QFormLayout, text: str, field: QWidget | QLayout) -> None:
+    caption = localized_label(text)
+    if isinstance(field, QWidget):
+        caption.setBuddy(field)
+    form.addRow(caption, field)
 
 
 def add_localized_item(combo: QComboBox, text: str, *user_data: Any) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import QComboBox, QTableView, QTableWidget, QWidget
 
@@ -32,6 +32,9 @@ class PreferencesController:
     def set_ui_mode(self, mode: str) -> None:
         window = self.window
         window.ui_mode = mode if mode in {"basic", "advanced"} else "basic"
+        if hasattr(window, "mode_selector"):
+            with QSignalBlocker(window.mode_selector):
+                window.mode_selector.setCurrentIndex(window.mode_selector.findData(window.ui_mode))
         advanced = window.ui_mode == "advanced"
         visible_sections: set[str] = set()
         section_route: str | None = None

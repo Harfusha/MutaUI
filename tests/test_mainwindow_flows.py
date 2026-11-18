@@ -10,8 +10,9 @@ from types import SimpleNamespace
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import QEvent, QPoint
-from PySide6.QtGui import QCloseEvent, QFontDatabase, QTextDocument
+from PySide6.QtCore import QEvent, QPoint, Qt
+from PySide6.QtGui import QAccessible, QCloseEvent, QFontDatabase, QTextDocument
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -253,6 +254,53 @@ def test_focus_session_from_navigator_keeps_page_when_identifier_is_missing(wind
     assert window.forward_table.selectionModel().selectedRows() == []
 
 
+@pytest.mark.parametrize("kind", ["sync", "forward"])
+def test_filter_releases_only_the_selection_it_hides(window, kind):
+    window.apply_snapshot(window.snapshot)
+    window.set_page(1 if kind == "sync" else 2)
+    table = getattr(window, f"{kind}_table")
+    search = getattr(window, f"{kind}_search")
+    table.selectRow(0)
+    selected = window.selected_session(kind)
+    assert selected is not None
+
+    search.setText(selected["name"])
+    assert window.selected_session(kind) == selected
+
+    search.setText("no matching session")
+    assert table.isRowHidden(0)
+    assert window.selected_session(kind) is None
+    assert table.selectionModel().selectedRows() == []
+    assert not getattr(window, f"{kind}_favorite_button").isEnabled()
+
+    search.clear()
+    assert window.selected_session(kind) is None
+
+
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_dashboard_keyboard_opens_exact_session_despite_filters(window, qapp, key):
+    window.apply_snapshot(window.snapshot)
+    window.sync_search.setText("no matching session")
+    window.show()
+    window.dashboard_table.selectRow(0)
+    window.dashboard_table.setFocus()
+    qapp.processEvents()
+
+    QTest.keyClick(window.dashboard_table, key)
+
+    assert window.pages.currentIndex() == 1
+    assert window.selected_session("sync") == window.snapshot.sync[0]
+    assert not window.sync_table.isRowHidden(window.sync_table.currentIndex().row())
+
+
+def test_localized_form_labels_name_their_controls(window):
+    window.set_page(5)
+    for language, expected in (("en", "Session Refresh"), ("cs", "Obnovování relací")):
+        window.apply_ui_language(language)
+        control = QAccessible.queryAccessibleInterface(window.interval_input)
+        assert control.text(QAccessible.Text.Name) == expected
+
+
 @pytest.mark.parametrize(
     ("kind", "metric_key", "expected_index"),
     [
@@ -425,6 +473,13 @@ def test_open_navigator_builds_searchable_session_commands_and_flush_gate(window
             "",
             [("focus", "sync", "sync-1"), ("action", "sync", "flush")],
         ),
+        (
+            ("flush_session", "sync", "sync-missing"),
+            None,
+            True,
+            "",
+            [("focus", "sync", "sync-missing")],
+        ),
         (None, 4, True, "", [("page", 4)]),
         (None, 4, False, "", []),
     ],
@@ -447,11 +502,12 @@ def test_open_navigator_routes_dialog_result(
 
     monkeypatch.setattr(app_module, "QuickNavigator", Navigator)
     monkeypatch.setattr(window, "set_page", lambda index: events.append(("page", index)))
-    monkeypatch.setattr(
-        window,
-        "focus_session_from_navigator",
-        lambda kind, identifier: events.append(("focus", kind, identifier)),
-    )
+
+    def focus(kind, identifier):
+        events.append(("focus", kind, identifier))
+        return identifier != "sync-missing"
+
+    monkeypatch.setattr(window, "focus_session_from_navigator", focus)
     monkeypatch.setattr(
         window, "session_action", lambda kind, action: events.append(("action", kind, action))
     )
@@ -2261,12 +2317,14 @@ def test_ui_mode_switch_is_ephemeral_and_filters_advanced_navigation(window):
     settings_file = app_module.settings_path()
     assert not settings_file.exists()
     window.set_ui_mode("advanced")
+    assert window.mode_selector.currentData() == "advanced"
     assert all(
         not button.isHidden()
         for route, button in zip(app_module.PAGE_ROUTES, window.nav, strict=True)
     )
 
-    window.set_ui_mode("basic")
+    window.mode_selector.setCurrentIndex(window.mode_selector.findData("basic"))
+    assert window.ui_mode == "basic"
     for route, button in zip(app_module.PAGE_ROUTES, window.nav, strict=True):
         assert button.isHidden() is (route.route_id in app_module.ADVANCED_ROUTE_IDS)
     assert not settings_file.exists()
@@ -7637,39 +7695,26 @@ def test_worker_emits_result_error_and_finished(qapp):
 
 
 @pytest.mark.parametrize(
-    ("valid", "identifier", "match", "expected_page", "expected_selection"),
+    ("valid", "identifier", "expected"),
     [
-        (False, "", -1, [], []),
-        (True, "sync-exact", 2, [1], [2]),
-        (True, "sync-missing", -1, [1], []),
+        (False, "sync-ignored", []),
+        (True, "sync-exact", [("sync", "sync-exact")]),
+        (True, None, [("sync", "")]),
     ],
 )
-def test_dashboard_select_routes_only_valid_exact_session_rows(
-    valid, identifier, match, expected_page, expected_selection
-):
-    selected = []
-    pages = []
-    dashboard_model = SimpleNamespace(
-        index=lambda _row, _column: SimpleNamespace(
-            isValid=lambda: valid,
-            data=lambda _role: identifier,
-        )
+def test_dashboard_select_routes_only_valid_exact_session_rows(valid, identifier, expected):
+    events = []
+    index = SimpleNamespace(
+        isValid=lambda: valid,
+        siblingAtColumn=lambda _column: SimpleNamespace(data=lambda _role: identifier),
     )
-    sync_model = SimpleNamespace(row_for_identifier=lambda exact_id: match)
     fake_window = SimpleNamespace(
-        dashboard_table=SimpleNamespace(model=lambda: dashboard_model),
-        sync_table=SimpleNamespace(
-            model=lambda: sync_model,
-            selectRow=selected.append,
-        ),
-        set_page=pages.append,
+        focus_session_from_navigator=lambda kind, session_id: events.append((kind, session_id))
     )
 
-    app_module.MainWindow.dashboard_select(fake_window, 0, 0)
+    app_module.MainWindow.dashboard_select(fake_window, index)
 
-    assert pages == expected_page
-    assert selected == expected_selection
-    assert getattr(fake_window, "current_id", "") == (identifier if valid else "")
+    assert events == expected
 
 
 @pytest.mark.parametrize(
