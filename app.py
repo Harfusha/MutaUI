@@ -65,6 +65,7 @@ from PySide6.QtGui import (
     QCloseEvent,
     QColor,
     QDesktopServices,
+    QGuiApplication,
     QHideEvent,
     QIcon,
     QKeySequence,
@@ -212,6 +213,14 @@ from mutaui.ui.health_network_monitor import (
     health_network_changed as apply_health_network_change,
 )
 from mutaui.ui.ignore_rules import IgnorePresetManagerDialog
+from mutaui.ui.localization import (
+    _LOCALIZED_ITEM_ROLE,
+    set_localized_accessible_name,
+    set_localized_placeholder,
+    set_localized_text,
+    set_localized_title,
+    set_localized_tooltip,
+)
 from mutaui.ui.onboarding import (
     CLIDiscovery,
     host_architecture,
@@ -226,6 +235,7 @@ from mutaui.ui.portable_import_preview import PortableImportPreviewDialog
 from mutaui.ui.preferences import (
     ADVANCED_ROUTE_IDS,  # noqa: F401 -- retained as app module compatibility export
     active_language,
+    resolve_theme,
     set_active_language,
     translate,
     translate_route,
@@ -235,9 +245,43 @@ from mutaui.ui.preferences_controller import PreferencesController
 from mutaui.ui.project_viewer import NativeProjectManagerDialog
 from mutaui.ui.session_alerts import check_alerts as check_session_alerts
 from mutaui.ui.session_configuration_table import fill_session_configuration_table
+from mutaui.ui.session_dialog import SessionDialog, configure_settings_path_provider
 from mutaui.ui.settings_page import build_settings_page
 from mutaui.ui.settings_registry import setting_tooltip
 from mutaui.ui.ssh_profile_manager import SSHProfileManagerDialog
+from mutaui.ui.styles import (
+    AMBER as AMBER,
+)
+from mutaui.ui.styles import (
+    BG as BG,
+)
+from mutaui.ui.styles import (
+    BLUE as BLUE,
+)
+from mutaui.ui.styles import (
+    BORDER as BORDER,
+)
+from mutaui.ui.styles import (
+    CARD as CARD,
+)
+from mutaui.ui.styles import (
+    CARD2 as CARD2,
+)
+from mutaui.ui.styles import (
+    CSS,
+)
+from mutaui.ui.styles import (
+    MUTED as MUTED,
+)
+from mutaui.ui.styles import (
+    RED as RED,
+)
+from mutaui.ui.styles import (
+    TEAL as TEAL,
+)
+from mutaui.ui.styles import (
+    TEXT as TEXT,
+)
 from mutaui.ui.tray_status import update_tray_status as update_tray_status_ui
 from mutaui.ui.widgets.basic import (
     add_localized_item,
@@ -250,6 +294,9 @@ from mutaui.ui.widgets.basic import (
     localized_checkbox,
     localized_label,
 )
+from mutaui.ui.widgets.graph import Graph
+from mutaui.ui.widgets.health_ring import HealthRing
+from mutaui.ui.widgets.session_table import SessionTableModel
 from mutaui.ui.worker import Worker, WorkerSignals  # noqa: F401
 from performance import (  # noqa: F401
     PollBackoff,
@@ -279,119 +326,23 @@ from sync_configuration import (
 from sync_profiles import PROFILES as PROFILES
 from sync_profiles import AdaptivePolling
 
-BG = "#0B1019"
-CARD = "#141D2A"
-CARD2 = "#1C2B3A"
-BORDER = "#2A394A"
-MUTED = "#A0AEC0"
-TEXT = "#F1F6FA"
-TEAL = "#61E0B9"
-BLUE = "#7AAEFF"
-AMBER = "#F2BF70"
-RED = "#FB8696"
-
-CSS = f"""
-QWidget {{ color: {TEXT}; font-family: 'Segoe UI', 'Inter', sans-serif; font-size: 13px; }}
-QMainWindow, QWidget#main, QScrollArea, QWidget#scrollbody {{ background: {BG}; }}
-QFrame#sidebar {{ background: #101824; border-right: 1px solid {BORDER}; }}
-QScrollArea#navscroll, QWidget#navcontent {{ background: #101824; border: 0; }}
-QListWidget {{ background:#111D2B; border:1px solid {BORDER}; border-radius:9px; padding:5px; }}
-QListWidget::item {{ padding:12px; margin:2px; border-radius:7px; }}
-QListWidget::item:selected {{ background:#1D4B47; color:{TEXT}; }}
-QFrame#card {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 15px; }}
-QFrame#inner {{ background: #182536; border: 1px solid {BORDER}; border-radius: 11px; }}
-QLabel#muted {{ color: {MUTED}; }}
-QLabel#eyebrow {{ color: {MUTED}; font-size: 11px; font-weight: 700; }}
-QLabel#hero {{ font-size: 25px; font-weight: 750; }}
-QLabel#logo {{ font-size: 21px; font-weight: 800; letter-spacing: .2px; }}
-QLabel#metric {{ font-size: 28px; font-weight: 750; }}
-QLabel#section {{ font-size: 16px; font-weight: 700; }}
-QLabel#smallnum {{ font-size: 19px; font-weight: 700; }}
-QPushButton {{ background: {CARD2}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 9px;
-              padding: 10px 15px; font-weight: 600; }}
-QPushButton:hover {{ background: #26344E; border-color: #435675; }}
-QPushButton:pressed {{ background: #344866; }}
-QPushButton:disabled {{ color: #9BAAC0; background: #171E2D; border-color: #33435B; }}
-QPushButton:focus {{ border-color: {BLUE}; }}
-QPushButton#primary:focus {{ border-color: #B6FFE9; }}
-QPushButton#danger:focus {{ border-color: {RED}; }}
-QPushButton#primary {{ background: {TEAL}; color: #071A1A; border-color: {TEAL}; font-weight: 800; }}
-QPushButton#primary:hover {{ background: #94F4D9; }}
-QPushButton#primary:pressed {{ background: #3EC6A2; }}
-QPushButton#danger {{ background: #3B2537; border-color: #734050; color: #FFACB8; }}
-QPushButton#danger:hover {{ background: #513044; }}
-QPushButton#nav {{ text-align: left; background: transparent; border: 1px solid transparent;
-                  color: {MUTED}; border-radius: 9px; padding: 9px 13px; font-size: 13px; }}
-QPushButton#nav:hover {{ background: #1A263A; color: {TEXT}; }}
-QPushButton#nav:checked {{ background: #173A35; border-color: #36685F; color: {TEXT}; font-weight: 800; }}
-QPushButton#nav:focus {{ border-color: {BLUE}; }}
-QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {{ background: #101829; color: {TEXT};
-                           border: 1px solid {BORDER}; border-radius: 9px; padding: 7px 11px;
-                           min-height: 22px; selection-background-color: #385F6A; }}
-QComboBox {{ padding-right: 27px; }}
-QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right;
-                        width: 28px; border-left: 1px solid {BORDER}; }}
-QComboBox::down-arrow {{ width: 7px; height: 7px; }}
-QSpinBox {{ padding-right: 20px; }}
-QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border-color: {TEAL}; }}
-QListWidget:focus, QTableWidget:focus, QTableView:focus {{ border: 2px solid {BLUE}; }}
-QComboBox QAbstractItemView {{ background: #17243A; border: 1px solid {BORDER}; selection-background-color: #2D4955; }}
-QTableWidget, QTableView {{ background: {CARD}; color: {TEXT}; alternate-background-color: #182136; border: 0; border-radius: 10px;
-                gridline-color: transparent; selection-background-color: #233D4F; }}
-QTableWidget::item, QTableView::item {{ padding: 8px 8px; border-bottom: 1px solid #232F46; }}
-QTableWidget::item:selected, QTableView::item:selected {{ color: white; }}
-QHeaderView::section {{ background: {CARD}; color: {MUTED}; border: 0;
-                        border-bottom: 1px solid {BORDER}; padding: 11px 8px; font-size: 11px; font-weight: 750; }}
-QScrollBar:vertical {{ background: transparent; width: 8px; }}
-QScrollBar::handle:vertical {{ background: #355063; border-radius: 4px; min-height: 28px; }}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
-QScrollBar:horizontal {{ background: transparent; height: 8px; }}
-QScrollBar::handle:horizontal {{ background: #355063; border-radius: 4px; min-width: 28px; }}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
-QCheckBox {{ spacing: 10px; }}
-QCheckBox::indicator {{ width: 17px; height: 17px; border: 1px solid {BORDER}; border-radius: 4px;
-                        background: #101829; }}
-QCheckBox::indicator:checked {{ background: {TEAL}; border-color: {TEAL}; }}
-QCheckBox::indicator:hover {{ border-color: {TEAL}; }}
-QCheckBox:focus::indicator {{ border-color: {BLUE}; }}
-QDialog {{ background: #101729; }}
-QDialogButtonBox QPushButton {{ min-width: 90px; }}
-QMenu {{ background: #17243A; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px; }}
-QMenu::item {{ padding: 9px 20px; border-radius: 6px; }}
-QMenu::item:selected {{ background: #233D4F; color: {TEXT}; }}
-QMenu::separator {{ height: 1px; background: {BORDER}; margin: 4px 10px; }}
-QProgressBar {{ background:#101829; border:1px solid #33425D; border-radius:6px; min-height:16px; text-align:center; font-size: 11px; }}
-QProgressBar::chunk {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3BC8A6, stop:1 #55E6C1); border-radius:5px; }}
-QToolTip {{ background: #1E2B43; border: 1px solid #41536E; color: white; padding: 7px 10px; border-radius: 6px; }}
-"""
-
-
-from mutaui.ui.localization import (
-    _LOCALIZED_ITEM_ROLE,
-    set_localized_accessible_name,
-    set_localized_placeholder,
-    set_localized_text,
-    set_localized_title,
-    set_localized_tooltip,
-)
-from mutaui.ui.session_dialog import SessionDialog, configure_settings_path_provider
-from mutaui.ui.widgets.graph import Graph
-from mutaui.ui.widgets.health_ring import HealthRing
-from mutaui.ui.widgets.session_table import SessionTableModel
-
 configure_settings_path_provider(lambda: settings_path())
 
 
 import types
 
 from mutaui.ui.controllers import (
+    CommandExecutionMixin,
     DiagnosticsMixin,
     MonitoringMixin,
     OnboardingMixin,
     PagesMixin,
     ServersEndpointsMixin,
     SessionActionsMixin,
+    SessionTableMixin,
     SettingsBundleMixin,
+    SnapshotLifecycleMixin,
+    TrayMixin,
 )
 from mutaui.ui.formatters import (
     _czech_plural,
@@ -659,6 +610,10 @@ class MainWindow(
     PagesMixin,
     OnboardingMixin,
     SettingsBundleMixin,
+    TrayMixin,
+    SessionTableMixin,
+    CommandExecutionMixin,
+    SnapshotLifecycleMixin,
 ):
     def __init__(self, demo: bool = False, *, history_path: str | Path | None = None) -> None:
         super().__init__()
@@ -850,17 +805,6 @@ class MainWindow(
         if hasattr(self, "timer"):
             self.timer.setInterval(self.poll_period_ms())
 
-    def tray_idle_seconds(self) -> float:
-        now = time.monotonic()
-        elapsed = self._tray_idle_seconds_pending
-        if self._tray_idle_mode and self._tray_idle_started_at is not None:
-            elapsed += max(0.0, now - self._tray_idle_started_at)
-        return round(elapsed, 3)
-
-    def commit_tray_idle_sample(self) -> None:
-        self._tray_idle_seconds_pending = 0.0
-        self._tray_idle_started_at = time.monotonic() if self._tray_idle_mode else None
-
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self.update_polling_mode()
@@ -896,93 +840,40 @@ class MainWindow(
             )
             self.history.add(sample)
 
-    @staticmethod
-    def make_icon() -> QIcon:
-        pix = QPixmap(64, 64)
-        pix.fill(Qt.GlobalColor.transparent)
-        p = QPainter(pix)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setBrush(QColor(TEAL))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.drawRoundedRect(QRectF(3, 3, 58, 58), 17, 17)
-        p.setBrush(QColor("#0C1B25"))
-        p.drawRoundedRect(QRectF(16, 16, 11, 32), 5, 5)
-        p.drawRoundedRect(QRectF(34, 16, 11, 32), 5, 5)
-        p.end()
-        return QIcon(pix)
-
-    def create_tray(self) -> None:
-        self.tray = QSystemTrayIcon(self.windowIcon(), self)
-        self._last_notification_session_keys = ()
-        set_localized_tooltip(self.tray, "Mutagen Control")
-        menu = QMenu(self)
-        show_action = localized_action("Open Mutagen Control", self)
-        show_action.triggered.connect(self.show_window)
-        quit_action = localized_action("Quit", self)
-        quit_action.triggered.connect(self.quit_app)
-        menu.addAction(show_action)
-        menu.addSeparator()
-        menu.addAction(quit_action)
-        self.tray.setContextMenu(menu)
-        self.tray.activated.connect(
-            lambda reason: (
-                self.show_window()
-                if reason == QSystemTrayIcon.ActivationReason.DoubleClick
-                else None
-            )
-        )
-        self.tray.messageClicked.connect(self.open_notified_issue)
-        if QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray.show()
-
-    def _tray_status_icon(self, status: str) -> QIcon:
-        pixmap = self.windowIcon().pixmap(64, 64)
-        painter = QPainter(pixmap)
-        colors = {
-            "issue": "#EF4444",
-            "paused": "#F59E0B",
-            "busy": "#38BDF8",
-            "healthy": "#22C55E",
-            "idle": "#64748B",
-            "offline": "#EF4444",
-            "unknown": "#A78BFA",
-        }
-        painter.setPen(QPen(QColor("#0B1019"), 2))
-        painter.setBrush(QColor(colors.get(status, colors["unknown"])))
-        painter.drawEllipse(43, 43, 18, 18)
-        painter.end()
-        return QIcon(pixmap)
-
-    def update_tray_status(self, snap: Any, states: Mapping[tuple[str, str], str]) -> None:
-        update_tray_status_ui(self.tray, self._tray_status_icon, snap, states)
-
-    def open_notified_issue(self) -> None:
-        keys = self._last_notification_session_keys
-        if not keys:
-            self.show_window()
-            return
-        if len(keys) == 1:
-            kind, identifier = keys[0]
-        else:
-            labels = [f"{kind}: {identifier}" for kind, identifier in keys]
-            selected, accepted = QInputDialog.getItem(
-                self,
-                translate_text("Session issues", active_language()),
-                translate_text("Choose the session to open", active_language()),
-                labels,
-                0,
-                False,
-            )
-            if not accepted:
-                return
-            kind, identifier = keys[labels.index(selected)]
-        self.handle_launch_request({"command": "open_session", "session_id": identifier})
-
     def set_ui_mode(self, mode: str) -> None:
         self.preferences_controller.set_ui_mode(mode)
 
     def apply_theme(self, theme: str) -> None:
         self.preferences_controller.apply_theme(theme)
+        self._update_theme_toggle_icon()
+
+    def _update_theme_toggle_icon(self) -> None:
+        if not hasattr(self, "theme_toggle_btn"):
+            return
+        theme = self.conf.get("theme", "dark")
+        try:
+            system_is_light = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Light
+        except (AttributeError, RuntimeError):
+            system_is_light = False
+        resolved = resolve_theme(theme, system_is_light=system_is_light)
+        self.theme_toggle_btn.setText("☀️" if resolved == "dark" else "🌙")
+
+    def toggle_theme_quick(self) -> None:
+        theme = self.conf.get("theme", "dark")
+        try:
+            system_is_light = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Light
+        except (AttributeError, RuntimeError):
+            system_is_light = False
+        resolved = resolve_theme(theme, system_is_light=system_is_light)
+        new_theme = "light" if resolved == "dark" else "dark"
+        self.conf["theme"] = new_theme
+        self.apply_theme(new_theme)
+        if hasattr(self, "theme_input"):
+            idx = self.theme_input.findData(new_theme)
+            if idx >= 0:
+                self.theme_input.setCurrentIndex(idx)
+        self._update_theme_toggle_icon()
+        write_settings(self.conf)
 
     def apply_ui_language(self, language: str) -> None:
         self.preferences_controller.apply_ui_language(language)
@@ -1010,6 +901,14 @@ class MainWindow(
         titles.addWidget(label("CONTROL  /  SERVER MANAGER", muted=True, size=10))
         logorow.addLayout(titles)
         logorow.addStretch()
+        self.theme_toggle_btn = QPushButton()
+        self.theme_toggle_btn.setObjectName("themeToggle")
+        self.theme_toggle_btn.setFixedSize(32, 32)
+        self.theme_toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_theme_toggle_icon()
+        self.theme_toggle_btn.clicked.connect(self.toggle_theme_quick)
+        set_localized_tooltip(self.theme_toggle_btn, "Toggle dark/light theme")
+        logorow.addWidget(self.theme_toggle_btn)
         sidelay.addLayout(logorow)
         sidelay.addSpacing(17)
         nav_scroller = QScrollArea()
@@ -1229,1028 +1128,6 @@ class MainWindow(
         except OSError as exc:
             QMessageBox.critical(self, translate_text("Write Error", active_language()), str(exc))
 
-    def submit(
-        self,
-        func: Callable[[], Any],
-        on_result: Callable[[Any], None],
-        on_error: Callable[[str], None] | None = None,
-        on_done: Callable[[], None] | None = None,
-    ) -> None:
-        worker = Worker(func)
-        self.workers.add(worker)
-
-        def deliver_result(result: Any) -> None:
-            if not self._shutdown_pending:
-                on_result(result)
-
-        def deliver_error(message: str) -> None:
-            if not self._shutdown_pending:
-                (on_error or self.report_error)(message)
-
-        worker.signals.result.connect(deliver_result)
-        worker.signals.error.connect(deliver_error)
-
-        def finished() -> None:
-            self.workers.discard(worker)
-            if on_done and not self._shutdown_pending:
-                on_done()
-            if self._shutdown_pending and not self.workers:
-                QTimer.singleShot(0, self.close)
-
-        worker.signals.finished.connect(finished)
-        self.pool.start(worker)
-
-    def refresh(self, *, force: bool = False) -> None:
-        if not self.demo and not self.poll_backoff.can_retry(force):
-            return
-        if self.demo:
-            self.apply_snapshot(self.snapshot)
-            return
-        if self.pending_poll:
-            if force:
-                # A settings change or completed command requested newer data.
-                # Ignore this worker's now-obsolete result and rerun once.
-                self._refresh_generation += 1
-                self._refresh_again = True
-            return
-        if self.pending_action:
-            return
-        self.pending_poll = True
-        self._refresh_generation += 1
-        generation = self._refresh_generation
-        self._poll_started_at = time.monotonic()
-        binary = self.client.binary
-        client = MutagenClient(binary)
-        cached_version, cache_at, cache_binary = self._version_cache
-        version_valid = cache_binary == binary and time.monotonic() - cache_at < 600
-
-        def work() -> Snapshot:
-            snap = Snapshot(binary=client.binary)
-            snap.registration, snap.registration_command = read_registration(client.binary)
-            if not client.binary:
-                snap.error = "mutagen.exe is not configured. Open Settings."
-                return snap
-            try:
-                command_started = time.monotonic()
-                snap.sync = client.list_sessions("sync")
-                snap.command_durations["sync list"] = max(0.0, time.monotonic() - command_started)
-                snap.sync_observed_at = datetime.now().astimezone()
-                snap.daemon = True
-            except MutagenError as exc:
-                snap.command_durations["sync list"] = max(0.0, time.monotonic() - command_started)
-                snap.error = str(exc)
-                return snap
-            try:
-                command_started = time.monotonic()
-                snap.forward = client.list_sessions("forward")
-                snap.command_durations["forward list"] = max(
-                    0.0, time.monotonic() - command_started
-                )
-                snap.forward_observed_at = datetime.now().astimezone()
-            except MutagenError as exc:
-                snap.command_durations["forward list"] = max(
-                    0.0, time.monotonic() - command_started
-                )
-                snap.error = "Forwarding: " + str(exc)
-                snap.sessions_stale = True
-            if version_valid:
-                snap.version = cached_version
-            else:
-                try:
-                    snap.version = client.get_version().splitlines()[0]
-                except MutagenError:
-                    snap.version = cached_version if cache_binary == binary else ""
-            return snap
-
-        def apply_if_current(snap: Snapshot) -> None:
-            if generation == self._refresh_generation:
-                self.apply_snapshot(snap, generation=generation)
-
-        def finish_poll() -> None:
-            self.pending_poll = False
-            if self._refresh_again:
-                self._refresh_again = False
-                self.refresh(force=True)
-            else:
-                self._complete_pending_launch_requests()
-
-        self.submit(
-            work,
-            apply_if_current,
-            on_error=lambda message: (
-                self.report_error(message) if generation == self._refresh_generation else None
-            ),
-            on_done=finish_poll,
-        )
-
-    def apply_snapshot(self, snap: Snapshot, *, generation: int | None = None) -> None:
-        if generation is not None and generation != self._refresh_generation:
-            return
-        received_at = time.monotonic()
-        if (
-            self._last_snapshot_received_monotonic is not None
-            and received_at - self._last_snapshot_received_monotonic > 180
-        ):
-            self.health_tracker.note_environment_event("wake", now=received_at)
-        self._last_snapshot_received_monotonic = received_at
-        # Preserve separately sampled resource measurements.
-        if not self.demo:
-            snap.cpu, snap.memory, snap.processes = (
-                self.snapshot.cpu,
-                self.snapshot.memory,
-                self.snapshot.processes,
-            )
-        if not self.demo and snap.binary == self.snapshot.binary:
-            if not snap.daemon:
-                # An unreachable daemon must not make the last known sessions
-                # disappear. Keep them visible and label them as stale.
-                snap.sync = list(self.snapshot.sync)
-                snap.forward = list(self.snapshot.forward)
-                snap.sync_observed_at = self.snapshot.sync_observed_at
-                snap.forward_observed_at = self.snapshot.forward_observed_at
-                snap.sessions_stale = self.snapshot.daemon or self.snapshot.sessions_stale
-            elif snap.sessions_stale:
-                # Sync list succeeded; keep only the failed forwarding list.
-                snap.forward = list(self.snapshot.forward)
-                snap.forward_observed_at = self.snapshot.forward_observed_at
-            snap.resource_observed_at = self.snapshot.resource_observed_at
-            snap.command_durations = dict(snap.command_durations)
-        self.snapshot = snap
-        if hasattr(self, "diagnostics_view"):
-            self.update_diagnostics(snap)
-        if snap.daemon:
-            self.adaptive_policy.observe(snap)
-        self.update_polling_mode()
-        if snap.version and snap.binary:
-            current_version, cached_at, cached_binary = self._version_cache
-            if (
-                snap.version != current_version
-                or snap.binary != cached_binary
-                or time.monotonic() - cached_at >= 600
-            ):
-                self._version_cache = (snap.version, time.monotonic(), snap.binary)
-        if not self.demo and snap.daemon and not snap.sessions_stale:
-            self.traffic_rates = self.traffic_meter.update(snap.forward)
-            self._traffic_sample_pending = True
-        if not self.demo:
-            self.check_alerts(snap)
-        if not self.demo:
-            self.poll_backoff.observe(bool(snap.daemon))
-        duration_ms = (
-            (time.monotonic() - self._poll_started_at) * 1000 if self._poll_started_at else 0
-        )
-        if self.demo:
-            set_localized_text(self.updated, "DEMO DATA")
-        else:
-            retry_seconds = self.poll_backoff.remaining()
-            if snap.daemon and not snap.sessions_stale:
-                refreshed_time = datetime.now().strftime("%H:%M:%S")
-                english = f"Refreshed {refreshed_time}  ·  CLI {duration_ms:.0f} ms"
-                czech = translate_text("Refreshed {time} · CLI {duration} ms", "cs").format(
-                    time=refreshed_time, duration=f"{duration_ms:.0f}"
-                )
-            elif snap.daemon:
-                detail = snap.error or "session data is stale"
-                english = f"Showing last successful sessions · {detail}"
-                czech = translate_text("Showing last successful sessions · {detail}", "cs").format(
-                    detail=detail
-                )
-            elif snap.sessions_stale:
-                english = (
-                    "Daemon offline · showing last successful sessions · "
-                    f"retrying in {retry_seconds:.0f} s"
-                )
-                czech = translate_text(
-                    "Daemon offline · showing last successful sessions · retrying in {seconds} s",
-                    "cs",
-                ).format(seconds=f"{retry_seconds:.0f}")
-            else:
-                english = f"Daemon offline · retrying in {retry_seconds:.0f} s"
-                czech = translate_text("Daemon offline · retrying in {seconds} s", "cs").format(
-                    seconds=f"{retry_seconds:.0f}"
-                )
-            set_localized_text(self.updated, english, czech=czech)
-        self._version_label_text = snap.version or "Version: unavailable"
-        if hasattr(self, "version_label"):
-            if snap.version:
-                self.version_label.setText(self._version_label_text)
-            else:
-                set_localized_text(self.version_label, "Version: unavailable")
-        regtexts = {
-            "registered": "Auto-start: registered for this installation",
-            "unregistered": "Auto-start: not registered",
-            "other": "Auto-start: entry points to another installation/command",
-            "unknown": "Auto-start: status unknown",
-            "unsupported": "Auto-start: detection is available on Windows only",
-        }
-        registration_en = regtexts.get(snap.registration, "Registration: unknown")
-        registration_cs = {
-            "registered": "Automatické spuštění: registrováno pro tuto instalaci",
-            "unregistered": "Automatické spuštění: není registrováno",
-            "other": "Automatické spuštění: položka odkazuje na jinou instalaci nebo příkaz",
-            "unknown": "Automatické spuštění: stav není známý",
-            "unsupported": "Automatické spuštění: zjištění je dostupné pouze ve Windows",
-        }.get(snap.registration, "Registrace: stav není známý")
-        set_localized_text(self.register_message, registration_en, czech=registration_cs)
-        autostart_hints = {"win32": "Registry entry in HKCU\\...\\Run\\Mutagen"}
-        default_autostart_hint = autostart_hints.get(
-            sys.platform, "launchd (macOS) or systemd --user / XDG (Linux)"
-        )
-        self.register_message.setToolTip(snap.registration_command or default_autostart_hint)
-        available = bool(snap.binary)
-        if not available:
-            set_localized_text(self.side_state, "●  Mutagen CLI not found")
-            self.side_state.setStyleSheet(f"color:{RED}")
-            set_localized_text(self.side_sub, "Select mutagen.exe in Settings")
-        elif snap.daemon:
-            set_localized_text(self.side_state, "●  Daemon online")
-            self.side_state.setStyleSheet(f"color:{TEAL}")
-            sync_count = len(snap.sync)
-            forward_count = len(snap.forward)
-            sync_noun = "sync" if sync_count == 1 else "syncs"
-            forward_noun = "port forward" if forward_count == 1 else "port forwards"
-            summary_en = f"{sync_count} {sync_noun} · {forward_count} {forward_noun}"
-            sync_form = _czech_plural(
-                sync_count,
-                ("relace", "relace", "relací"),
-            )
-            forward_form = _czech_plural(
-                forward_count,
-                ("přesměrování", "přesměrování", "přesměrování"),
-            )
-            summary_cs = f"{sync_count} {sync_form} · {forward_count} {forward_form}"
-            set_localized_text(self.side_sub, summary_en, czech=summary_cs)
-        else:
-            set_localized_text(self.side_state, "●  Daemon offline")
-            self.side_state.setStyleSheet(f"color:{AMBER}")
-            set_localized_text(self.side_sub, (snap.error or "Not running yet")[:120])
-        set_localized_text(
-            self.hero_title, "Daemon is running" if snap.daemon else "Daemon is unavailable"
-        )
-        set_localized_text(
-            self.hero_sub,
-            "Sync runs in the background. The application monitors its status."
-            if snap.daemon
-            else "Go to the Daemon page to start the service or open Settings.",
-        )
-        # Version badge in hero
-        if hasattr(self, "hero_badge"):
-            if snap.version:
-                self.hero_badge.setText(snap.version)
-                self.hero_badge.setVisible(True)
-            else:
-                self.hero_badge.setVisible(False)
-        set_localized_text(
-            self.daemon_title,
-            "●  Running" if snap.daemon else "●  Unavailable / stopped",
-            czech="●  Spuštěno" if snap.daemon else "●  Nedostupná / zastavená",
-        )
-        self.daemon_title.setStyleSheet(
-            f"color:{TEAL if snap.daemon else AMBER};font-size:22px;font-weight:750"
-        )
-        if snap.daemon:
-            description_en = (
-                "Daemon responded; " + snap.error if snap.error else "Daemon is responding."
-            )
-            description_cs = (
-                "Služba Mutagen odpověděla; " + snap.error
-                if snap.error
-                else "Služba Mutagen odpovídá."
-            )
-        else:
-            description_en = snap.error or "Daemon is not running."
-            description_cs = snap.error or "Služba Mutagen není spuštěna."
-        set_localized_text(self.daemon_desc, description_en, czech=description_cs)
-        for b in (self.start_button, self.stop_button):
-            b.setEnabled(not self.demo and available and not self.pending_action)
-        all_sessions = [("sync", x) for x in snap.sync] + [("forward", x) for x in snap.forward]
-        kinds = [classify(x, k)[0] for k, x in all_sessions]
-        self.metric_widgets["all"].setText(str(len(all_sessions)))
-        self.metric_widgets["running"].setText(str(sum(s in ("active", "busy") for s in kinds)))
-        self.metric_widgets["paused"].setText(str(kinds.count("paused")))
-        self.metric_widgets["errors"].setText(str(kinds.count("error")))
-        self.health_ring.set_health(len(kinds), kinds.count("error"))
-        self.session_counts = (sum(s in ("active", "busy") for s in kinds), kinds.count("error"))
-        sync_count = len(snap.sync)
-        sync_paused = sum(bool(x.get("paused")) for x in snap.sync)
-        sync_form = _czech_plural(sync_count, ("synchronizace", "synchronizace", "synchronizací"))
-        set_localized_text(
-            self.sync_summary,
-            f"{sync_count} sync sessions • {sync_paused} paused",
-            czech=f"{sync_count} {sync_form} · {sync_paused} pozastaveno",
-        )
-        forward_count = len(snap.forward)
-        forward_form = _czech_plural(
-            forward_count, ("přesměrování", "přesměrování", "přesměrování")
-        )
-        set_localized_text(
-            self.forward_summary,
-            f"{forward_count} forwarding sessions • data and active connections in details",
-            czech=f"{forward_count} {forward_form} · data a aktivní spojení v podrobnostech",
-        )
-        # Dashboard forward summary line
-        if hasattr(self, "dashboard_forward_summary"):
-            fwd_active = sum(
-                1 for s in snap.forward if classify(s, "forward")[0] in ("active", "busy")
-            )
-            fwd_total = len(snap.forward)
-            if fwd_total:
-                fwd_open = sum(1 for s in snap.forward if s.get("openConnections", 0) > 0)
-                set_localized_text(
-                    self.dashboard_forward_summary,
-                    f"{fwd_total} total · {fwd_active} active · {fwd_open} with open connections",
-                    czech=f"{fwd_total} celkem · {fwd_active} aktivní · {fwd_open} s otevřeným spojením",
-                )
-            else:
-                set_localized_text(self.dashboard_forward_summary, "No forwarding sessions")
-        # Rebuilding and re-sorting entire QTableWidgets on every 4 s poll
-        # causes avoidable flicker and allocates dozens of QTableWidgetItems.
-        for kind, sessions, table in (
-            ("sync", snap.sync, self.sync_table),
-            ("forward", snap.forward, self.forward_table),
-            ("dashboard", snap.sync[:5], self.dashboard_table),
-        ):
-            actual_kind = "sync" if kind == "dashboard" else kind
-            signature = tuple(
-                (
-                    s.get("identifier"),
-                    s.get("name"),
-                    s.get("paused"),
-                    s.get("status"),
-                    s.get("lastError"),
-                    conflict_count(s) if actual_kind == "sync" else s.get("openConnections"),
-                    problem_count(s) if actual_kind == "sync" else 0,
-                    endpoint_text(
-                        s.get("alpha" if actual_kind == "sync" else "source"), actual_kind
-                    ),
-                    endpoint_text(
-                        s.get("beta" if actual_kind == "sync" else "destination"), actual_kind
-                    ),
-                    s.get("identifier") in self.favorites[actual_kind],
-                )
-                for s in sessions
-            )
-            if signature != self._table_signatures.get(kind):
-                self.fill_table(table, sessions, actual_kind, dashboard=kind == "dashboard")
-                self._table_signatures[kind] = signature
-                if kind != "dashboard":
-                    self.filter_table(kind)
-        page = self.pages.currentIndex()
-        if page in (1, 2):
-            self.refresh_detail("sync" if page == 1 else "forward")
-        if page == 7:
-            self.update_diagnostics(snap)
-        self.update_endpoint_sessions(snap)
-        self.update_server_groups()
-        if self.demo:
-            set_localized_text(self.footer, "DEMO • All actions are disabled")
-        else:
-            self.footer.setText(
-                "Connected to " + snap.binary if available else "Select a Mutagen installation"
-            )
-
-    def fill_table(
-        self,
-        table: QTableView,
-        sessions: list[dict[str, Any]],
-        kind: str,
-        dashboard: bool = False,
-    ) -> None:
-        """Reset one compact model while retaining the selected session and scroll."""
-        model = table.model()
-        current = table.currentIndex()
-        selection = (
-            current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole) if current.isValid() else ""
-        )
-        old_scroll = table.verticalScrollBar().value()
-        table.blockSignals(True)
-        selection_model = table.selectionModel()
-        selection_model.blockSignals(True)
-        table.setUpdatesEnabled(False)
-        try:
-            model.set_sessions(sessions, self.favorites[kind])
-            if selection:
-                row = model.row_for_identifier(selection)
-                if row >= 0:
-                    table.selectRow(row)
-                else:
-                    table.clearSelection()
-            else:
-                table.clearSelection()
-            table.verticalScrollBar().setValue(old_scroll)
-        finally:
-            table.setUpdatesEnabled(True)
-            selection_model.blockSignals(False)
-            table.blockSignals(False)
-        if table.currentIndex().isValid():
-            self.on_select(kind)
-        if kind == "sync" and hasattr(self, "sync_empty_state"):
-            self.sync_empty_state.setVisible(len(sessions) == 0)
-            table.setVisible(len(sessions) > 0)
-        elif kind == "forward" and hasattr(self, "forward_empty_state"):
-            self.forward_empty_state.setVisible(len(sessions) == 0)
-            table.setVisible(len(sessions) > 0)
-        self.fit_table_to_rows(table)
-
-    @staticmethod
-    def fit_table_to_rows(table: QTableView | QTableWidget) -> None:
-        row_count = table.model().rowCount() if isinstance(table, QTableView) else table.rowCount()
-        visible_rows = [row for row in range(row_count) if not table.isRowHidden(row)]
-        rows_height = sum(table.rowHeight(row) for row in visible_rows)
-        header_height = max(
-            table.horizontalHeader().height(), table.horizontalHeader().sizeHint().height()
-        )
-        height = min(520, max(160, header_height + rows_height + 2 * table.frameWidth() + 4))
-        table.setFixedHeight(height)
-
-    def filter_table(self, kind: str, value: str | None = None) -> None:
-        table = self.sync_table if kind == "sync" else self.forward_table
-        search = self.sync_search if kind == "sync" else self.forward_search
-        filters = self.sync_state_filter if kind == "sync" else self.forward_state_filter
-        needle = (value if isinstance(value, str) else search.text()).casefold().strip()
-        code = {
-            1: "active",
-            2: "busy",
-            3: {"active", "busy"},
-            4: "paused",
-            5: "error",
-            6: "idle",
-        }.get(filters.currentIndex())
-        only_favorites = (
-            self.sync_favorites_only if kind == "sync" else self.forward_favorites_only
-        ).isChecked()
-        server_key = self.sync_server_filter.currentData() if kind == "sync" else "__all__"
-        by_id = {
-            s.get("identifier"): s
-            for s in (self.snapshot.sync if kind == "sync" else self.snapshot.forward)
-        }
-        model = table.model()
-        for row in range(model.rowCount()):
-            haystack = " ".join(
-                str(model.index(row, col).data() or "") for col in range(model.columnCount())
-            ).casefold()
-            identifier = model.index(row, 0).data(Qt.ItemDataRole.UserRole)
-            current = by_id.get(identifier)
-            current_state = classify(current, kind)[0] if current is not None else None
-            if isinstance(code, set):
-                meets_state = current_state in code
-            else:
-                meets_state = code is None or current_state == code
-            meets_server = server_key == "__all__" or (
-                current is not None and server_key in session_servers(current, kind)
-            )
-            table.setRowHidden(
-                row,
-                needle not in haystack
-                or not meets_state
-                or not meets_server
-                or (only_favorites and identifier not in self.favorites[kind]),
-            )
-        current = table.currentIndex()
-        if current.isValid() and table.isRowHidden(current.row()):
-            table.selectionModel().clear()
-        self.fit_table_to_rows(table)
-
-    def dashboard_select(self, index: QModelIndex) -> None:
-        if index.isValid():
-            identifier = index.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole)
-            self.focus_session_from_navigator("sync", identifier or "")
-
-    def on_select(self, kind: str) -> None:
-        table = self.sync_table if kind == "sync" else self.forward_table
-        current = table.currentIndex()
-        if not current.isValid():
-            if self.current_kind == kind:
-                self.current_id = ""
-        else:
-            self.current_kind = kind
-            self.current_id = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole) or ""
-        self.refresh_detail(kind)
-
-    def selected_session(self, kind: str) -> dict[str, Any] | None:
-        table = self.sync_table if kind == "sync" else self.forward_table
-        current = table.currentIndex()
-        if not current.isValid():
-            return None
-        identifier = current.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole)
-        sessions = self.snapshot.sync if kind == "sync" else self.snapshot.forward
-        return next((s for s in sessions if s.get("identifier") == identifier), None)
-
-    def _start_initial_refresh(self) -> None:
-        self._initial_refresh_pending = False
-        if not self.pending_poll:
-            self.refresh(force=True)
-
-    def _has_authoritative_session_lists(self) -> bool:
-        return self.demo or bool(
-            self.snapshot.daemon
-            and not self.snapshot.sessions_stale
-            and self.snapshot.sync_observed_at is not None
-            and self.snapshot.forward_observed_at is not None
-        )
-
-    def _complete_pending_launch_requests(self) -> None:
-        if not self._pending_launch_requests:
-            return
-        pending = self._pending_launch_requests
-        self._pending_launch_requests = []
-        if not self._has_authoritative_session_lists():
-            message = translate_text(
-                "A current session list is unavailable. Refresh status and retry.",
-                active_language(),
-            )
-            for request in pending:
-                title = "Open folder" if request.get("command") == "open_folder" else "Open session"
-                QMessageBox.information(self, translate_text(title, active_language()), message)
-            return
-        for request in pending:
-            self.handle_launch_request(request)
-
-    def handle_launch_request(self, message: Mapping[str, object]) -> None:
-        """Route a validated local CLI or single-instance request in the UI thread."""
-        command = message.get("command")
-        self.showNormal()
-        self.raise_()
-        self.activateWindow()
-        if (
-            command in {"open_folder", "open_session"}
-            and not self._has_authoritative_session_lists()
-        ):
-            self._pending_launch_requests.append(dict(message))
-            if not self.pending_poll and not self._initial_refresh_pending:
-                self.refresh(force=True)
-            return
-        if command == "focus":
-            return
-        if command == "doctor":
-            self.set_page(7)
-            return
-        if command == "open_project":
-            from mutaui.ui.project_viewer import NativeProjectViewerDialog
-
-            path = Path(str(message.get("path", ""))).expanduser().absolute()
-            if path.name.casefold() not in {"mutagen.yml", "mutagen.yaml"}:
-                QMessageBox.warning(
-                    self,
-                    translate_text("Open project", active_language()),
-                    translate_text("Choose a mutagen.yml or mutagen.yaml file.", active_language()),
-                )
-                return
-            dialog = NativeProjectViewerDialog(
-                path,
-                parent=self,
-                executor=LegacyMutagenExecutor(self.client) if self.client.binary else None,
-                audit_path=settings_path().with_name("mutagen-project-actions.jsonl"),
-            )
-            dialog.exec()
-            return
-        if command == "open_folder":
-            from mutaui.services.path_lookup import find_local_sessions_for_path
-
-            snapshots = []
-            observed_at = self.snapshot.sync_observed_at
-            for raw in self.snapshot.sync:
-                if isinstance(raw, dict) and isinstance(raw.get("identifier"), str):
-                    snapshots.append(
-                        from_legacy_session(
-                            "sync",
-                            raw,
-                            measured_at=observed_at or datetime(2000, 1, 1, tzinfo=UTC),
-                            stale_reason=(
-                                "stale"
-                                if self.snapshot.sessions_stale or observed_at is None
-                                else None
-                            ),
-                        )
-                    )
-            identifiers = find_local_sessions_for_path(snapshots, str(message.get("path", "")))
-            if len(identifiers) != 1:
-                detail = (
-                    "No current local sync root contains this path."
-                    if not identifiers
-                    else "Path belongs to multiple sync sessions; choose an exact session ID:\n"
-                    + "\n".join(identifiers)
-                )
-                QMessageBox.information(
-                    self, translate_text("Open folder", active_language()), detail
-                )
-                return
-            command = "open_session"
-            message = {"command": command, "session_id": identifiers[0]}
-        if command == "open_session":
-            identifier = message.get("session_id")
-            found = [
-                ("sync", row)
-                for row in self.snapshot.sync
-                if isinstance(row, dict) and row.get("identifier") == identifier
-            ] + [
-                ("forward", row)
-                for row in self.snapshot.forward
-                if isinstance(row, dict) and row.get("identifier") == identifier
-            ]
-            if len(found) != 1:
-                QMessageBox.information(
-                    self,
-                    translate_text("Open session", active_language()),
-                    translate_text(
-                        "Exact session ID is unavailable or ambiguous in the latest snapshot.",
-                        active_language(),
-                    ),
-                )
-                return
-            kind, _row = found[0]
-            self.current_kind = kind
-            self.current_id = str(identifier)
-            self.set_page(1 if kind == "sync" else 2)
-            table = self.sync_table if kind == "sync" else self.forward_table
-            row_index = table.model().row_for_identifier(str(identifier))
-            if row_index >= 0:
-                table.selectRow(row_index)
-            self.refresh_detail(kind)
-
-    def check_alerts(self, snap: Snapshot) -> None:
-        check_session_alerts(
-            self,
-            snap,
-            classify_session=classify,
-            quiet_hours=quiet_hours_active,
-        )
-
-    def create_session(self, kind: str) -> None:
-        if self.demo:
-            QMessageBox.information(
-                self,
-                translate_text("Demo", active_language()),
-                translate_text("Actions are disabled in demo mode.", active_language()),
-            )
-            return
-        if not self.client.binary:
-            QMessageBox.warning(
-                self,
-                translate_text("Mutagen not found", active_language()),
-                translate_text("First, configure mutagen.exe in Settings.", active_language()),
-            )
-            self.set_page(5)
-            return
-        profile_load = load_profile_store(settings_path().with_name("connection-profiles.json"))
-        if not profile_load.valid:
-            QMessageBox.warning(
-                self,
-                translate_text("Connection Profiles Unavailable", active_language()),
-                "Local profiles were left unchanged and will not be applied to this session.\n\n"
-                + "\n".join(profile_load.warnings),
-            )
-        dlg = SessionDialog(
-            kind,
-            self,
-            default_profile=self.conf.get("new_sync_profile", "default"),
-            ui_mode=self.ui_mode,
-            executable=self.client.binary or "mutagen",
-            saved_profiles=profile_load.profiles if profile_load.valid else (),
-        )
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self.run_command(
-                kind,
-                "create",
-                options=dlg.arguments(),
-                backup_choice=dlg.backup_choice,
-            )
-
-    def session_action(self, kind: str, action: str) -> None:
-        sess = self.selected_session(kind)
-        if not sess:
-            return
-        self.run_command(kind, action, target=sess.get("identifier", ""))
-
-    def daemon_action(self, action: str) -> None:
-        self.run_command("daemon", action)
-
-    def run_command(
-        self,
-        kind: str,
-        action: str,
-        target: str = "",
-        options: list[str] | None = None,
-        register_before: bool = False,
-        backup_choice: str | None = None,
-    ) -> None:
-        if self.demo or self.pending_action:
-            return
-        client = MutagenClient(self.client.binary, action_planner=self.action_planner)
-        create_plan = None
-        daemon_plan = None
-        register_plan = None
-        expected_preflight_fingerprint = ""
-        if action == "create" and kind in {"sync", "forward"}:
-            try:
-                create_plan = client.prepare_create_plan(
-                    kind,
-                    options or [],
-                    backup_choice=backup_choice,
-                )
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-        if kind == "daemon":
-            try:
-                daemon_plan = client.prepare_daemon_plan(action)
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-            language = active_language()
-            preview_lines = [
-                f"{translate_text(daemon_plan.description, language)} · {daemon_plan.risk}",
-                translate_text("Command preview: {command}", language).format(
-                    command="mutagen " + " ".join(daemon_plan.argv)
-                ),
-            ]
-            if action == "stop":
-                preview_lines.append(
-                    translate_text(
-                        "Stopping interrupts all sync and forwarding sessions managed by this daemon.",
-                        language,
-                    )
-                )
-            answer = QMessageBox.question(
-                self,
-                translate_text("Review Planned Action", language),
-                "\n\n".join(preview_lines),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                self.action_planner.cancel(daemon_plan.plan_id)
-                return
-            typed_confirmation = None
-            if daemon_plan.requires_typed_confirmation:
-                typed_confirmation, accepted = QInputDialog.getText(
-                    self,
-                    translate_text("Second Confirmation", language),
-                    translate_text(
-                        "To confirm this destructive action, type {expected}:", language
-                    ).format(expected=daemon_plan.typed_confirmation),
-                )
-                if not accepted:
-                    self.action_planner.cancel(daemon_plan.plan_id)
-                    return
-            try:
-                daemon_plan = client.consent_action_plan(
-                    daemon_plan,
-                    consent=True,
-                    typed_confirmation=typed_confirmation,
-                )
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-        if create_plan is not None:
-            language = active_language()
-            preview = "\n".join(
-                (
-                    f"{translate_text(create_plan.description, language)} · {create_plan.risk}",
-                    translate_text("Command preview: {command}", language).format(
-                        command="mutagen " + " ".join(create_plan.argv)
-                    ),
-                    (
-                        translate_text("A recoverable destination backup was confirmed.", language)
-                        if create_plan.backup_required
-                        else ""
-                    ),
-                )
-            )
-            answer = QMessageBox.question(
-                self,
-                translate_text("Review Planned Action", language),
-                preview,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                self.action_planner.cancel(create_plan.plan_id)
-                return
-            typed_confirmation = None
-            if create_plan.requires_typed_confirmation:
-                typed_confirmation, accepted = QInputDialog.getText(
-                    self,
-                    translate_text("Second Confirmation", language),
-                    translate_text(
-                        "To confirm this destructive action, type {expected}:", language
-                    ).format(expected=create_plan.typed_confirmation),
-                )
-                if not accepted:
-                    self.action_planner.cancel(create_plan.plan_id)
-                    return
-            try:
-                create_plan = client.consent_action_plan(
-                    create_plan,
-                    consent=True,
-                    typed_confirmation=typed_confirmation,
-                    backup_choice=backup_choice,
-                )
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-        if kind in {"sync", "forward"} and target and action != "create":
-            current_sessions = getattr(self.snapshot, kind, [])
-            selected = [
-                session
-                for session in current_sessions
-                if str(session.get("identifier") or "") == target
-            ]
-            if not selected:
-                QMessageBox.information(
-                    self,
-                    translate_text("Refresh Required", active_language()),
-                    translate_text(
-                        "The exact session is not in the current snapshot. Refresh before retrying.",
-                        active_language(),
-                    ),
-                )
-                return
-            expected_preflight_fingerprint = session_preflight_fingerprint(selected)
-            action_key = f"{kind}_{action}"
-            spec = ACTION_SPECS.get(action_key)
-            if spec is None:
-                self.report_error("This session action has no registered risk policy.")
-                return
-            language = active_language()
-            effects = {
-                "reset": "Mutagen may rescan and reevaluate file changes after clearing history.",
-                "terminate": "This ends the session; files at both endpoints remain.",
-            }
-            effect = effects.get(action)
-            preview = "\n".join(
-                [
-                    f"{translate_text(spec.description, language)} · {spec.risk}",
-                    translate_text("Exact session identifier: {identifier}", language).format(
-                        identifier=target
-                    ),
-                    translate_text("Command preview: {command}", language).format(
-                        command="mutagen " + " ".join((kind, action, target))
-                    ),
-                ]
-                + ([translate_text(effect, language)] if effect else [])
-            )
-            answer = QMessageBox.question(
-                self,
-                translate_text("Review Planned Action", active_language()),
-                preview,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                return
-        if register_before:
-            try:
-                register_plan = client.prepare_daemon_plan("register")
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-            language = active_language()
-            answer = QMessageBox.question(
-                self,
-                translate_text("Review Planned Action", language),
-                "\n\n".join(
-                    (
-                        f"{translate_text(register_plan.description, language)} · {register_plan.risk}",
-                        translate_text("Command preview: {command}", language).format(
-                            command="mutagen " + " ".join(register_plan.argv)
-                        ),
-                        translate_text(
-                            "Registration affects every unpaused Mutagen session for this user.",
-                            language,
-                        ),
-                    )
-                ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if answer != QMessageBox.StandardButton.Yes:
-                self.action_planner.cancel(register_plan.plan_id)
-                return
-            try:
-                register_plan = client.consent_action_plan(register_plan, consent=True)
-            except Exception as exc:
-                self.report_error(str(exc))
-                return
-        self.pending_action = True
-        self.add_log(
-            f"Running: mutagen {kind} {action}" + (" (selected session)" if target else "")
-        )
-        if expected_preflight_fingerprint:
-            self.add_log("Action preview approved: mutagen " + " ".join((kind, action, target)))
-        if create_plan is not None:
-            self.add_log("Action preview approved: mutagen " + " ".join(create_plan.argv))
-
-        def do() -> str:
-            if register_plan is not None:
-                client.execute(
-                    "daemon",
-                    "register",
-                    operator_consent=True,
-                    action_plan=register_plan,
-                )
-            return client.execute(
-                kind,
-                action,
-                target,
-                options,
-                operator_consent=True,
-                expected_preflight_fingerprint=expected_preflight_fingerprint,
-                action_plan=daemon_plan or create_plan,
-            )
-
-        def success(output: str) -> None:
-            created = getattr(client, "last_created_session", None)
-            if created is not None:
-                created_kind, created_id, create_arguments = created
-                try:
-                    self.session_provenance.record(created_id, create_arguments)
-                except ProvenanceStoreError as exc:
-                    self.add_log(
-                        "Created session verified, but replacement provenance was not saved: "
-                        + str(exc)
-                    )
-                else:
-                    self.add_log(
-                        f"Saved local creation provenance for {created_kind} session {created_id}"
-                    )
-            if output:
-                self.add_log(output[:1800])
-            self.add_log(f"Completed: {kind} {action}")
-
-        def error(message: str) -> None:
-            self.report_error(message)
-
-        def done() -> None:
-            self.pending_action = False
-            QTimer.singleShot(450, lambda: self.refresh(force=True))
-
-        self.submit(do, success, error, done)
-
-    def report_error(self, message: str) -> None:
-        self.add_log("ERROR: " + message)
-        QMessageBox.critical(self, translate_text("Mutagen — Error", active_language()), message)
-
-    def show_window(self) -> None:
-        self.showNormal()
-        self.raise_()
-        self.activateWindow()
-        self.update_polling_mode()
-
-    def quit_app(self) -> None:
-        if self.pending_action:
-            QMessageBox.information(
-                self,
-                translate_text("Mutagen Command in Progress", active_language()),
-                translate_text("Wait for the current command to finish first.", active_language()),
-            )
-            self.show_window()
-            return
-        self.tail_timer.stop()
-        self._allow_exit = True
-        self.tray.hide()
-        self.close()
-
-    def closeEvent(self, event: QCloseEvent) -> None:
-        if self.pending_action and self._allow_exit:
-            event.ignore()
-            QMessageBox.information(
-                self,
-                translate_text("Mutagen Command in Progress", active_language()),
-                translate_text("Wait for the current command to finish first.", active_language()),
-            )
-            return
-        if (
-            self.conf.get("tray", True)
-            and QSystemTrayIcon.isSystemTrayAvailable()
-            and not self._allow_exit
-        ):
-            self.hide()
-            event.ignore()
-        else:
-            self.tail_timer.stop()
-            if hasattr(self, "metric_timer"):
-                self.metric_timer.stop()
-            if hasattr(self, "timer"):
-                self.timer.stop()
-            if self.workers:
-                self._shutdown_pending = True
-                self.statusBar().showMessage(
-                    translate_text(
-                        "Waiting for background tasks to finish before closing…",
-                        active_language(),
-                    )
-                )
-                event.ignore()
-                return
-            if self.recorder is not None:
-                self.recorder.close(timeout=8)
-            with suppress(sqlite3.Error):
-                self.history.close()
-            self._shutdown_pending = False
-            event.accept()
-            QApplication.instance().quit()
-
 
 for _mixin in (
     DiagnosticsMixin,
@@ -2260,6 +1137,10 @@ for _mixin in (
     PagesMixin,
     OnboardingMixin,
     SettingsBundleMixin,
+    TrayMixin,
+    SessionTableMixin,
+    CommandExecutionMixin,
+    SnapshotLifecycleMixin,
 ):
     for _name, _attr in _mixin.__dict__.items():
         if isinstance(_attr, types.FunctionType):

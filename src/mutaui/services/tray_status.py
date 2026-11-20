@@ -17,7 +17,10 @@ def worst_tray_status(*, daemon_online: bool, sessions_stale: bool, states: Iter
         return "issue"
     if "paused" in confirmed:
         return "paused"
-    if any(state in {"connecting", "scanning", "transitioning", "staging"} for state in confirmed):
+    if any(
+        state in {"busy", "connecting", "scanning", "transitioning", "staging"}
+        for state in confirmed
+    ):
         return "busy"
     if all(state in {"watching", "active", "idle", "healthy"} for state in confirmed):
         return "healthy"

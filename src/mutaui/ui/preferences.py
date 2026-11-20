@@ -843,10 +843,15 @@ _TEXT_CATALOG = {
     "Recommended Solution:": "Doporučený postup nápravy:",
     "Copy Command": "Kopírovat příkaz",
     "Mutagen Documentation →": "Nápověda a dokumentace k Mutagenu →",
+    "⚠ Troubleshoot…": "⚠ Vyřešit problém…",
     "No sessions": "Žádné relace",
 }
 
 _TOOLTIP_CATALOG = {
+    "Diagnose and resolve issues with this session.": (
+        "Diagnostikovat a vyřešit potíže s touto relací."
+    ),
+    "Toggle dark/light theme": "Přepnout tmavý/světlý motiv",
     "Analyze sync failures and guide step-by-step resolution": (
         "Analyzovat chyby synchronizace a doporučit řešení krok za krokem"
     ),

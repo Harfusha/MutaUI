@@ -94,6 +94,10 @@ def test_tray_status_uses_worst_confirmed_session_state():
         == "busy"
     )
     assert (
+        worst_tray_status(daemon_online=True, sessions_stale=False, states=["watching", "busy"])
+        == "busy"
+    )
+    assert (
         worst_tray_status(daemon_online=True, sessions_stale=False, states=["watching", "active"])
         == "healthy"
     )

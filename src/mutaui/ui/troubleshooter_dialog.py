@@ -408,11 +408,11 @@ class TroubleshooterDialog(QDialog):
         button.setText("Zkopírováno!" if self._czech else "Copied!")
         QTimer.singleShot(1800, lambda: button.setText(orig_text))
 
-    def _copy_diagnostic_summary(self) -> None:
+    def _generate_diagnostic_summary(self) -> str:
         selected_id = self.session_combo.currentData()
         session = next((s for s in self._sessions if s.identity.identifier == selected_id), None)
         if not session:
-            return
+            return ""
 
         issues = self._issues_for_session(session.identity.identifier)
         lines = [
@@ -432,7 +432,13 @@ class TroubleshooterDialog(QDialog):
                 lines.append(f"  Command: {remedy.quick_command}")
             lines.append("")
 
-        QApplication.clipboard().setText("\n".join(lines))
+        return "\n".join(lines)
+
+    def _copy_diagnostic_summary(self) -> None:
+        summary = self._generate_diagnostic_summary()
+        if not summary:
+            return
+        QApplication.clipboard().setText(summary)
         orig_text = self.copy_btn.text()
         self.copy_btn.setText("Zkopírováno!" if self._czech else "Copied!")
         QTimer.singleShot(1800, lambda: self.copy_btn.setText(orig_text))

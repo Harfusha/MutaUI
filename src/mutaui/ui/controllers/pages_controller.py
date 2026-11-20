@@ -586,6 +586,12 @@ class PagesMixin:
         dl.addLayout(controls)
         session_prefs = button("⚙ Session Settings", partial(self.open_session_preferences, kind))
         utility_controls.insertWidget(0, session_prefs)
+        troubleshoot_btn = button(
+            "⚠ Troubleshoot…", partial(self.open_troubleshooter_for_selected, kind), kind="accent"
+        )
+        troubleshoot_btn.setVisible(False)
+        set_localized_tooltip(troubleshoot_btn, "Diagnose and resolve issues with this session.")
+        utility_controls.insertWidget(1, troubleshoot_btn)
         layout.addWidget(detail)
         layout.addStretch(1)
         if kind == "sync":
@@ -596,6 +602,7 @@ class PagesMixin:
             self.sync_progress = progress
             self.sync_favorite_button = favorite_button
             self.sync_preferences_button = session_prefs
+            self.sync_troubleshoot_button = troubleshoot_btn
         else:
             self.forward_table, self.forward_summary = table, summary
             self.forward_empty_state = empty_frame
@@ -608,6 +615,7 @@ class PagesMixin:
             self.forward_progress = progress
             self.forward_favorite_button = favorite_button
             self.forward_preferences_button = session_prefs
+            self.forward_troubleshoot_button = troubleshoot_btn
         page.setWidget(root)
         return page
 

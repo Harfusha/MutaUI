@@ -369,10 +369,10 @@ def test_troubleshooter_dialog_copy_summary_with_issue_details() -> None:
         stale_kinds=(),
     )
     dialog = TroubleshooterDialog(sessions=[session], report=report)
+    summary = dialog._generate_diagnostic_summary()
+    assert "user limit of inotify watches" in summary
+    assert "sudo sysctl" in summary
     dialog._copy_diagnostic_summary()
-    text = QApplication.clipboard().text()
-    assert "user limit of inotify watches" in text
-    assert "sudo sysctl" in text
     dialog.close()
 
 

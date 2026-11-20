@@ -120,6 +120,9 @@ class SessionActionsMixin:
             else:
                 set_localized_text(auto, "⚠ Enable start at sign-in · register daemon")
         if not sess:
+            troubleshoot_btn = getattr(self, f"{kind}_troubleshoot_button", None)
+            if troubleshoot_btn is not None:
+                troubleshoot_btn.setVisible(False)
             set_localized_text(title, "Select a session")
             tag.setText("")
             set_localized_text(
@@ -222,6 +225,21 @@ class SessionActionsMixin:
                 if not self.demo and not self.pending_action
                 else False
             )
+        troubleshoot_btn = getattr(self, f"{kind}_troubleshoot_button", None)
+        if troubleshoot_btn is not None:
+            has_issue = bool(
+                sess.get("lastError")
+                or state in ("error", "halted")
+                or sess.get("conflicts")
+                or (kind == "sync" and bool(problem_count(sess)))
+            )
+            troubleshoot_btn.setVisible(has_issue)
+
+    def open_troubleshooter_for_selected(self: Any, kind: str) -> None:
+        sess = self.selected_session(kind)
+        sess_id = str(sess.get("identifier")) if sess and sess.get("identifier") else None
+        if hasattr(self, "open_troubleshooter"):
+            self.open_troubleshooter(sess_id)
 
     def open_session_preferences(self: Any, kind: str) -> None:
         sess = self.selected_session(kind)
