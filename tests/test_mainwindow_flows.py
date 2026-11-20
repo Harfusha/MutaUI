@@ -1328,7 +1328,7 @@ def test_sync_replacement_requires_verified_provenance_and_saved_proposal(qapp, 
         (
             {"mode": "one-way-replica"},
             (SimpleNamespace(path="mode", current="two-way-safe", proposed="one-way-replica"),),
-            "Replica mode is a destructive R3 change and cannot use this replacement flow.",
+            "Replica mode is a destructive change and cannot use this replacement flow.",
         ),
     ],
 )
@@ -1579,8 +1579,8 @@ def test_settings_exposes_ssh_and_portable_data_tools(window):
     assert "Inspect SSH Profiles…" in titles
     assert "Export Portable Bundle…" in titles
     assert "Import Portable Bundle…" in titles
-    assert "Migrate Settings with Backup…" in titles
-    assert "Rollback Settings Migration…" in titles
+    assert "Migrate Settings with Backup…" not in titles
+    assert "Rollback Settings Migration…" not in titles
 
 
 def test_health_settings_persist_and_update_tracker_without_running_recovery(window):
@@ -1818,13 +1818,17 @@ def test_advanced_session_settings_show_full_raw_native_json(window, monkeypatch
     dialogs = []
     monkeypatch.setattr(app_module.QDialog, "exec", lambda dialog: dialogs.append(dialog) or 0)
 
+    # In both advanced and basic mode, raw JSON button is cleanly removed from the UI
     window.set_ui_mode("advanced")
     window.open_session_preferences("sync")
-    settings_dialog = dialogs[-1]
-    raw_button = settings_dialog.findChild(QPushButton, "rawNativeSessionJson")
-    assert raw_button is not None
-    raw_button.click()
+    assert dialogs[-1].findChild(QPushButton, "rawNativeSessionJson") is None
 
+    window.set_ui_mode("basic")
+    window.open_session_preferences("sync")
+    assert dialogs[-1].findChild(QPushButton, "rawNativeSessionJson") is None
+
+    # Underlying programmatic helper remains functional and safe
+    window.show_raw_native_session_json(session)
     raw_dialog = dialogs[-1]
     raw_view = raw_dialog.findChild(QPlainTextEdit, "rawNativeSessionJsonSource")
     assert raw_view is not None
@@ -1832,10 +1836,6 @@ def test_advanced_session_settings_show_full_raw_native_json(window, monkeypatch
     assert json.loads(raw_view.toPlainText()) == session
     raw_dialog.findChild(QPushButton, "copyRawNativeSessionJson").click()
     assert json.loads(app_module.QApplication.clipboard().text()) == session
-
-    window.set_ui_mode("basic")
-    window.open_session_preferences("sync")
-    assert dialogs[-1].findChild(QPushButton, "rawNativeSessionJson") is None
 
 
 def test_session_settings_save_uses_controller_for_typed_proposal(window, monkeypatch):
@@ -5295,6 +5295,50 @@ def test_session_context_menu_lists_kind_and_state_actions(
     assert events[1:] == expected_events
 
 
+def test_session_context_menu_troubleshoot_action(monkeypatch):
+    class Menu:
+        instance = None
+
+        def __init__(self, _parent):
+            self.actions = []
+            Menu.instance = self
+
+        def addAction(self, text, callback=None):
+            self.actions.append(SimpleNamespace(text=text, callback=callback))
+
+        def addSeparator(self):
+            pass
+
+        def exec(self, pos):
+            pass
+
+    monkeypatch.setattr(app_module, "QMenu", Menu)
+    events = []
+    fake_window = SimpleNamespace(
+        sync_table=SimpleNamespace(
+            itemAt=lambda p: SimpleNamespace(row=lambda: 0),
+            selectRow=lambda r: None,
+            viewport=lambda: SimpleNamespace(mapToGlobal=lambda p: p),
+        ),
+        selected_session=lambda k: {"identifier": "sess-xyz"},
+        favorites={"sync": set()},
+        demo=False,
+        toggle_favorite=lambda k: None,
+        copy_session_id=lambda k: None,
+        export_session_json=lambda k: None,
+        open_troubleshooter=lambda sid: events.append(("troubleshoot", sid)),
+        session_action=lambda k, a: None,
+        toggle_sync_startup=lambda: None,
+    )
+    app_module.MainWindow.session_context_menu(fake_window, "sync", "point")
+    troubleshoot_act = [
+        a for a in Menu.instance.actions if "Troubleshoot" in a.text or "Řešení potíží" in a.text
+    ]
+    assert len(troubleshoot_act) == 1
+    troubleshoot_act[0].callback()
+    assert events == [("troubleshoot", "sess-xyz")]
+
+
 def test_open_session_requires_one_exact_latest_snapshot_match(monkeypatch):
     messages = []
     events = []
@@ -5562,6 +5606,37 @@ def test_update_diagnostics_handles_fresh_partial_and_stale_native_rows(window):
     window.update_diagnostics(stale)
     assert "CLI error: daemon offline" in window.diag_summary.text()
     assert "Trend: unavailable" in window.diagnostics_view.toPlainText()
+
+
+def test_update_diagnostics_auto_safe_recovery_gate(window):
+    from datetime import timedelta
+
+    from mutaui.services.health_tracker import HealthPolicy
+
+    window.health_tracker.policy = HealthPolicy(mode="auto_safe", failure_elapsed_seconds=0)
+    snapshot = app_module.example_snapshot()
+    snapshot.binary = "mutagen"
+    snapshot.daemon = True
+    snapshot.sync = [
+        {
+            "identifier": "auto-safe-sync",
+            "name": "Auto Safe Sync",
+            "status": 1,
+            "lastError": "Halted: empty root",
+            "alpha": {"path": "C:\\repo", "connected": True},
+            "beta": {"path": "/var/www", "connected": True},
+        }
+    ]
+    refreshed = []
+    window.refresh = lambda: refreshed.append(True)
+    now = datetime.now().astimezone()
+    for second in (0, 1, 2):
+        ts = now - timedelta(seconds=2 - second)
+        snapshot.sync_observed_at = ts
+        snapshot.forward_observed_at = ts
+        window.update_diagnostics(snapshot)
+    assert "[AUTO-SAFE]" in window.diagnostics_view.toPlainText()
+    assert refreshed == [True]
 
 
 def test_update_diagnostics_marks_authoritative_empty_snapshot_as_healthy(window, monkeypatch):

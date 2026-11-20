@@ -95,7 +95,7 @@ class ConflictInspectorDialog(QDialog):
         recommendation_policy: ConflictRecommendationPolicy | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Conflict Inspector · Read only")
+        self.setWindowTitle(_text("Conflict Inspector"))
         self.resize(980, 650)
         self._snapshots = {item.identity.identifier: item for item in snapshots}
         self._records = tuple(
@@ -129,10 +129,16 @@ class ConflictInspectorDialog(QDialog):
         self._inspection_pool.setMaxThreadCount(2)
 
         layout = QVBoxLayout(self)
-        note = QLabel(
-            "Conflicts come from the latest successful sync-list snapshot. "
-            "This inspector is read-only. Remote files are fetched only after a separate explicit consent."
-        )
+        if not self._records:
+            note = QLabel(
+                _text("No active conflicts detected. All synchronized files are in sync.")
+            )
+        else:
+            note = QLabel(
+                _text(
+                    "Active file conflicts detected. Review details and differences between endpoints safely below."
+                )
+            )
         excluded = sum(
             value
             for snapshot in snapshots
@@ -141,7 +147,8 @@ class ConflictInspectorDialog(QDialog):
         )
         if excluded:
             note.setText(
-                note.text() + f" The native list omitted {excluded} additional conflict(s)."
+                note.text()
+                + f" {_text('The native list omitted')} {excluded} {_text('additional conflict(s).')}"
             )
         note.setWordWrap(True)
         layout.addWidget(note)

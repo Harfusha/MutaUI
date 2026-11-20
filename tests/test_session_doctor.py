@@ -239,6 +239,15 @@ def test_high_cpu_requires_a_recent_measurement():
     assert all(issue.code != "high_cpu" for issue in unknown.issues)
 
 
+def test_session_doctor_classifies_disk_space_and_socket_bind():
+    assert _error_code("failed: no space left on device", kind="sync") == "disk_space"
+    assert _error_code("cannot bind: address already in use", kind="forward") == "socket_bind"
+    disk_exp, disk_act, _ = _issue_copy("disk_space")
+    assert "disk space" in disk_exp.lower()
+    sock_exp, sock_act, _ = _issue_copy("socket_bind")
+    assert "socket" in sock_exp.lower() or "port" in sock_exp.lower()
+
+
 def test_session_doctor_helpers_fail_closed_for_untyped_and_future_evidence():
     assert _recent(NOW - timedelta(seconds=60), NOW, 60)
     assert not _recent(NOW + timedelta(seconds=1), NOW, 60)
@@ -256,3 +265,60 @@ def test_session_doctor_helpers_fail_closed_for_untyped_and_future_evidence():
         "Review the native evidence.",
         "https://mutagen.io/documentation/synchronization/",
     )
+
+
+def test_session_doctor_classifies_troubleshooting_patterns():
+    patterns = {
+        "open C:\\repo\\.git\\index.lock: The process cannot access the file because it is being used by another process.": "file_locked",
+        "sharing violation on path C:\\repo\\app.db": "file_locked",
+        "unable to create watcher: user limit of inotify watches reached": "inotify_limit",
+        "too many open files during scan": "inotify_limit",
+        "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!": "ssh_host_key_changed",
+        "Host key verification failed for remote server": "ssh_host_key_changed",
+        "ssh: connect to host 192.168.1.50 port 22: Connection refused": "ssh_connection_refused",
+        "ssh: connect to host server.com: Operation timed out": "ssh_timeout",
+        "network is unreachable": "ssh_timeout",
+        "unable to connect to endpoint: path does not exist": "path_not_found",
+        "cannot find the path specified: D:\\missing\\dir": "path_not_found",
+        "unable to install agent: exec format error": "agent_incompatible",
+        "cannot execute binary file: remote agent failed": "agent_incompatible",
+        "illegal characters in path: invalid filename": "filename_invalid",
+        "case-insensitivity conflict between Readme.md and README.md": "case_conflict",
+    }
+    for phrase, expected in patterns.items():
+        assert _error_code(phrase, kind="sync") == expected, f"Failed for phrase: {phrase}"
+
+
+def test_diagnostic_remedy_structured_output_en_and_cs():
+    from mutaui.services.session_doctor import get_diagnostic_remedy
+
+    # Test file_locked
+    locked_en = get_diagnostic_remedy("file_locked", language="en")
+    assert locked_en.title == "Locked File on Endpoint"
+    assert "locked" in locked_en.explanation.lower()
+    assert len(locked_en.remedy_steps) >= 2
+    assert locked_en.category == "filesystem"
+
+    locked_cs = get_diagnostic_remedy("file_locked", language="cs")
+    assert locked_cs.title == "Uzamčený soubor v systému"
+    assert "uzamkl" in locked_cs.explanation.lower()
+    assert len(locked_cs.remedy_steps) >= 2
+
+    # Test inotify_limit with command
+    inotify = get_diagnostic_remedy("inotify_limit", language="en")
+    assert inotify.quick_command == "sudo sysctl -w fs.inotify.max_user_watches=524288"
+    assert inotify.category == "system"
+
+    # Test ssh_host_key_changed with host interpolation
+    ssh_host = get_diagnostic_remedy(
+        "ssh_host_key_changed",
+        language="cs",
+        detail="ssh: connect to host devbox.example.com port 22: Host key verification failed",
+    )
+    assert ssh_host.quick_command == "ssh-keygen -R devbox.example.com"
+    assert "devbox.example.com" in ssh_host.remedy_steps[1]
+
+    # Test fallback
+    unknown = get_diagnostic_remedy("unknown_code", language="en")
+    assert unknown.title == "Session Issue"
+    assert unknown.category == "general"

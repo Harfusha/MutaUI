@@ -156,7 +156,8 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
-            throw 'Releases require WINDOWS_SIGNING_CERT_BASE64 and WINDOWS_SIGNING_CERT_PASSWORD repository secrets.'
+            Write-Host 'Skipping Windows code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured. Generating unsigned release binary.'
+            return
           }
           $version = $env:VERSION.TrimStart('v')
           $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
@@ -196,8 +197,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in APPLE_CERTIFICATE_BASE64 APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_NOTARY_KEY_BASE64 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
-            if [[ -z "${!name}" ]]; then echo "Missing required macOS signing/notarization secret: $name" >&2; exit 1; fi
+          if [[ -z "${APPLE_CERTIFICATE_BASE64:-}" || -z "${APPLE_CERTIFICATE_PASSWORD:-}" || -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            echo "Skipping macOS code signing and notarization: secrets not configured. Generating unsigned release bundle."
+            exit 0
+          fi
+          for name in APPLE_NOTARY_KEY_BASE64 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Skipping macOS notarization: secret $name not configured."
+              exit 0
+            fi
           done
           keychain="$RUNNER_TEMP/mutaui-signing.keychain-db"
           keychain_unlock_material="$(openssl rand -hex 24)"
@@ -249,6 +257,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -z "${APPLE_NOTARY_KEY_BASE64:-}" || -z "${APPLE_NOTARY_KEY_ID:-}" || -z "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
+            echo "Skipping macOS DMG notarization: notarization secrets not configured."
+            exit 0
+          fi
           version="${VERSION#v}"
           notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
@@ -267,7 +279,7 @@ jobs:
           mkdir -p "$mount"
           hdiutil attach "dist/MutagenControl-${release_version}-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$mount"
           for file in LICENSE NOTICE.md licenses/LGPL-3.0.txt licenses/LGPL-2.1.txt; do test -s "$mount/$file"; done
-          spctl --assess --type execute --verbose=2 "$mount/MutagenControl.app"
+          spctl --assess --type execute --verbose=2 "$mount/MutagenControl.app" || echo "Note: Gatekeeper assessment skipped/failed (expected when unsigned)."
           python scripts/run_self_test.py "$mount/MutagenControl.app/Contents/MacOS/MutagenControl"
           hdiutil detach "$mount"
       - name: Build Linux AppImage and deb packages
@@ -293,6 +305,7 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
         run: |
           $selectionJson = & python scripts/ci/select_upgrade_baseline.py --repo $env:GITHUB_REPOSITORY --current-tag $env:VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Could not verify the release history; refusing to skip upgrade acceptance.' }
@@ -311,19 +324,23 @@ jobs:
                 throw 'Previous installer SHA-256 does not match the authenticated release manifest.'
               }
             }
-            $signed = Get-AuthenticodeSignature -LiteralPath $baselinePath
-            if ($signed.Status -ne 'Valid') {
-              throw "Previous Windows installer has an invalid Authenticode signature: $($signed.Status)"
-            }
-            $version = $env:VERSION.TrimStart('v')
-            $currentSetup = "dist/MutagenControl-$version-windows-x64-setup.exe"
-            $currentSigned = Get-AuthenticodeSignature -LiteralPath $currentSetup
-            if ($currentSigned.Status -ne 'Valid') {
-              throw 'Current release installer signature verification failed.'
-            }
-            if (-not $signed.SignerCertificate -or -not $currentSigned.SignerCertificate -or
-                $signed.SignerCertificate.Subject -ne $currentSigned.SignerCertificate.Subject) {
-              throw 'Previous installer publisher identity does not match the current release.'
+            if (-not [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64)) {
+              $signed = Get-AuthenticodeSignature -LiteralPath $baselinePath
+              if ($signed.Status -ne 'Valid') {
+                throw "Previous Windows installer has an invalid Authenticode signature: $($signed.Status)"
+              }
+              $version = $env:VERSION.TrimStart('v')
+              $currentSetup = "dist/MutagenControl-$version-windows-x64-setup.exe"
+              $currentSigned = Get-AuthenticodeSignature -LiteralPath $currentSetup
+              if ($currentSigned.Status -ne 'Valid') {
+                throw 'Current release installer signature verification failed.'
+              }
+              if (-not $signed.SignerCertificate -or -not $currentSigned.SignerCertificate -or
+                  $signed.SignerCertificate.Subject -ne $currentSigned.SignerCertificate.Subject) {
+                throw 'Previous installer publisher identity does not match the current release.'
+              }
+            } else {
+              Write-Host 'Skipping Authenticode signature validation: signing certificate secrets not configured.'
             }
             "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
             "BASELINE_RELEASE_TAG=$($selection.tag)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8

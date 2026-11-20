@@ -393,6 +393,114 @@ _TEXT_CATALOG = {
     "Notify about new errors in this session": "Upozornit na nové chyby v této relaci",
     "Waiting for data…": "Čekání na data…",
     "?  snapshot unknown or stale": "?  snímek neznámý nebo zastaralý",
+    "Mutagen CLI is unavailable.": "Mutagen CLI není k dispozici.",
+    "Choose or install the supported Mutagen CLI, then refresh.": (
+        "Vyberte nebo nainstalujte podporované Mutagen CLI a poté obnovte."
+    ),
+    "The local Mutagen daemon did not answer.": "Místní služba Mutagen neodpověděla.",
+    "Check the Mutagen installation and daemon status. MutaUI did not start it.": (
+        "Zkontrolujte instalaci Mutagenu a stav služby. MutaUI ji nespustil."
+    ),
+    "Current session state is unknown because no recent complete snapshot is available.": (
+        "Aktuální stav relace není znám, protože není k dispozici žádný nedávný úplný snímek."
+    ),
+    "Refresh Mutagen status before acting on session details.": (
+        "Před prováděním akcí s relací obnovte stav Mutagenu."
+    ),
+    "Mutagen reports an SSH authentication or permission failure.": (
+        "Mutagen hlásí selhání ověření SSH nebo oprávnění."
+    ),
+    "Check the selected SSH identity and remote account permissions.": (
+        "Zkontrolujte vybranou identitu SSH a oprávnění vzdáleného účtu."
+    ),
+    "Mutagen reports a host or host-key resolution problem.": (
+        "Mutagen hlásí problém s hostitelem nebo ověřením klíče hostitele."
+    ),
+    "Verify the host name and review the host key through OpenSSH.": (
+        "Ověřte název hostitele a zkontrolujte klíč hostitele pomocí OpenSSH."
+    ),
+    "A sync endpoint is disconnected.": "Synchronizační koncový bod je odpojen.",
+    "Inspect the endpoint and its latest Mutagen error.": (
+        "Zkontrolujte koncový bod a jeho poslední chybu Mutagenu."
+    ),
+    "A synchronization root may be missing, empty, or a different file type.": (
+        "Synchronizační kořen může chybět, být prázdný nebo jiného typu souboru."
+    ),
+    "Check both roots and confirm that each still points to the intended directory.": (
+        "Zkontrolujte oba kořeny a ověřte, že každý stále ukazuje na zamýšlený adresář."
+    ),
+    "Mutagen reported a filesystem scan problem.": (
+        "Mutagen nahlásil problém při procházení souborového systému."
+    ),
+    "Inspect the scan evidence and the affected filesystem path.": (
+        "Zkontrolujte podrobnosti kontroly a dotčenou cestu souborového systému."
+    ),
+    "Mutagen reported a file transition problem.": "Mutagen nahlásil problém s přenosem souborů.",
+    "Inspect the transition evidence before changing files or configuration.": (
+        "Před úpravou souborů nebo konfigurace zkontrolujte podrobnosti o přenosu."
+    ),
+    "Mutagen reports file conflicts, including excluded conflicts.": (
+        "Mutagen hlásí konflikty souborů, včetně vyloučených konfliktů."
+    ),
+    "Review conflict details before choosing any resolution.": (
+        "Před volbou řešení zkontrolujte podrobnosti o konfliktu."
+    ),
+    "Mutagen reported a permissions or ownership problem.": (
+        "Mutagen nahlásil problém s přístupovými právy nebo vlastnictvím."
+    ),
+    "Check access on the affected endpoint; do not change permissions automatically.": (
+        "Zkontrolujte přístup na dotčeném koncovém bodu; neměňte oprávnění automaticky."
+    ),
+    "Mutagen reported a symbolic-link problem.": "Mutagen nahlásil problém se symbolickým odkazem.",
+    "Review the link target and the configured symbolic-link mode.": (
+        "Zkontrolujte cíl odkazu a nakonfigurovaný režim symbolických odkazů."
+    ),
+    "Mutagen reported a file-staging problem.": "Mutagen nahlásil problém s přípravou souborů.",
+    "Check free space and staging configuration on the affected endpoint.": (
+        "Zkontrolujte volné místo a konfiguraci přípravy na dotčeném koncovém bodu."
+    ),
+    "Endpoint filesystem is out of disk space.": (
+        "Na souborovém systému koncového bodu došlo místo na disku."
+    ),
+    "Free up disk space on the affected volume before resuming sync.": (
+        "Před obnovením synchronizace uvolněte místo na disku dotčeného svazku."
+    ),
+    "Network port or socket could not be bound.": "Síťový port nebo socket se nepodařilo svázat.",
+    "Check for conflicting services or port reservations.": (
+        "Zkontrolujte kolidující služby nebo rezervace portů."
+    ),
+    "The forwarding source could not bind or connect.": (
+        "Zdroj přesměrování se nemohl připojit nebo svázat."
+    ),
+    "Check the local source address, port, and socket availability.": (
+        "Zkontrolujte místní zdrojovou adresu, port a dostupnost socketu."
+    ),
+    "The forwarding destination could not connect.": "Cíl přesměrování se nemohl připojit.",
+    "Check the destination endpoint and remote service availability.": (
+        "Zkontrolujte cílový koncový bod a dostupnost vzdálené služby."
+    ),
+    "Mutagen reports a session error.": "Mutagen hlásí chybu relace.",
+    "Inspect the session's native error and endpoint details.": (
+        "Zkontrolujte nativní chybu relace a podrobnosti o koncovém bodu."
+    ),
+    "This session is intentionally paused.": "Tato relace je záměrně pozastavena.",
+    "Resume only if you want Mutagen to continue the session.": (
+        "Pokračujte pouze v případě, že si přejete v relaci Mutagenu pokračovat."
+    ),
+    "This session uses manual synchronization mode.": (
+        "Tato relace používá režim ruční synchronizace."
+    ),
+    "Manual synchronization is intentional and is not an error.": (
+        "Ruční synchronizace je záměrná a nepředstavuje chybu."
+    ),
+    "Recent Mutagen process CPU measurement is high.": (
+        "Poslední měření využití CPU procesem Mutagenu je vysoké."
+    ),
+    "Compare with active scans and synchronization before changing settings.": (
+        "Před změnou nastavení porovnejte s aktivními kontrolami a synchronizací."
+    ),
+    "Mutagen reported a session issue.": "Mutagen nahlásil potíž s relací.",
+    "Review the native evidence.": "Zkontrolujte nativní podrobnosti.",
     "Another tool changed this file. Choose how to continue.": "Tento soubor změnil jiný nástroj. Zvolte, jak pokračovat.",
     "Checking CLI version and command capabilities…": "Ověřuji verzi CLI a dostupné příkazy…",
     "Create Session": "Vytvořit relaci",
@@ -565,6 +673,7 @@ _TEXT_CATALOG = {
     "Clear": "Vymazat",
     "Clear View": "Vymazat zobrazení",
     "Configuration and private keys are never changed or opened. Effective options use local `ssh -G` output; SSH is not connected.": "Konfigurace ani soukromé klíče se neupravují ani neotevírají. Účinné volby vycházejí z místního výstupu `ssh -G`; spojení SSH se nenavazuje.",
+    "Conflict Inspector": "Přehled konfliktů",
     "Conflict Inspector · Read only": "Prohlížeč konfliktů · pouze ke čtení",
     "Conflicts, Errors, and Issues": "Konflikty, chyby a problémy",
     "Copy Summary": "Kopírovat souhrn",
@@ -639,6 +748,7 @@ _TEXT_CATALOG = {
     "Register": "Registrovat",
     "Registration: checking status…": "Registrace: kontroluje se stav…",
     "Reload config": "Znovu načíst konfiguraci",
+    "Replica mode is a destructive change and cannot use this replacement flow.": "Režim repliky je destruktivní změna a nelze jej použít v tomto procesu nahrazení.",
     "Resolve with ssh -G": "Vyhodnotit pomocí ssh -G",
     "Resource and Traffic Trends": "Vývoj využití prostředků a provozu",
     "Review portable ignore presets": "Zkontrolovat přenosné předvolby ignorování",
@@ -712,9 +822,34 @@ _TEXT_CATALOG = {
     "Release check failed. See GitHub Releases.": "Kontrola vydání selhala. Viz GitHub Releases.",
     "Native daemon registration through the Mutagen CLI (HKCU Run). After sign-in, only unpaused sessions resume; paused sessions remain paused.": "Nativní registrace služby přes Mutagen CLI (HKCU Run). Po přihlášení se obnoví pouze nepozastavené relace; pozastavené zůstanou pozastavené.",
     "This view does not measure the server's overall CPU, RAM, disk, or network use, or detailed internal logs from the remote agent. This information is not included in the standard Mutagen output and cannot be reliably obtained without additional remote access. File counts are from the latest known scans, not guaranteed live counters.": "Toto zobrazení neměří celkové využití CPU, RAM, disku ani sítě na serveru ani podrobné interní protokoly vzdáleného agenta. Standardní výstup Mutagenu tyto údaje neobsahuje a bez dalšího vzdáleného přístupu je nelze spolehlivě získat. Počty souborů pocházejí z posledních známých kontrol; nejde o zaručeně živé hodnoty.",
+    "Diagnostics help troubleshoot session issues. Use Support Bundle to create exportable reports.": (
+        "Diagnostika pomáhá řešit potíže s relacemi. Pomocí Balíčku podpory můžete vytvořit souhrnný report k exportu."
+    ),
+    "Mutagen manages sessions through a per-user background daemon. Mutagen Control will automatically connect to your daemon when starting.": (
+        "Mutagen spravuje relace prostřednictvím služby běžící na pozadí. Mutagen Control se k ní po spuštění automaticky připojí."
+    ),
+    "Mutagen CLI is ready.": "Mutagen CLI je připraven k použití.",
+    "Troubleshoot…": "Řešení potíží…",
+    "Sync Troubleshooting Assistant": "Průvodce řešením potíží se synchronizací",
+    "Mutagen Diagnostic Assistant": "Diagnostický pomocník Mutagenu",
+    "Explains root causes and step-by-step guidance to resolve common synchronization failures.": (
+        "Zde naleznete vysvětlení příčiny a doporučený postup nápravy pro časté problémy se synchronizací."
+    ),
+    "Copy Diagnostics": "Zkopírovat diagnostiku",
+    "Session Settings…": "Nastavení relace…",
+    "Refresh Status": "Zkontrolovat stav",
+    "No session selected for diagnosis.": "Není vybrána žádná relace k diagnostice.",
+    "Sync is Operating Normally": "Synchronizace funguje v pořádku",
+    "Recommended Solution:": "Doporučený postup nápravy:",
+    "Copy Command": "Kopírovat příkaz",
+    "Mutagen Documentation →": "Nápověda a dokumentace k Mutagenu →",
+    "No sessions": "Žádné relace",
 }
 
 _TOOLTIP_CATALOG = {
+    "Analyze sync failures and guide step-by-step resolution": (
+        "Analyzovat chyby synchronizace a doporučit řešení krok za krokem"
+    ),
     "Press Enter or double-click to view sync details": "Stiskněte Enter nebo dvojklikem otevřete podrobnosti synchronizace",
     "Checked: ignore VCS directories. Unchecked: propagate them. Partially checked: inherit global and Mutagen defaults.": "Zaškrtnuto: ignorovat adresáře VCS. Prázdné: synchronizovat je. Částečně: převzít globální výchozí hodnoty Mutagenu.",
     "Confirm a separate recoverable copy exists before using destructive replica mode.": "Před destruktivním režimem repliky potvrďte existenci samostatné obnovitelné kopie.",
@@ -742,6 +877,7 @@ _TOOLTIP_CATALOG = {
     "Go to the Daemon page to start, stop, or register it": "Přejděte na stránku Služba Mutagen, kde ji můžete spustit, zastavit nebo registrovat",
     "History writer is no longer available": "Zapisování historie již není dostupné",
     "Immediately refreshes status from the local Mutagen daemon.": "Ihned obnoví stav z místní služby Mutagen.",
+    "Inspect file conflicts between endpoints": "Zobrazit souborové konflikty mezi koncovými body",
     "Inspect native conflict details; this view cannot resolve conflicts": "Prohlédne podrobnosti nativního konfliktu; toto zobrazení konflikty neřeší",
     "Local proposal only. CLI, endpoint and platform support must be verified before replacement.": "Pouze místní návrh. Před náhradou ověřte podporu CLI, koncového bodu a platformy.",
     "Local proposal only. Installed Mutagen support must be verified before replacement.": "Pouze místní návrh. Před náhradou ověřte podporu nainstalované verze Mutagenu.",
@@ -814,6 +950,7 @@ _TITLE_CATALOG = {
     "Welcome": "Vítejte",
     "Find and check Mutagen": "Najít a ověřit Mutagen",
     "Daemon and optional local test": "Služba a volitelný místní test",
+    "Daemon verification": "Ověření služby Mutagen",
 }
 
 _DIALOG_CATALOG = {
@@ -822,6 +959,10 @@ _DIALOG_CATALOG = {
     "Sensitive Log Details": "Citlivé podrobnosti protokolu",
     "Selected log text may contain local paths, hostnames, usernames, or credentials. Save only to a local file you control. Continue?": "Vybraný text protokolu může obsahovat místní cesty, názvy hostitelů, uživatelská jména nebo přihlašovací údaje. Uložte jej pouze do místního souboru, který ovládáte. Pokračovat?",
     "Quick Ignore unavailable": "Rychlé ignorování není dostupné",
+    "No active conflicts detected. All synchronized files are in sync.": "Nebyly zjištěny žádné aktivní konflikty. Všechny synchronizované soubory jsou v pořádku.",
+    "Active file conflicts detected. Review details and differences between endpoints safely below.": "Byly zjištěny souborové konflikty. Níže můžete bezpečně prohlédnout podrobnosti a rozdíly mezi koncovými body.",
+    "The native list omitted": "Nativní seznam vynechal",
+    "additional conflict(s).": "dalších konfliktů.",
     "No local sync endpoint was reported.": "Nebyl uveden místní koncový bod synchronizace.",
     "Select the local root for this ignore rule:": "Vyberte místní kořen pro toto pravidlo ignorování:",
     "Replacement unavailable": "Náhrada není dostupná",

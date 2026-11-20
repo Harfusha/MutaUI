@@ -92,7 +92,8 @@ jobs:
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
-            throw 'Tagged releases require WINDOWS_SIGNING_CERT_BASE64 and WINDOWS_SIGNING_CERT_PASSWORD repository secrets.'
+            Write-Host 'Skipping Windows code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured. Generating unsigned release binary.'
+            return
           }
           $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))

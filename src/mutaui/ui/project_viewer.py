@@ -272,7 +272,7 @@ class NativeProjectActionDialog(QDialog):
                     typed_confirmation, accepted = QInputDialog.getText(
                         self,
                         "Second Confirmation",
-                        f"Type {action_plan.typed_confirmation} to approve this R3 project action:",
+                        f"Type {action_plan.typed_confirmation} to approve this destructive project action:",
                     )
                     if not accepted:
                         self.action_planner.cancel(action_plan.plan_id)

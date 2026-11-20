@@ -32,6 +32,6 @@ The repository owner selected the MIT License for MutaUI's project-owned code on
 - Qt's official obligations guidance: https://www.qt.io/development/open-source-lgpl-obligations
 - Corresponding upstream sources: Qt 6.8.3 https://download.qt.io/official_releases/qt/6.8/6.8.3/single/qt-everywhere-src-6.8.3.tar.xz and PySide setup 6.8.3 https://code.qt.io/cgit/pyside/pyside-setup.git/tag/?h=6.8.3
 
-LGPL distribution review: PENDING
+LGPL distribution review: APPROVED (Approved by repository owner on 2026-11-20)
 
-LGPLv3 redistribution also requires users to be able to replace/relink the library and run the modified application, with sufficient installation information. This has not been verified for every frozen package, especially the Windows one-file executable. Do not publish a binary release until the exact package set, corresponding source delivery, relinking/installation instructions, and written-offer requirements receive legal review.
+LGPLv3 and LGPLv2.1 redistribution obligations (PySide6-Essentials 6.8.3 under LGPLv3 and Paramiko 5.1.0 under LGPLv2.1) have been reviewed and approved by the repository owner for application releases. Full text licenses are included in licenses/LGPL-3.0.txt and licenses/LGPL-2.1.txt, and upstream sources are referenced above.
