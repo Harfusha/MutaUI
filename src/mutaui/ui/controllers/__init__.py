@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from .command_controller import CommandExecutionMixin
+from .config_controller import GlobalConfigMixin
 from .diagnostics_controller import DiagnosticsMixin
+from .logging_controller import LoggingMixin
 from .monitoring_controller import MonitoringMixin
 from .onboarding_controller import OnboardingMixin
 from .pages_controller import PagesMixin
@@ -17,6 +19,8 @@ from .tray_controller import TrayMixin
 __all__ = [
     "CommandExecutionMixin",
     "DiagnosticsMixin",
+    "GlobalConfigMixin",
+    "LoggingMixin",
     "MonitoringMixin",
     "OnboardingMixin",
     "PagesMixin",

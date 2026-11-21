@@ -52,6 +52,7 @@ class ConnectionProfilesDialog(QDialog):
         layout.addWidget(label("Saved local connection profiles", size=18, bold=True))
         filters = QHBoxLayout()
         self.search_input = QLineEdit()
+        self.search_input.setClearButtonEnabled(True)
         set_localized_placeholder(self.search_input, "Search name or tag")
         self.kind_filter = QComboBox()
         add_localized_item(self.kind_filter, "All types", None)

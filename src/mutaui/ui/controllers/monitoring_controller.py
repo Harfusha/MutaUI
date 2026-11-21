@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 import time
 from datetime import datetime
@@ -27,8 +28,18 @@ from monitoring import (
     statistics_from_file,
 )
 from mutagen_client import human_bytes
+from mutaui.services.health_tracker import (
+    HealthPolicy,
+    health_policy_from_settings,
+)
 from mutaui.services.quiet_hours import quiet_hours_active
 from mutaui.ui.formatters import field_format
+from mutaui.ui.health_network_monitor import (
+    attach_health_network_monitor as attach_health_network_monitor_ui,
+)
+from mutaui.ui.health_network_monitor import (
+    health_network_changed as apply_health_network_change,
+)
 from mutaui.ui.localization import set_localized_text, set_localized_tooltip
 from mutaui.ui.preferences import active_language, translate_text
 from mutaui.ui.theme_constants import BG, BLUE, RED, TEAL
@@ -528,3 +539,34 @@ class MonitoringMixin:
             self.add_log("Monitoring history exported to CSV")
         except (sqlite3.Error, OSError) as exc:
             self.report_error(str(exc))
+
+    def seed_demo_history(self: Any) -> None:
+        """Populate illustrative graphs offline (only in explicitly marked demo mode)."""
+        now = time.time()
+        for i in range(125):
+            phase = i / 5.0
+            spike = 33 if i % 43 in range(12, 17) else 0
+            cpu = max(0.0, 6 + 5 * math.sin(phase) + spike)
+            memory = int((112 + i * 0.22 + 7 * math.sin(phase / 2)) * 1024**2)
+            sample = Sample(
+                ts=now - (124 - i) * 14,
+                cpu=cpu,
+                memory=memory,
+                read_rate=32000 + 60000 * abs(math.sin(phase)),
+                write_rate=54000 + 85000 * abs(math.cos(phase / 1.3)),
+                forward_out_rate=18000 + 65000 * abs(math.cos(phase / 1.8)),
+                forward_in_rate=65000 + 100000 * abs(math.sin(phase / 2)),
+                processes=2,
+                active_sessions=2,
+                problem_sessions=0,
+            )
+            self.history.add(sample)
+
+    def health_policy_from_settings(self: Any) -> HealthPolicy:
+        return health_policy_from_settings(self.conf)
+
+    def _attach_health_network_monitor(self: Any) -> None:
+        attach_health_network_monitor_ui(self)
+
+    def _health_network_changed(self: Any, reachability: object) -> None:
+        apply_health_network_change(self, reachability)

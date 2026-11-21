@@ -265,3 +265,126 @@ def test_command_and_snapshot_mixins(tmp_path: Any, monkeypatch: Any) -> None:
     assert hasattr(window, "pool")
 
     window.close()
+
+
+def test_search_clear_buttons_and_shortcuts(tmp_path: Any, monkeypatch: Any) -> None:
+    from connection_profiles import ConnectionProfileStore
+    from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog
+    from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
+    from mutaui.ui.quick_navigator import QuickNavigator
+
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+
+    # 1. Search fields have clear buttons enabled
+    assert window.sync_search.isClearButtonEnabled()
+    assert window.forward_search.isClearButtonEnabled()
+    assert window.tail_filter.isClearButtonEnabled()
+
+    nav = QuickNavigator(window)
+    assert nav.search.isClearButtonEnabled()
+    nav.close()
+
+    cp_dlg = ConnectionProfilesDialog(window, ConnectionProfileStore(tmp_path / "profiles.json"))
+    assert cp_dlg.search_input.isClearButtonEnabled()
+    cp_dlg.close()
+
+    ci_dlg = ConflictInspectorDialog([], window)
+    assert ci_dlg.search.isClearButtonEnabled()
+    ci_dlg.close()
+
+    # 2. Focus search shortcut helper
+    window.sync_search.setText("sync-term")
+    window.set_page(1)
+    window.focus_search()
+    assert window.sync_search.selectedText() == "sync-term"
+
+    window.forward_search.setText("forward-term")
+    window.set_page(2)
+    window.focus_search()
+    assert window.forward_search.selectedText() == "forward-term"
+
+    window.tail_filter.setText("log-term")
+    window.set_page(3)
+    window.focus_search()
+    assert window.tail_filter.selectedText() == "log-term"
+
+    # When on page without search field
+    window.set_page(0)
+    window.focus_search()
+
+    # 3. Theme quick toggle toast
+    window.ui_language = "en"
+    window.toggle_theme_quick()
+    status_text = window.statusBar().currentMessage()
+    assert "Theme switched to" in status_text
+
+    window.ui_language = "cs"
+    window.toggle_theme_quick()
+    status_text = window.statusBar().currentMessage()
+    assert "Motiv přepnut na" in status_text
+
+    # 4. Status bar toast on command dispatch
+    window.demo = False
+    window.snapshot.sync = [{"identifier": "s-1", "name": "Test"}]
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.command_controller.QMessageBox.question",
+        lambda *a, **k: app_module.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(window, "submit", lambda *a, **k: None)
+    window.run_command("sync", "pause", target="s-1")
+    toast = window.statusBar().currentMessage()
+    assert "Pozastavování" in toast or "Pausing" in toast
+    window.demo = True
+
+    # 5. LoggingMixin and GlobalConfigMixin methods
+    initial_log_count = len(window.logs)
+    window.add_log("Special audit log entry")
+    assert len(window.logs) == initial_log_count + 1
+    assert "Special audit log entry" in window.logs[-1]
+
+    # Test clear_logs
+    window.clear_logs()
+    assert len(window.logs) == 1
+    assert "UI history cleared" in window.logs[0]
+
+    # Test export_logs
+    export_file = tmp_path / "exported_logs.txt"
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.logging_controller.QFileDialog.getSaveFileName",
+        lambda *_a, **_k: (str(export_file), "Text (*.txt)"),
+    )
+    window.export_logs()
+    assert export_file.exists()
+    assert "UI history cleared" in export_file.read_text(encoding="utf-8")
+
+    # Cancel export_logs
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.logging_controller.QFileDialog.getSaveFileName",
+        lambda *_a, **_k: ("", ""),
+    )
+    window.export_logs()
+
+    # Export logs OSError handling
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.logging_controller.QFileDialog.getSaveFileName",
+        lambda *_a, **_k: (str(tmp_path / "nonexistent" / "err.txt"), "Text (*.txt)"),
+    )
+    crit_box: list[str] = []
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.logging_controller.QMessageBox.critical",
+        lambda *a: crit_box.append(str(a)),
+    )
+    window.export_logs()
+    assert len(crit_box) == 1
+
+    # Test seed_demo_history
+    window.history.db.execute("DELETE FROM metrics")
+    window.history.clear_events()
+    window.seed_demo_history()
+    sample_count = window.history.db.execute("SELECT count(*) FROM metrics").fetchone()[0]
+    assert sample_count == 125
+
+    window.close()

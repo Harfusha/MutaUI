@@ -6,30 +6,29 @@ Preview (offline demo, actions disabled): python app.py --demo
 
 from __future__ import annotations
 
-import json
-import math
+import json  # noqa: F401
+import math  # noqa: F401
 import os
 import sqlite3
 import sys
-import tempfile
+import tempfile  # noqa: F401
 import time
-import traceback
+import traceback  # noqa: F401
+import types
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import suppress
-from datetime import UTC, datetime
+from collections.abc import Callable, Iterable, Mapping, Sequence  # noqa: F401
+from contextlib import suppress  # noqa: F401
+from datetime import UTC, datetime  # noqa: F401
 from functools import partial
-from html import escape as html_escape
+from html import escape as html_escape  # noqa: F401
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast  # noqa: F401
 
 _SOURCE_PACKAGE_PATH = Path(__file__).resolve().parent / "src"
 if _SOURCE_PACKAGE_PATH.is_dir() and str(_SOURCE_PACKAGE_PATH) not in sys.path:
     sys.path.insert(0, str(_SOURCE_PACKAGE_PATH))
 
-# PyInstaller places Qt and Shiboken DLLs in separate bundle subdirectories.
-# Register both before importing any PySide module so Windows cannot resolve
-# a same-named DLL from another Python or Qt installation on PATH.
+# Register bundled Qt/Shiboken DLL paths before imports to avoid PATH conflicts.
 _DLL_DIRECTORY_HANDLES = []
 if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):  # pragma: no cover
     _bundle_root = Path(sys.__dict__["_MEIPASS"])
@@ -49,92 +48,90 @@ from PySide6.QtCore import (
     QAbstractTableModel,  # noqa: F401
     QEvent,
     QModelIndex,  # noqa: F401
-    QPoint,
+    QPoint,  # noqa: F401
     QPointF,  # noqa: F401
-    QRectF,
+    QRectF,  # noqa: F401
     Qt,
     QThreadPool,
-    QTime,
+    QTime,  # noqa: F401
     QTimer,
-    QUrl,
-    qVersion,
+    QUrl,  # noqa: F401
+    qVersion,  # noqa: F401
 )
 from PySide6.QtGui import (
-    QAction,
+    QAction,  # noqa: F401
     QBrush,  # noqa: F401
-    QCloseEvent,
-    QColor,
-    QDesktopServices,
+    QCloseEvent,  # noqa: F401
+    QColor,  # noqa: F401
+    QDesktopServices,  # noqa: F401
     QGuiApplication,
     QHideEvent,
-    QIcon,
+    QIcon,  # noqa: F401
     QKeySequence,
     QLinearGradient,  # noqa: F401
-    QPainter,
+    QPainter,  # noqa: F401
     QPainterPath,  # noqa: F401
-    QPen,
-    QPixmap,
+    QPen,  # noqa: F401
+    QPixmap,  # noqa: F401
     QShortcut,
     QShowEvent,
 )
 from PySide6.QtWidgets import (
-    QAbstractItemView,
+    QAbstractItemView,  # noqa: F401
     QApplication,
-    QCheckBox,
+    QCheckBox,  # noqa: F401
     QComboBox,
-    QCompleter,
-    QDialog,
-    QDialogButtonBox,
-    QFileDialog,
-    QFormLayout,
+    QCompleter,  # noqa: F401
+    QDialog,  # noqa: F401
+    QDialogButtonBox,  # noqa: F401
+    QFileDialog,  # noqa: F401
+    QFormLayout,  # noqa: F401
     QFrame,
-    QGridLayout,
+    QGridLayout,  # noqa: F401
     QHBoxLayout,
-    QHeaderView,
-    QInputDialog,
+    QHeaderView,  # noqa: F401
+    QInputDialog,  # noqa: F401
     QLabel,
-    QLayout,
+    QLayout,  # noqa: F401
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
+    QListWidget,  # noqa: F401
+    QListWidgetItem,  # noqa: F401
     QMainWindow,
-    QMenu,
-    QMessageBox,
-    QPlainTextEdit,
-    QProgressBar,
+    QMenu,  # noqa: F401
+    QMessageBox,  # noqa: F401
+    QPlainTextEdit,  # noqa: F401
+    QProgressBar,  # noqa: F401
     QPushButton,
     QScrollArea,
-    QSizePolicy,
-    QSpinBox,
-    QSystemTrayIcon,
-    QTableView,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextBrowser,
-    QTimeEdit,
+    QSizePolicy,  # noqa: F401
+    QSpinBox,  # noqa: F401
+    QSystemTrayIcon,  # noqa: F401
+    QTableView,  # noqa: F401
+    QTableWidget,  # noqa: F401
+    QTableWidgetItem,  # noqa: F401
+    QTextBrowser,  # noqa: F401
+    QTimeEdit,  # noqa: F401
     QToolTip,  # noqa: F401
     QVBoxLayout,
     QWidget,
     QWizard,
-    QWizardPage,
+    QWizardPage,  # noqa: F401
 )
 
 from async_recorder import AsyncRecorder
-from connection_profiles import (
-    ConnectionProfile as ConnectionProfile,
-)
-from connection_profiles import (
+from connection_profiles import (  # noqa: F401
+    ConnectionProfile,
     ConnectionProfileStore,
     load_profile_store,
 )
-from endpoint_inspector import summary as inspect_session
-from forward_configuration import (
+from endpoint_inspector import summary as inspect_session  # noqa: F401
+from forward_configuration import (  # noqa: F401
     FORWARD_CONFIG_FIELDS,
     ForwardConfigField,
     ForwardConfigRow,
     forward_configuration_rows,
 )
-from ignore_presets import (
+from ignore_presets import (  # noqa: F401
     IgnorePresetError,
     IgnorePresetStore,
     apply_preset_import,
@@ -142,160 +139,131 @@ from ignore_presets import (
     path_aware_ignore_rule,
     preset_to_record,
 )
-from insights import AlertEngine, local_self_check, safe_diagnostic_report, session_log_report
+from insights import AlertEngine, local_self_check, safe_diagnostic_report, session_log_report  # noqa: F401
 from log_stream import FileTail, TrackedLogLines
 from monitoring import (
     ForwardTrafficMeter,
     HistoryStore,
-    Sample,
-    query_metrics_from_file,
-    statistics_from_file,
+    Sample,  # noqa: F401
+    query_metrics_from_file,  # noqa: F401
+    statistics_from_file,  # noqa: F401
 )
 from mutagen_client import (
     MutagenClient,
-    MutagenError,
+    MutagenError,  # noqa: F401
     ProcessSampler,
     Snapshot,
-    classify,
-    conflict_count,
-    endpoint_text,
+    classify,  # noqa: F401
+    conflict_count,  # noqa: F401
+    endpoint_text,  # noqa: F401
     example_snapshot,
-    human_bytes,
-    problem_count,
-    read_registration,
-    session_preflight_fingerprint,
+    human_bytes,  # noqa: F401
+    problem_count,  # noqa: F401
+    read_registration,  # noqa: F401
+    session_preflight_fingerprint,  # noqa: F401
 )
 from mutaui import __version__ as APP_VERSION
-from mutaui.adapters.cli_executor import LegacyMutagenExecutor
-from mutaui.adapters.mutagen_snapshot import from_legacy_session
-from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner, ActionRequest
-from mutaui.services.health_tracker import (
+from mutaui.adapters.cli_executor import LegacyMutagenExecutor  # noqa: F401
+from mutaui.adapters.mutagen_snapshot import from_legacy_session  # noqa: F401
+from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner, ActionRequest  # noqa: F401
+from mutaui.services.health_tracker import (  # noqa: F401
     HealthObservation,
     HealthPolicy,
     HealthTracker,
     health_policy_from_settings,
 )
-from mutaui.services.quiet_hours import quiet_hours_active
+from mutaui.services.quiet_hours import quiet_hours_active  # noqa: F401
 from mutaui.services.reconfiguration import (
-    build_reconfiguration_preview,
-    extract_sync_configuration,
-    validate_native_command_snapshot,
+    build_reconfiguration_preview,  # noqa: F401
+    extract_sync_configuration,  # noqa: F401
+    validate_native_command_snapshot,  # noqa: F401
 )
-from mutaui.services.replacement import (
+from mutaui.services.replacement import (  # noqa: F401
     ReplacementAuditEvent,
     ReplacementReceipt,
     ReplacementRequest,
     replace_non_project_mutagen_session,
 )
-from mutaui.services.replacement_command import render_sync_replacement_arguments
-from mutaui.services.session_configuration import (
-    build_session_configuration_proposal,
-)
-from mutaui.services.session_doctor import (
+from mutaui.services.replacement_command import render_sync_replacement_arguments  # noqa: F401
+from mutaui.services.session_configuration import build_session_configuration_proposal  # noqa: F401
+from mutaui.services.session_doctor import (  # noqa: F401
     FRESHNESS_SECONDS,
     SessionDoctorContext,
     diagnose_sessions,
 )
 from mutaui.services.session_notification_gate import SessionNotificationGate
-from mutaui.services.session_provenance import ProvenanceStoreError, SessionProvenanceStore
-from mutaui.services.update_checker import (
-    RELEASES_URL,
-    UpdateCheckResult,
-    check_for_update,
-)
-from mutaui.ui import global_config_editor, settings_migration
-from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog
-from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
+from mutaui.services.session_provenance import ProvenanceStoreError, SessionProvenanceStore  # noqa: F401
+from mutaui.services.update_checker import RELEASES_URL, UpdateCheckResult, check_for_update  # noqa: F401
+from mutaui.ui import global_config_editor, settings_migration  # noqa: F401
+from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog  # noqa: F401
+from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog  # noqa: F401
+from mutaui.ui.formatters import read_settings  # noqa: F401
 from mutaui.ui.health_network_monitor import (
-    attach_health_network_monitor as attach_health_network_monitor_ui,
-)
-from mutaui.ui.health_network_monitor import (
-    health_network_changed as apply_health_network_change,
-)
-from mutaui.ui.ignore_rules import IgnorePresetManagerDialog
+    attach_health_network_monitor as attach_health_network_monitor_ui,  # noqa: F401
+)  # noqa: F401
+from mutaui.ui.health_network_monitor import health_network_changed as apply_health_network_change  # noqa: F401
+from mutaui.ui.ignore_rules import IgnorePresetManagerDialog  # noqa: F401
 from mutaui.ui.localization import (
-    _LOCALIZED_ITEM_ROLE,
+    _LOCALIZED_ITEM_ROLE,  # noqa: F401
     set_localized_accessible_name,
-    set_localized_placeholder,
-    set_localized_text,
+    set_localized_placeholder,  # noqa: F401
+    set_localized_text,  # noqa: F401
     set_localized_title,
     set_localized_tooltip,
 )
-from mutaui.ui.onboarding import (
+from mutaui.ui.onboarding import (  # noqa: F401
     CLIDiscovery,
     host_architecture,
     inspect_cli,
     run_isolated_local_sync_test,
 )
 from mutaui.ui.page_shell import PAGE_ROUTES, LazyStackedWidget
-from mutaui.ui.performance_tuning import (
-    apply_performance_assistant,
-)
+from mutaui.ui.performance_tuning import apply_performance_assistant  # noqa: F401
 from mutaui.ui.portable_import_preview import PortableImportPreviewDialog
 from mutaui.ui.preferences import (
     ADVANCED_ROUTE_IDS,  # noqa: F401 -- retained as app module compatibility export
-    active_language,
+    active_language,  # noqa: F401
     resolve_theme,
     set_active_language,
     translate,
     translate_route,
-    translate_text,
+    translate_text,  # noqa: F401
 )
 from mutaui.ui.preferences_controller import PreferencesController
-from mutaui.ui.project_viewer import NativeProjectManagerDialog
-from mutaui.ui.session_alerts import check_alerts as check_session_alerts
-from mutaui.ui.session_configuration_table import fill_session_configuration_table
+from mutaui.ui.project_viewer import NativeProjectManagerDialog  # noqa: F401
+from mutaui.ui.session_alerts import check_alerts as check_session_alerts  # noqa: F401
+from mutaui.ui.session_configuration_table import fill_session_configuration_table  # noqa: F401
 from mutaui.ui.session_dialog import SessionDialog, configure_settings_path_provider
-from mutaui.ui.settings_page import build_settings_page
-from mutaui.ui.settings_registry import setting_tooltip
-from mutaui.ui.ssh_profile_manager import SSHProfileManagerDialog
+from mutaui.ui.settings_page import build_settings_page  # noqa: F401
+from mutaui.ui.settings_registry import setting_tooltip  # noqa: F401
+from mutaui.ui.ssh_profile_manager import SSHProfileManagerDialog  # noqa: F401
 from mutaui.ui.styles import (
-    AMBER as AMBER,
-)
-from mutaui.ui.styles import (
-    BG as BG,
-)
-from mutaui.ui.styles import (
-    BLUE as BLUE,
-)
-from mutaui.ui.styles import (
-    BORDER as BORDER,
-)
-from mutaui.ui.styles import (
-    CARD as CARD,
-)
-from mutaui.ui.styles import (
-    CARD2 as CARD2,
-)
-from mutaui.ui.styles import (
+    AMBER,  # noqa: F401
+    BG,  # noqa: F401
+    BLUE,  # noqa: F401
+    BORDER,
+    CARD,  # noqa: F401
+    CARD2,  # noqa: F401
     CSS,
+    MUTED,  # noqa: F401
+    RED,  # noqa: F401
+    TEAL,  # noqa: F401
+    TEXT,  # noqa: F401
 )
-from mutaui.ui.styles import (
-    MUTED as MUTED,
-)
-from mutaui.ui.styles import (
-    RED as RED,
-)
-from mutaui.ui.styles import (
-    TEAL as TEAL,
-)
-from mutaui.ui.styles import (
-    TEXT as TEXT,
-)
-from mutaui.ui.tray_status import update_tray_status as update_tray_status_ui
+from mutaui.ui.tray_status import update_tray_status as update_tray_status_ui  # noqa: F401
 from mutaui.ui.widgets.basic import (
-    add_localized_item,
-    add_localized_items,
-    add_localized_row,
+    add_localized_item,  # noqa: F401
+    add_localized_items,  # noqa: F401
+    add_localized_row,  # noqa: F401
     button,
-    card,
+    card,  # noqa: F401
     label,
-    localized_button,
-    localized_checkbox,
-    localized_label,
+    localized_button,  # noqa: F401
+    localized_checkbox,  # noqa: F401
+    localized_label,  # noqa: F401
 )
-from mutaui.ui.widgets.graph import Graph
-from mutaui.ui.widgets.health_ring import HealthRing
+from mutaui.ui.widgets.graph import Graph  # noqa: F401
+from mutaui.ui.widgets.health_ring import HealthRing  # noqa: F401
 from mutaui.ui.widgets.session_table import SessionTableModel
 from mutaui.ui.worker import Worker, WorkerSignals  # noqa: F401
 from performance import (  # noqa: F401
@@ -304,36 +272,32 @@ from performance import (  # noqa: F401
     envelope_downsample,
     nearest_time_index,
 )
-from portable_bundle import (
+from portable_bundle import (  # noqa: F401
     PortableBundleError,
     apply_profile_import,
     build_bundle,
     load_bundle,
     selected_preferences,
 )
-from server_groups import group_servers, session_servers
-from settings import (
-    load_settings,
-    settings_path,
-)
-from settings import write_settings as save_settings_file
+from server_groups import group_servers, session_servers  # noqa: F401
+from settings import load_settings, settings_path  # noqa: F401
+from settings import write_settings as save_settings_file  # noqa: F401
 from sync_configuration import (
-    SYNC_CONFIG_FIELDS,
-    SyncConfigField,
-    SyncConfigRow,
-    session_configuration_rows,
+    SYNC_CONFIG_FIELDS,  # noqa: F401
+    SyncConfigField,  # noqa: F401
+    SyncConfigRow,  # noqa: F401
+    session_configuration_rows,  # noqa: F401
 )
 from sync_profiles import PROFILES as PROFILES
 from sync_profiles import AdaptivePolling
 
 configure_settings_path_provider(lambda: settings_path())
 
-
-import types
-
 from mutaui.ui.controllers import (
     CommandExecutionMixin,
     DiagnosticsMixin,
+    GlobalConfigMixin,
+    LoggingMixin,
     MonitoringMixin,
     OnboardingMixin,
     PagesMixin,
@@ -347,10 +311,9 @@ from mutaui.ui.controllers import (
 from mutaui.ui.formatters import (
     _czech_plural,
     field_format,
-    localized_action,
-    read_settings,
+    localized_action,  # noqa: F401
     readable_record_lines,
-    separator,
+    separator,  # noqa: F401
     session_detail_html,
     settings_warning_message,
     write_settings,
@@ -359,245 +322,32 @@ from mutaui.ui.quick_navigator import QuickNavigator
 from mutaui.ui.support_bundle_dialog import SupportBundleDialog
 
 __all__ = [
-    "ACTION_SPECS",
-    "ADVANCED_ROUTE_IDS",
-    "APP_VERSION",
-    "ActionPlanner",
-    "ActionRequest",
-    "AdaptivePolling",
-    "AlertEngine",
-    "Any",
-    "AsyncRecorder",
-    "CLIDiscovery",
-    "Callable",
-    "ConflictInspectorDialog",
-    "ConnectionProfile",
-    "ConnectionProfileStore",
-    "ConnectionProfilesDialog",
-    "DiagnosticsMixin",
-    "FORWARD_CONFIG_FIELDS",
-    "FRESHNESS_SECONDS",
-    "FileTail",
-    "ForwardConfigField",
-    "ForwardConfigRow",
-    "ForwardTrafficMeter",
-    "Graph",
-    "HealthObservation",
-    "HealthPolicy",
-    "HealthRing",
-    "HealthTracker",
-    "HistoryStore",
-    "IgnorePresetError",
-    "IgnorePresetManagerDialog",
-    "IgnorePresetStore",
-    "Iterable",
-    "LazyStackedWidget",
-    "LegacyMutagenExecutor",
-    "Literal",
     "MainWindow",
-    "Mapping",
-    "MonitoringMixin",
-    "MutagenClient",
-    "MutagenError",
-    "NativeProjectManagerDialog",
-    "OnboardingMixin",
-    "PAGE_ROUTES",
-    "PROFILES",
-    "PagesMixin",
-    "PollBackoff",
-    "PortableBundleError",
-    "PortableImportPreviewDialog",
-    "PreferencesController",
-    "ProcessSampler",
-    "ProvenanceStoreError",
-    "QAbstractItemView",
-    "QAbstractTableModel",
-    "QAction",
-    "QApplication",
-    "QBrush",
-    "QCheckBox",
-    "QCloseEvent",
-    "QColor",
-    "QComboBox",
-    "QCompleter",
-    "QDesktopServices",
-    "QDialog",
-    "QDialogButtonBox",
-    "QEvent",
-    "QFileDialog",
-    "QFormLayout",
-    "QFrame",
-    "QGridLayout",
-    "QHBoxLayout",
-    "QHeaderView",
-    "QHideEvent",
-    "QIcon",
-    "QInputDialog",
-    "QKeySequence",
-    "QLabel",
-    "QLayout",
-    "QLineEdit",
-    "QLinearGradient",
-    "QListWidget",
-    "QListWidgetItem",
-    "QMainWindow",
-    "QMenu",
-    "QMessageBox",
-    "QModelIndex",
-    "QPainter",
-    "QPainterPath",
-    "QPen",
-    "QPixmap",
-    "QPlainTextEdit",
-    "QPoint",
-    "QPointF",
-    "QProgressBar",
-    "QPushButton",
-    "QRectF",
-    "QScrollArea",
-    "QShortcut",
-    "QShowEvent",
-    "QSizePolicy",
-    "QSpinBox",
-    "QSystemTrayIcon",
-    "QTableView",
-    "QTableWidget",
-    "QTableWidgetItem",
-    "QTextBrowser",
-    "QThreadPool",
-    "QTime",
-    "QTimeEdit",
-    "QTimer",
-    "QToolTip",
-    "QUrl",
-    "QVBoxLayout",
-    "QWidget",
-    "QWizard",
-    "QWizardPage",
-    "Qt",
+    "main",
     "QuickNavigator",
-    "RELEASES_URL",
-    "RefreshGate",
-    "ReplacementAuditEvent",
-    "ReplacementReceipt",
-    "ReplacementRequest",
-    "SSHProfileManagerDialog",
-    "SYNC_CONFIG_FIELDS",
-    "Sample",
-    "Sequence",
+    "SupportBundleDialog",
+    "SessionDialog",
+    "PortableImportPreviewDialog",
+    "SessionTableModel",
+    "BORDER",
+    "_czech_plural",
+    "button",
+    "field_format",
+    "readable_record_lines",
+    "session_detail_html",
+    "CommandExecutionMixin",
+    "DiagnosticsMixin",
+    "GlobalConfigMixin",
+    "LoggingMixin",
+    "MonitoringMixin",
+    "OnboardingMixin",
+    "PagesMixin",
     "ServersEndpointsMixin",
     "SessionActionsMixin",
-    "SessionDialog",
-    "SessionDoctorContext",
-    "SessionNotificationGate",
-    "SessionProvenanceStore",
-    "SessionTableModel",
+    "SessionTableMixin",
     "SettingsBundleMixin",
-    "Snapshot",
-    "SupportBundleDialog",
-    "SyncConfigField",
-    "SyncConfigRow",
-    "TrackedLogLines",
-    "UTC",
-    "UpdateCheckResult",
-    "Worker",
-    "WorkerSignals",
-    "_LOCALIZED_ITEM_ROLE",
-    "_czech_plural",
-    "active_language",
-    "add_localized_item",
-    "add_localized_items",
-    "add_localized_row",
-    "annotations",
-    "apply_health_network_change",
-    "apply_performance_assistant",
-    "apply_preset_import",
-    "apply_profile_import",
-    "attach_health_network_monitor_ui",
-    "build_bundle",
-    "build_reconfiguration_preview",
-    "build_session_configuration_proposal",
-    "build_settings_page",
-    "button",
-    "card",
-    "cast",
-    "check_for_update",
-    "check_session_alerts",
-    "classify",
-    "configure_settings_path_provider",
-    "conflict_count",
-    "datetime",
-    "diagnose_sessions",
-    "endpoint_text",
-    "envelope_downsample",
-    "example_snapshot",
-    "extract_sync_configuration",
-    "field_format",
-    "fill_session_configuration_table",
-    "forward_configuration_rows",
-    "from_legacy_session",
-    "global_config_editor",
-    "group_servers",
-    "health_policy_from_settings",
-    "host_architecture",
-    "html_escape",
-    "human_bytes",
-    "inspect_cli",
-    "inspect_session",
-    "json",
-    "label",
-    "load_bundle",
-    "load_ignore_presets",
-    "load_profile_store",
-    "load_settings",
-    "local_self_check",
-    "localized_action",
-    "localized_button",
-    "localized_checkbox",
-    "localized_label",
-    "main",
-    "nearest_time_index",
-    "path_aware_ignore_rule",
-    "preset_to_record",
-    "problem_count",
-    "qVersion",
-    "query_metrics_from_file",
-    "quiet_hours_active",
-    "read_registration",
-    "read_settings",
-    "readable_record_lines",
-    "render_sync_replacement_arguments",
-    "replace_non_project_mutagen_session",
-    "run_isolated_local_sync_test",
-    "safe_diagnostic_report",
-    "save_settings_file",
-    "selected_preferences",
-    "separator",
-    "session_configuration_rows",
-    "session_detail_html",
-    "session_log_report",
-    "session_preflight_fingerprint",
-    "session_servers",
-    "set_active_language",
-    "set_localized_accessible_name",
-    "set_localized_placeholder",
-    "set_localized_text",
-    "set_localized_title",
-    "set_localized_tooltip",
-    "setting_tooltip",
-    "settings_migration",
-    "settings_path",
-    "settings_warning_message",
-    "statistics_from_file",
-    "suppress",
-    "tempfile",
-    "traceback",
-    "translate",
-    "translate_route",
-    "translate_text",
-    "update_tray_status_ui",
-    "validate_native_command_snapshot",
-    "write_settings",
+    "SnapshotLifecycleMixin",
+    "TrayMixin",
 ]
 
 
@@ -614,6 +364,8 @@ class MainWindow(
     SessionTableMixin,
     CommandExecutionMixin,
     SnapshotLifecycleMixin,
+    GlobalConfigMixin,
+    LoggingMixin,
 ):
     def __init__(self, demo: bool = False, *, history_path: str | Path | None = None) -> None:
         super().__init__()
@@ -747,6 +499,10 @@ class MainWindow(
         shortcut.activated.connect(partial(self.set_page, 6))
         shortcut = QShortcut(QKeySequence("Ctrl+K"), self)
         shortcut.activated.connect(self.open_navigator)
+        shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut.activated.connect(self.focus_search)
+        shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        shortcut.activated.connect(self.toggle_theme_quick)
         # Direct page shortcuts: Ctrl+1 through Ctrl+0 (pages 0–9) and Ctrl+Shift+1 for page 10
         for _i in range(10):
             _idx = _i  # capture
@@ -818,27 +574,19 @@ class MainWindow(
         if event.type() == QEvent.Type.WindowStateChange:
             self.update_polling_mode()
 
-    def seed_demo_history(self) -> None:
-        """Populate illustrative graphs offline (only in explicitly marked demo mode)."""
-        now = time.time()
-        for i in range(125):
-            phase = i / 5.0
-            spike = 33 if i % 43 in range(12, 17) else 0
-            cpu = max(0.0, 6 + 5 * math.sin(phase) + spike)
-            memory = int((112 + i * 0.22 + 7 * math.sin(phase / 2)) * 1024**2)
-            sample = Sample(
-                ts=now - (124 - i) * 14,
-                cpu=cpu,
-                memory=memory,
-                read_rate=32000 + 60000 * abs(math.sin(phase)),
-                write_rate=54000 + 85000 * abs(math.cos(phase / 1.3)),
-                forward_out_rate=18000 + 65000 * abs(math.cos(phase / 1.8)),
-                forward_in_rate=65000 + 100000 * abs(math.sin(phase / 2)),
-                processes=2,
-                active_sessions=2,
-                problem_sessions=0,
-            )
-            self.history.add(sample)
+    def focus_search(self) -> None:
+        """Focus and select text in the search input matching current active page."""
+        idx = self.pages.currentIndex()
+        target: QLineEdit | None = None
+        if idx == 1 and hasattr(self, "sync_search"):
+            target = self.sync_search
+        elif idx == 2 and hasattr(self, "forward_search"):
+            target = self.forward_search
+        elif idx in (3, 4) and hasattr(self, "tail_filter"):
+            target = self.tail_filter
+        if target is not None:
+            target.setFocus()
+            target.selectAll()
 
     def set_ui_mode(self, mode: str) -> None:
         self.preferences_controller.set_ui_mode(mode)
@@ -874,6 +622,13 @@ class MainWindow(
                 self.theme_input.setCurrentIndex(idx)
         self._update_theme_toggle_icon()
         write_settings(self.conf)
+        msg = (
+            f"Theme switched to {new_theme}"
+            if self.ui_language == "en"
+            else f"Motiv přepnut na {new_theme}"
+        )
+        if hasattr(self, "statusBar") and self.statusBar():
+            self.statusBar().showMessage(msg, 3000)
 
     def apply_ui_language(self, language: str) -> None:
         self.preferences_controller.apply_ui_language(language)
@@ -1055,79 +810,6 @@ class MainWindow(
         if index in (1, 2) and hasattr(self, "sync_details"):
             self.refresh_detail("sync" if index == 1 else "forward")
 
-    def health_policy_from_settings(self) -> HealthPolicy:
-        return health_policy_from_settings(self.conf)
-
-    def _attach_health_network_monitor(self) -> None:
-        attach_health_network_monitor_ui(self)
-
-    def _health_network_changed(self, reachability: object) -> None:
-        apply_health_network_change(self, reachability)
-
-    def settings_page(self) -> QScrollArea:
-        return build_settings_page(self)
-
-    def migrate_local_settings(self) -> None:
-        settings_migration.migrate_local_settings(self, settings_path())
-
-    def rollback_local_settings_migration(self) -> None:
-        settings_migration.rollback_local_settings_migration(self, settings_path())
-
-    def browse_global_config(self) -> None:
-        global_config_editor.browse_global_config(self)
-
-    def load_global_config(self) -> None:
-        global_config_editor.load_global_config(self)
-
-    def show_global_yaml_recovery(self) -> None:
-        global_config_editor.show_global_yaml_recovery(self)
-
-    def preview_global_config(self) -> None:
-        global_config_editor.preview_global_config(self)
-
-    def add_log(self, message: object) -> None:
-        safe_message = str(message).replace("\r", "").strip()
-        self.logs.append(f"[{datetime.now():%d.%m. %H:%M:%S}] {safe_message}")
-        severity = "warning" if "ERROR" in safe_message or "WARNING" in safe_message else "info"
-        if self.recorder is not None:
-            self.recorder.add_event(safe_message, severity)
-        else:
-            with suppress(sqlite3.Error):
-                self.history.add_event(safe_message, severity)
-        if hasattr(self, "log_view"):
-            self.log_view.appendPlainText(self.logs[-1])
-            bar = self.log_view.verticalScrollBar()
-            bar.setValue(bar.maximum())
-        if hasattr(self, "log_count_label"):
-            n = len(self.logs)
-            self.log_count_label.setText(
-                f"{n} {'entry' if n == 1 else 'entries' if 2 <= n <= 4 else 'entries'}"
-            )
-
-    def clear_logs(self) -> None:
-        self.logs.clear()
-        self.log_view.clear()
-        if self.recorder is not None:
-            self.recorder.clear_events()
-        else:
-            with suppress(sqlite3.Error):
-                self.history.clear_events()
-        self.add_log("UI history cleared")
-
-    def export_logs(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            translate_text("Save History", active_language()),
-            "mutagen-control-log.txt",
-            translate_text("Text (*.txt)", active_language()),
-        )
-        if not path:
-            return
-        try:
-            Path(path).write_text("\n".join(self.logs) + "\n", encoding="utf-8")
-        except OSError as exc:
-            QMessageBox.critical(self, translate_text("Write Error", active_language()), str(exc))
-
 
 for _mixin in (
     DiagnosticsMixin,
@@ -1141,6 +823,8 @@ for _mixin in (
     SessionTableMixin,
     CommandExecutionMixin,
     SnapshotLifecycleMixin,
+    GlobalConfigMixin,
+    LoggingMixin,
 ):
     for _name, _attr in _mixin.__dict__.items():
         if isinstance(_attr, types.FunctionType):

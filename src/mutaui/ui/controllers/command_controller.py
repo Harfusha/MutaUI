@@ -280,6 +280,21 @@ class CommandExecutionMixin:
                 self.report_error(str(exc))
                 return
         self.pending_action = True
+        action_labels = {
+            "pause": ("Pausing session…", "Pozastavování relace…"),
+            "resume": ("Resuming session…", "Obnovování relace…"),
+            "flush": ("Syncing now…", "Spouštění synchronizace…"),
+            "reset": ("Resetting history…", "Resetování historie…"),
+            "terminate": ("Terminating session…", "Ukončování relace…"),
+            "create": ("Creating session…", "Vytváření relace…"),
+            "start": ("Starting daemon…", "Spouštění služby…"),
+            "stop": ("Stopping daemon…", "Zastavování služby…"),
+            "restart": ("Restarting daemon…", "Restartování služby…"),
+        }
+        lbl = action_labels.get(action, (f"{action.capitalize()}…", f"{action}…"))
+        toast = lbl[1] if active_language() == "cs" else lbl[0]
+        if hasattr(self, "statusBar") and self.statusBar():
+            self.statusBar().showMessage(toast, 4000)
         self.add_log(
             f"Running: mutagen {kind} {action}" + (" (selected session)" if target else "")
         )
@@ -326,6 +341,8 @@ class CommandExecutionMixin:
             if output:
                 self.add_log(output[:1800])
             self.add_log(f"Completed: {kind} {action}")
+            if hasattr(self, "statusBar") and self.statusBar():
+                self.statusBar().showMessage(f"✓ {kind.capitalize()} {action}", 4000)
 
         def error(message: str) -> None:
             self.report_error(message)

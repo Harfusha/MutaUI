@@ -169,6 +169,7 @@ class ConflictInspectorDialog(QDialog):
 
         filters = QHBoxLayout()
         self.search = QLineEdit()
+        self.search.setClearButtonEnabled(True)
         self.search.setPlaceholderText("Filter by session or relative path")
         self.session_filter = QComboBox()
         self.session_filter.addItem("All sessions", "")

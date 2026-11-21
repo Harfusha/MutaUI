@@ -50,6 +50,7 @@ class QuickNavigator(QDialog):
         )
         layout.addWidget(hint)
         self.search = QLineEdit()
+        self.search.setClearButtonEnabled(True)
         set_localized_placeholder(self.search, "Search page…")
         layout.addWidget(self.search)
         self.list = QListWidget()
