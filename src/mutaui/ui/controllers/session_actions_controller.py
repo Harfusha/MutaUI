@@ -28,7 +28,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from endpoint_inspector import endpoint_text
 from forward_configuration import (
     FORWARD_CONFIG_FIELDS,
     ForwardConfigField,
@@ -43,6 +42,7 @@ from mutagen_client import (
     MutagenClient,
     classify,
     conflict_count,
+    endpoint_text,
     human_bytes,
     problem_count,
     session_preflight_fingerprint,

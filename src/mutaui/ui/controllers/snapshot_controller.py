@@ -32,6 +32,8 @@ from mutaui.ui.worker import Worker
 class SnapshotLifecycleMixin:
     """Mixin managing worker thread pools, periodic polling, and snapshot application."""
 
+    _last_snapshot_received_monotonic: float | None = None
+
     def submit(
         self: Any,
         work: Callable[[], Any],

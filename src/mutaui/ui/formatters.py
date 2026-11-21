@@ -23,12 +23,12 @@ def get_settings_path() -> Path:
 
     app_mod = sys.modules.get("app")
     if app_mod is not None and hasattr(app_mod, "settings_path"):
-        return cast(Path, app_mod.settings_path())
-    return cast(Path, settings_path())
+        return Path(app_mod.settings_path())
+    return settings_path()
 
 
 def read_settings() -> dict[str, Any]:
-    return cast(dict[str, Any], load_settings(get_settings_path()).values)
+    return load_settings(get_settings_path()).values
 
 
 def get_active_language() -> str:

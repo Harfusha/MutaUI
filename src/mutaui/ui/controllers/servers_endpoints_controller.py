@@ -19,9 +19,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from endpoint_inspector import endpoint_text
 from endpoint_inspector import summary as inspect_session
-from mutagen_client import Snapshot, classify, human_bytes
+from mutagen_client import Snapshot, classify, endpoint_text, human_bytes
 from mutaui.ui.formatters import _czech_plural, separator
 from mutaui.ui.localization import (
     set_localized_placeholder,

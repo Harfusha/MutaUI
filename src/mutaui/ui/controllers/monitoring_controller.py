@@ -48,6 +48,8 @@ from mutaui.ui.widgets.graph import Graph
 
 
 class MonitoringMixin:
+    _stats_cache_range: float | None = None
+
     def refresh_resources(self: Any) -> None:
         if self.demo:
             self.apply_resource_metrics(

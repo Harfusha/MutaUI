@@ -42,6 +42,9 @@ from mutaui.ui.widgets.basic import (
 
 
 class OnboardingMixin:
+    onboarding_wizard: QWizard | None = None
+    _release_check_result: UpdateCheckResult | None = None
+
     def open_onboarding(self: Any) -> None:
         if self.onboarding_wizard is not None:
             self.onboarding_wizard.raise_()

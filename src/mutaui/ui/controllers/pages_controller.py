@@ -69,6 +69,8 @@ from mutaui.ui.widgets.session_table import SessionTableModel
 
 
 class PagesMixin:
+    tail_file: FileTail | None = None
+
     def dashboard_page(self: Any) -> QScrollArea:
         page = QScrollArea()
         page.setWidgetResizable(True)

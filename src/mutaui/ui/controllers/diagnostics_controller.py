@@ -45,6 +45,10 @@ from settings import settings_path
 
 
 class DiagnosticsMixin:
+    _doctor_observation_key: tuple[datetime | None, datetime | None] | None = None
+    _doctor_previous_issue_count: int | None = None
+    _doctor_current_issue_count: int | None = None
+
     def diagnostics_page(self: Any) -> QWidget:
         root = QWidget()
         root.setObjectName("main")
