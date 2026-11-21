@@ -145,9 +145,12 @@ class HistoryStore:
         self._last_prune = 0.0
 
     def add(self, sample: Sample) -> None:
-        values = (sample.ts,) + tuple(getattr(sample, k) for k in METRIC_COLUMNS)
+        columns = ("ts", *METRIC_COLUMNS)
+        values = (sample.ts,) + tuple(getattr(sample, column) for column in METRIC_COLUMNS)
         self.db.execute(
-            "INSERT OR REPLACE INTO metrics VALUES (" + ",".join("?" for _ in values) + ")", values
+            f"INSERT OR REPLACE INTO metrics ({', '.join(columns)}) "
+            f"VALUES ({','.join('?' for _ in columns)})",  # noqa: S608 - static columns, parameterized data
+            values,
         )
         self.db.commit()
         if sample.ts - self._last_prune > 600:

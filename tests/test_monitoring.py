@@ -74,6 +74,21 @@ def test_store_persistence_aggregate_and_export(tmp_path):
     store.close()
 
 
+def test_store_add_ignores_newer_database_columns(tmp_path):
+    store = HistoryStore(tmp_path / "metrics.sqlite3")
+    store.db.execute("ALTER TABLE metrics ADD COLUMN future_metric REAL")
+    store.db.commit()
+
+    store.add(Sample(ts=1000, cpu=42))
+
+    assert store.db.execute("SELECT ts, cpu, future_metric FROM metrics").fetchone() == (
+        1000,
+        42,
+        None,
+    )
+    store.close()
+
+
 def test_history_migrates_tray_and_cli_metrics_without_backfilling(tmp_path):
     import sqlite3
 
