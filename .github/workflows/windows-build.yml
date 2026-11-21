@@ -26,6 +26,11 @@ jobs:
           uv sync --locked --group build --group test --group quality
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $env:GITHUB_WORKSPACE '.venv\Scripts')
+      - name: Install pinned Mutagen test CLI (Windows)
+        env:
+          MUTAGEN_TEST_VERSION: 0.18.1
+        shell: pwsh
+        run: ./scripts/install-mutagen-test-cli.ps1
       - name: Run static checks
         run: |
           python -m ruff check .
