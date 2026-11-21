@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version tag (e.g. v8.2.0)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -51,7 +57,7 @@ jobs:
       id-token: write
       attestations: write
     env:
-      VERSION: ${{ github.ref_name }}
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
       QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v7
@@ -163,7 +169,7 @@ jobs:
           $version = $env:VERSION.TrimStart('v')
           $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-          $kits = Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'Windows Kits\10\bin'
+          $kits = Join-Path $programFilesX86 'Windows Kits\10\bin'
           $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -247,7 +253,13 @@ jobs:
           cp LICENSE NOTICE.md dist/dmg-root/
           cp licenses/LGPL-*.txt dist/dmg-root/licenses/
           ln -s /Applications dist/dmg-root/Applications
-          hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-${version}-macos-${arch}.dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-${version}-macos-${arch}.dmg"; then
+              break
+            fi
+            echo "hdiutil create attempt $attempt failed, retrying in 3 seconds..."
+            sleep 3
+          done
           rm -rf dist/dmg-root
       - name: Notarize macOS DMG
         if: runner.os == 'macOS'
@@ -282,7 +294,7 @@ jobs:
           for file in LICENSE NOTICE.md licenses/LGPL-3.0.txt licenses/LGPL-2.1.txt; do test -s "$mount/$file"; done
           spctl --assess --type execute --verbose=2 "$mount/MutagenControl.app" || echo "Note: Gatekeeper assessment skipped/failed (expected when unsigned)."
           python scripts/run_self_test.py "$mount/MutagenControl.app/Contents/MacOS/MutagenControl"
-          hdiutil detach "$mount"
+          hdiutil detach "$mount" -force || hdiutil detach "$mount" || true
       - name: Build Linux AppImage and deb packages
         if: runner.os == 'Linux'
         env:
@@ -292,7 +304,7 @@ jobs:
           python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
           bash packaging/linux/build-packages.sh dist-platform/MutagenControl dist
           APPIMAGE_EXTRACT_AND_RUN=1 "dist/MutagenControl-${release_version}-linux-x86_64.AppImage" --self-test
-          sudo dpkg -i "dist/MutagenControl-${release_version}-linux-amd64.deb"
+          sudo apt-get install -y "./dist/MutagenControl-${release_version}-linux-amd64.deb"
           for file in LICENSE NOTICE.md licenses/LGPL-3.0.txt licenses/LGPL-2.1.txt; do test -s "/usr/share/doc/mutagen-control/$file"; done
           python scripts/run_self_test.py /usr/bin/mutagen-control
       - name: Verify Windows packages

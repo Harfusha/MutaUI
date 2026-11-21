@@ -3,7 +3,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$root = Join-Path $env:RUNNER_TEMP 'mutagen-test-cli'
+$tempRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$root = Join-Path $tempRoot 'mutagen-test-cli'
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 $archive = Join-Path $root "mutagen_windows_amd64_v$Version.zip"
 $archiveName = "mutagen_windows_amd64_v$Version.zip"
@@ -25,3 +26,8 @@ if ($LASTEXITCODE -ne 0) { throw "Mutagen version check failed: $LASTEXITCODE" }
 if ($env:GITHUB_ENV) {
     "MUTAGEN_BINARY=$($binary.FullName)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
 }
+if ($env:GITHUB_PATH) {
+    $binary.DirectoryName | Add-Content -LiteralPath $env:GITHUB_PATH -Encoding utf8
+}
+[System.Environment]::SetEnvironmentVariable('MUTAGEN_BINARY', $binary.FullName, 'Process')
+$env:PATH = "$($binary.DirectoryName);$env:PATH"

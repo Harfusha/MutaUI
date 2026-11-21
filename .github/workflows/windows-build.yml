@@ -13,8 +13,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -45,7 +45,7 @@ jobs:
           python -c "import xml.etree.ElementTree as ET; root=ET.parse('coverage.xml').getroot(); covered=int(root.get('branches-covered','0')); total=int(root.get('branches-valid','0')); rate=covered/total; print(f'Branch coverage: {covered}/{total} = {rate:.2%}'); assert rate >= 0.95, 'Windows build requires at least 95% branch coverage'"
       - name: Upload test and coverage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutaui-test-coverage-report
           path: |
@@ -80,7 +80,8 @@ jobs:
           $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
           $compiler = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
-          & $compiler packaging/windows/MutagenControl.iss
+          $version = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
       - name: Generate Windows package SBOM
         uses: anchore/sbom-action@v0.24.3
@@ -103,7 +104,7 @@ jobs:
           }
           $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-          $kits = Join-Path ([Environment]::GetEnvironmentVariable('ProgramFiles(x86)')) 'Windows Kits\10\bin'
+          $kits = Join-Path $programFilesX86 'Windows Kits\10\bin'
           $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
@@ -125,35 +126,35 @@ jobs:
           }
       - name: Upload self-test diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MutagenControl-self-test-diagnostics
           path: ${{ runner.temp }}/mutagen-control-self-test.log
           if-no-files-found: ignore
           retention-days: 7
       - name: Upload fast-start folder
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MutagenControl-v8.2-fast
           path: dist-fast/MutagenControl/
           if-no-files-found: error
           retention-days: 14
       - name: Upload single-file EXE
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MutagenControl-v8.2-onefile
           path: dist/MutagenControl.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload user-scoped installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MutagenControl-v8.2-installer
           path: dist/MutagenControl-8.2.0-windows-x64-setup.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload Windows package SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: MutagenControl-v8.2-sbom
           path: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json

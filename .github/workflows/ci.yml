@@ -199,7 +199,13 @@ jobs:
           mkdir -p dist/dmg-root
           ditto dist-platform/MutagenControl.app dist/dmg-root/MutagenControl.app
           ln -s /Applications dist/dmg-root/Applications
-          hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-8.2.0-macos-${arch}.dmg"
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-8.2.0-macos-${arch}.dmg"; then
+              break
+            fi
+            echo "hdiutil create attempt $attempt failed, retrying in 3 seconds..."
+            sleep 3
+          done
           rm -rf dist/dmg-root
       - name: Verify macOS disk image
         if: runner.os == 'macOS'
@@ -209,7 +215,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/mutaui-dmg"
           hdiutil attach "dist/MutagenControl-8.2.0-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$RUNNER_TEMP/mutaui-dmg"
           python scripts/run_self_test.py "$RUNNER_TEMP/mutaui-dmg/MutagenControl.app/Contents/MacOS/MutagenControl"
-          hdiutil detach "$RUNNER_TEMP/mutaui-dmg"
+          hdiutil detach "$RUNNER_TEMP/mutaui-dmg" -force || hdiutil detach "$RUNNER_TEMP/mutaui-dmg" || true
       - name: Write package checksums
         if: runner.os == 'macOS' || runner.os == 'Linux'
         shell: bash
