@@ -1,3 +1,6 @@
+import sys
+from types import SimpleNamespace
+
 from PySide6.QtWidgets import QApplication
 
 from app import (
@@ -8,6 +11,7 @@ from app import (
     readable_record_lines,
     session_detail_html,
 )
+from mutaui.ui import formatters
 
 
 def test_nested_record_details_are_labeled_instead_of_raw_repr():
@@ -67,3 +71,23 @@ def test_button_optional_size_and_callback_and_nested_sequence_details():
     assert any("Item 1" in line for line in rendered)
     assert any("• scalar" in line for line in rendered)
     assert readable_record_lines("plain") == ["plain"]
+
+
+def test_settings_formatters_fall_back_without_app_module(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "app", None)
+    settings = tmp_path / "settings.json"
+    monkeypatch.setattr(formatters, "settings_path", lambda: settings)
+    monkeypatch.setattr(formatters, "active_language", lambda: "en")
+
+    assert formatters.get_settings_path() == settings
+    assert formatters.get_active_language() == "en"
+
+
+def test_settings_formatters_fall_back_when_app_exports_are_missing(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "app", SimpleNamespace())
+    settings = tmp_path / "settings.json"
+    monkeypatch.setattr(formatters, "settings_path", lambda: settings)
+    monkeypatch.setattr(formatters, "active_language", lambda: "en")
+
+    assert formatters.get_settings_path() == settings
+    assert formatters.get_active_language() == "en"

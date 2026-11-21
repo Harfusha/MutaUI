@@ -1,4 +1,6 @@
 import json
+import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,6 +28,26 @@ def test_exact_creation_provenance_round_trips_by_native_identifier(tmp_path):
     assert record is not None
     assert record.session_identifier == "sync_native_123"
     assert record.create_arguments == argv
+
+
+def test_store_write_skips_posix_chmod_on_windows(tmp_path, monkeypatch):
+    import mutaui.services.session_provenance as provenance
+
+    monkeypatch.setattr(
+        provenance,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            chmod=lambda *_args: pytest.fail("Windows writes must not call POSIX chmod"),
+            fsync=os.fsync,
+            replace=os.replace,
+        ),
+    )
+    store = SessionProvenanceStore(tmp_path / "session-provenance.json")
+
+    store.record("sync_native_123", ("sync", "create", "/alpha", "/beta"))
+
+    assert store.get("sync_native_123") is not None
 
 
 @pytest.mark.parametrize(

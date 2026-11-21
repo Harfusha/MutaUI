@@ -86,6 +86,55 @@ def test_unavailable_backend_disables_monitor(monkeypatch):
     assert changes == []
 
 
+def test_missing_backend_loader_disables_monitor(monkeypatch):
+    class FakeInformation:
+        pass
+
+    install_network_information(monkeypatch, FakeInformation)
+
+    assert attach_health_network_monitor(lambda _value: None) == (None, None)
+
+
+def test_missing_information_instance_disables_monitor(monkeypatch):
+    class FakeInformation:
+        class Feature:
+            Reachability = object()
+
+        @classmethod
+        def loadDefaultBackend(cls):
+            return True
+
+        @classmethod
+        def instance(cls):
+            return None
+
+    install_network_information(monkeypatch, FakeInformation)
+
+    assert attach_health_network_monitor(lambda _value: None) == (None, None)
+
+
+def test_unsupported_reachability_disables_monitor(monkeypatch):
+    class FakeInformation:
+        class Feature:
+            Reachability = object()
+
+        @classmethod
+        def loadDefaultBackend(cls):
+            return True
+
+        @classmethod
+        def instance(cls):
+            return cls
+
+        @classmethod
+        def supports(cls, _feature):
+            return False
+
+    install_network_information(monkeypatch, FakeInformation)
+
+    assert attach_health_network_monitor(lambda _value: None) == (None, None)
+
+
 def test_missing_qt_network_module_disables_monitor(monkeypatch):
     monkeypatch.setitem(sys.modules, "PySide6.QtNetwork", None)
 

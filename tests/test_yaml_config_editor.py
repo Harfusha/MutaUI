@@ -112,6 +112,34 @@ def test_posix_atomic_replace_path_is_exercised_on_any_host(tmp_path, monkeypatc
     assert path.read_bytes() == preview.yaml_bytes
 
 
+def test_windows_atomic_replace_path_is_exercised_on_any_host(tmp_path, monkeypatch):
+    path = tmp_path / "mutagen.yml"
+    original = b"sync:\n  defaults:\n    watch: true\n"
+    path.write_bytes(original)
+    preview = preview_yaml_edit(load_yaml_file(path), {"sync": {"defaults": {"watch": False}}})
+
+    def replace_file(target, temporary, backup):
+        backup.write_bytes(target.read_bytes())
+        os.replace(temporary, target)
+
+    monkeypatch.setattr(
+        yaml_editor,
+        "os",
+        SimpleNamespace(
+            name="nt",
+            fdopen=os.fdopen,
+            fsync=os.fsync,
+            chmod=os.chmod,
+        ),
+    )
+    monkeypatch.setattr(yaml_editor, "replace_file_win32", replace_file)
+
+    result = apply_yaml_edit(preview, backup_suffix=".windows-test.bak")
+
+    assert result.backup_path.read_bytes() == original
+    assert path.read_bytes() == preview.yaml_bytes
+
+
 def test_posix_directory_flush_closes_descriptor(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(

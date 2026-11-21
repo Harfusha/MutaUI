@@ -287,7 +287,7 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
         pulse_timer.start()
         request_timer.start()
         process_timer.start()
-        stop_timer.start(3500)
+        stop_timer.start(5000)
         event_loop.exec()
         pulse_timer.stop()
         request_timer.stop()
