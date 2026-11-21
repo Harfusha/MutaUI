@@ -77,7 +77,8 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress --yes
-          $compiler = Join-Path $env:ProgramFilesX86 'Inno Setup 6\ISCC.exe'
+          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          $compiler = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
           & $compiler packaging/windows/MutagenControl.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }

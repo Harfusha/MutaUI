@@ -141,7 +141,8 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup --no-progress --yes
-          $compiler = Join-Path $env:ProgramFilesX86 'Inno Setup 6\ISCC.exe'
+          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          $compiler = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
           $version = $env:VERSION.TrimStart('v')
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Release tag must be a stable semantic version: $version" }
