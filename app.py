@@ -163,8 +163,14 @@ from mutagen_client import (
     session_preflight_fingerprint,  # noqa: F401
 )
 from mutaui import __version__ as APP_VERSION
-from mutaui.adapters.cli_executor import LegacyMutagenExecutor  # noqa: F401
+from mutaui.adapters.cli_executor import LegacyMutagenExecutor, MutagenCliExecutor  # noqa: F401
 from mutaui.adapters.mutagen_snapshot import from_legacy_session  # noqa: F401
+
+
+def from_session_dict(*args: Any, **kwargs: Any) -> Any:
+    return from_legacy_session(*args, **kwargs)
+
+
 from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner, ActionRequest  # noqa: F401
 from mutaui.services.health_tracker import (  # noqa: F401
     HealthObservation,

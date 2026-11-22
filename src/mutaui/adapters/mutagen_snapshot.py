@@ -32,7 +32,7 @@ def _endpoint(raw: object, *, kind: Literal["sync", "forward"]) -> Endpoint | No
     )
 
 
-def from_legacy_session(
+def from_session_dict(
     kind: Literal["sync", "forward"],
     raw: dict[str, object],
     *,
@@ -82,3 +82,6 @@ def from_legacy_session(
         measured_at=measured_at,
         stale_reason=stale_reason,
     )
+
+
+from_legacy_session = from_session_dict

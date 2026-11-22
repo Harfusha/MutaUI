@@ -246,6 +246,10 @@ class MainWindow(
         shortcut.activated.connect(self.toggle_theme_quick)
         shortcut = QShortcut(QKeySequence("Ctrl+D"), self)
         shortcut.activated.connect(lambda: self.open_troubleshooter())
+        shortcut = QShortcut(QKeySequence("F1"), self)
+        shortcut.activated.connect(self.open_navigator)
+        shortcut = QShortcut(QKeySequence("Ctrl+,"), self)
+        shortcut.activated.connect(partial(self.set_page, 5))
         # Direct page shortcuts: Ctrl+1 through Ctrl+0 (pages 0–9) and Ctrl+Shift+1 for page 10
         for _i in range(10):
             _idx = _i  # capture

@@ -857,3 +857,90 @@ def test_app_main_cli_branches(monkeypatch: Any) -> None:
     monkeypatch.setattr("sys.argv", ["app.py", "--remove-linux-file-manager"])
     monkeypatch.setattr("sys.platform", "win32")
     assert app_module.main() == 2
+
+
+def test_session_double_click_and_filter_status(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+    window.apply_snapshot(window.snapshot)
+
+    # 1. Double click on invalid index -> nothing happens
+    from PySide6.QtCore import QModelIndex
+
+    opened: list[str] = []
+    monkeypatch.setattr(window, "open_session_preferences", lambda kind: opened.append(kind))
+    window.session_double_click("sync", QModelIndex())
+    assert opened == []
+
+    # 2. Double click on valid row -> opens session preferences
+    valid_index = window.sync_table.model().index(0, 0)
+    window.session_double_click("sync", valid_index)
+    assert opened == ["sync"]
+
+    # 3. Filter table shows status bar message
+    window.ui_language = "en"
+    window.sync_search.setText("demo")
+    window.filter_table("sync")
+    assert "Showing" in window.statusBar().currentMessage()
+
+    window.ui_language = "cs"
+    window.filter_table("sync")
+    assert "Zobrazeno" in window.statusBar().currentMessage()
+
+    window.close()
+
+
+def test_shortcuts_f1_and_ctrl_comma(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+
+    nav_opened: list[bool] = []
+    monkeypatch.setattr(window, "open_navigator", lambda: nav_opened.append(True))
+    from PySide6.QtGui import QKeySequence, QShortcut
+
+    # Find F1 shortcut
+    f1_shortcuts = [s for s in window.findChildren(QShortcut) if s.key() == QKeySequence("F1")]
+    assert len(f1_shortcuts) == 1
+    f1_shortcuts[0].activated.emit()
+    assert nav_opened == [True]
+
+    # Find Ctrl+, shortcut
+    settings_shortcuts = [
+        s for s in window.findChildren(QShortcut) if s.key() == QKeySequence("Ctrl+,")
+    ]
+    assert len(settings_shortcuts) == 1
+    settings_shortcuts[0].activated.emit()
+    assert window.pages.currentIndex() == 5
+
+    window.close()
+
+
+def test_modern_adapters() -> None:
+    from datetime import UTC, datetime
+
+    from mutaui.adapters.cli_executor import MutagenCliExecutor
+    from mutaui.adapters.mutagen_snapshot import from_session_dict
+
+    raw = {
+        "identifier": "mod-sync",
+        "name": "Modern",
+        "status": 0,
+        "alpha": {"path": "C:\\a"},
+        "beta": {"path": "/b"},
+    }
+    snap = from_session_dict("sync", raw, measured_at=datetime.now(UTC))
+    assert snap.identity.identifier == "mod-sync"
+    assert snap.identity.name == "Modern"
+
+    class FakeClient:
+        def command(self, args: list[str], *, timeout: int = 35, readonly: bool = False) -> str:
+            return "ok"
+
+    executor = MutagenCliExecutor(FakeClient())
+    res = executor.run(["sync", "list"], timeout_seconds=10)
+    assert res.stdout == "ok"
+    assert res.returncode == 0

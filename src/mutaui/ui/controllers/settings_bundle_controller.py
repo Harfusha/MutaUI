@@ -25,7 +25,7 @@ from ignore_presets import (
     preset_to_record,
 )
 from mutagen_client import MutagenClient
-from mutaui.adapters.cli_executor import LegacyMutagenExecutor
+from mutaui.adapters.cli_executor import MutagenCliExecutor
 from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
 from mutaui.ui.formatters import get_settings_path as settings_path
 from mutaui.ui.formatters import write_settings
@@ -354,7 +354,7 @@ class SettingsBundleMixin:
             dialog = NativeProjectManagerDialog(
                 settings_path().with_name("mutagen-projects.json"),
                 self,
-                executor=LegacyMutagenExecutor(self.client) if self.client.binary else None,
+                executor=MutagenCliExecutor(self.client) if self.client.binary else None,
                 audit_path=settings_path().with_name("mutagen-project-actions.jsonl"),
                 action_planner=self.action_planner,
             )

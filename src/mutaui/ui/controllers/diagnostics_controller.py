@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from insights import local_self_check, safe_diagnostic_report, session_log_report
 from mutagen_client import Snapshot, human_bytes
 from mutaui import __version__ as APP_VERSION
-from mutaui.adapters.mutagen_snapshot import from_legacy_session
+from mutaui.adapters.mutagen_snapshot import from_session_dict
 from mutaui.services.health_tracker import HealthObservation
 from mutaui.services.session_doctor import (
     FRESHNESS_SECONDS,
@@ -116,7 +116,7 @@ class DiagnosticsMixin:
                 continue
             observed_at = self.snapshot.sync_observed_at
             sessions.append(
-                from_legacy_session(
+                from_session_dict(
                     "sync",
                     raw,
                     measured_at=observed_at or datetime(2000, 1, 1, tzinfo=UTC),
@@ -147,7 +147,7 @@ class DiagnosticsMixin:
                 if not isinstance(raw, dict) or not isinstance(raw.get("identifier"), str):
                     continue
                 sessions.append(
-                    from_legacy_session(
+                    from_session_dict(
                         kind,
                         raw,
                         measured_at=observed_at or datetime(2000, 1, 1, tzinfo=UTC),
@@ -204,7 +204,7 @@ class DiagnosticsMixin:
                 if not isinstance(raw, dict) or not isinstance(raw.get("identifier"), str):
                     continue
                 sessions.append(
-                    from_legacy_session(
+                    from_session_dict(
                         kind,
                         raw,
                         measured_at=observed_at or datetime(2000, 1, 1, tzinfo=UTC),

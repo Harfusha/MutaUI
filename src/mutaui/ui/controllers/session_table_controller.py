@@ -15,8 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from mutagen_client import classify
-from mutaui.adapters.cli_executor import LegacyMutagenExecutor
-from mutaui.adapters.mutagen_snapshot import from_legacy_session
+from mutaui.adapters.cli_executor import MutagenCliExecutor
+from mutaui.adapters.mutagen_snapshot import from_session_dict
 from mutaui.ui.preferences import active_language, translate_text
 from server_groups import session_servers
 from settings import settings_path
@@ -101,7 +101,9 @@ class SessionTableMixin:
             for s in (self.snapshot.sync if kind == "sync" else self.snapshot.forward)
         }
         model = table.model()
-        for row in range(model.rowCount()):
+        total_rows = model.rowCount()
+        visible_rows = 0
+        for row in range(total_rows):
             haystack = " ".join(
                 str(model.index(row, col).data() or "") for col in range(model.columnCount())
             ).casefold()
@@ -115,17 +117,38 @@ class SessionTableMixin:
             meets_server = server_key == "__all__" or (
                 current is not None and server_key in session_servers(current, kind)
             )
-            table.setRowHidden(
-                row,
+            hidden = (
                 needle not in haystack
                 or not meets_state
                 or not meets_server
-                or (only_favorites and identifier not in self.favorites[kind]),
+                or (only_favorites and identifier not in self.favorites[kind])
             )
+            table.setRowHidden(row, hidden)
+            if not hidden:
+                visible_rows += 1
         current = table.currentIndex()
         if current.isValid() and table.isRowHidden(current.row()):
             table.selectionModel().clear()
         self.fit_table_to_rows(table)
+        if (
+            hasattr(self, "statusBar")
+            and self.statusBar()
+            and (needle or code is not None or server_key != "__all__" or only_favorites)
+        ):
+            lang = getattr(self, "ui_language", "en")
+            msg = (
+                f"Zobrazeno {visible_rows} z {total_rows} relací ({kind})"
+                if lang == "cs"
+                else f"Showing {visible_rows} of {total_rows} {kind} sessions"
+            )
+            self.statusBar().showMessage(msg, 3000)
+
+    def session_double_click(self: Any, kind: str, index: QModelIndex) -> None:
+        if not index.isValid():
+            return
+        identifier = index.siblingAtColumn(0).data(Qt.ItemDataRole.UserRole)
+        if identifier and hasattr(self, "open_session_preferences"):
+            self.open_session_preferences(kind)
 
     def dashboard_select(self: Any, index: QModelIndex) -> None:
         if index.isValid():
@@ -215,7 +238,7 @@ class SessionTableMixin:
             dialog = NativeProjectViewerDialog(
                 path,
                 parent=self,
-                executor=LegacyMutagenExecutor(self.client) if self.client.binary else None,
+                executor=MutagenCliExecutor(self.client) if self.client.binary else None,
                 audit_path=settings_path().with_name("mutagen-project-actions.jsonl"),
             )
             dialog.exec()
@@ -228,7 +251,7 @@ class SessionTableMixin:
             for raw in self.snapshot.sync:
                 if isinstance(raw, dict) and isinstance(raw.get("identifier"), str):
                     snapshots.append(
-                        from_legacy_session(
+                        from_session_dict(
                             "sync",
                             raw,
                             measured_at=observed_at or datetime(2000, 1, 1, tzinfo=UTC),

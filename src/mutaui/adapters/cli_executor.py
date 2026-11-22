@@ -23,15 +23,18 @@ class CommandExecutor(Protocol):
     ) -> CommandResult: ...
 
 
-class LegacyMutagenClient(Protocol):
+class MutagenClientProtocol(Protocol):
     def command(self, args: list[str], *, timeout: int = 35, readonly: bool = False) -> str: ...
 
 
-class LegacyMutagenExecutor:
-    """Wrap the legacy CLI adapter without changing command or error behavior."""
+LegacyMutagenClient = MutagenClientProtocol
+
+
+class MutagenCliExecutor:
+    """Wrap the Mutagen CLI client without changing command or error behavior."""
 
     def __init__(
-        self, client: LegacyMutagenClient, clock: Callable[[], float] = perf_counter
+        self, client: MutagenClientProtocol, clock: Callable[[], float] = perf_counter
     ) -> None:
         self._client = client
         self._clock = clock
@@ -46,3 +49,6 @@ class LegacyMutagenExecutor:
         stdout = self._client.command(list(arguments), timeout=timeout_seconds, readonly=readonly)
         elapsed = max(0.0, self._clock() - started)
         return CommandResult(arguments, 0, stdout, "", elapsed)
+
+
+LegacyMutagenExecutor = MutagenCliExecutor

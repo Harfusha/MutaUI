@@ -47,7 +47,7 @@ from mutagen_client import (
     problem_count,
     session_preflight_fingerprint,
 )
-from mutaui.adapters.mutagen_snapshot import from_legacy_session
+from mutaui.adapters.mutagen_snapshot import from_session_dict
 from mutaui.services.action_planner import ACTION_SPECS, ActionRequest
 from mutaui.services.reconfiguration import (
     build_reconfiguration_preview,
@@ -612,7 +612,7 @@ class SessionActionsMixin:
                         target[part] = {}
                     target = target[part]
                 target[field.path[-1]] = value
-            snapshot = from_legacy_session("sync", session, measured_at=datetime.now(UTC))
+            snapshot = from_session_dict("sync", session, measured_at=datetime.now(UTC))
             validation = validate_native_command_snapshot(
                 snapshot,
                 command_arguments=provenance.create_arguments,

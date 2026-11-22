@@ -448,6 +448,7 @@ class PagesMixin:
         )
         table = self.make_session_table(fields, 225, stretch_columns=(0, 2, 3), kind=kind)
         table.selectionModel().currentChanged.connect(lambda *_args, k=kind: self.on_select(k))
+        table.doubleClicked.connect(lambda index, k=kind: self.session_double_click(k, index))
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(
             lambda point, k=kind: self.session_context_menu(k, point)
