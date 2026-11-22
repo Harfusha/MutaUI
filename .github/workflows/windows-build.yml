@@ -88,7 +88,7 @@ jobs:
         with:
           path: dist-fast/MutagenControl
           format: cyclonedx-json
-          output-file: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json
+          output-file: dist/MutagenControl-9.0.0-windows-x64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Sign Windows release binaries
@@ -113,7 +113,7 @@ jobs:
             $binaries = @(
               'dist-fast/MutagenControl/MutagenControl.exe',
               'dist/MutagenControl.exe',
-              'dist/MutagenControl-8.2.0-windows-x64-setup.exe'
+              'dist/MutagenControl-9.0.0-windows-x64-setup.exe'
             )
             foreach ($binary in $binaries) {
               & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
@@ -135,29 +135,29 @@ jobs:
       - name: Upload fast-start folder
         uses: actions/upload-artifact@v7
         with:
-          name: MutagenControl-v8.2-fast
+          name: MutagenControl-v9.0-fast
           path: dist-fast/MutagenControl/
           if-no-files-found: error
           retention-days: 14
       - name: Upload single-file EXE
         uses: actions/upload-artifact@v7
         with:
-          name: MutagenControl-v8.2-onefile
+          name: MutagenControl-v9.0-onefile
           path: dist/MutagenControl.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload user-scoped installer
         uses: actions/upload-artifact@v7
         with:
-          name: MutagenControl-v8.2-installer
-          path: dist/MutagenControl-8.2.0-windows-x64-setup.exe
+          name: MutagenControl-v9.0-installer
+          path: dist/MutagenControl-9.0.0-windows-x64-setup.exe
           if-no-files-found: error
           retention-days: 14
       - name: Upload Windows package SBOM
         uses: actions/upload-artifact@v7
         with:
-          name: MutagenControl-v8.2-sbom
-          path: dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json
+          name: MutagenControl-v9.0-sbom
+          path: dist/MutagenControl-9.0.0-windows-x64.sbom.cdx.json
           if-no-files-found: error
           retention-days: 14
       - name: Attest Windows package SBOM
@@ -176,8 +176,8 @@ jobs:
           $installer = "dist/MutagenControl-$env:RELEASE_TAG-windows-x64-setup.exe"
           Compress-Archive -Path "./dist-fast/MutagenControl" -DestinationPath $portableZip
           Copy-Item "./dist/MutagenControl.exe" $singleExe
-          Copy-Item "./dist/MutagenControl-8.2.0-windows-x64-setup.exe" $installer
-          $sbom = "dist/MutagenControl-8.2.0-windows-x64.sbom.cdx.json"
+          Copy-Item "./dist/MutagenControl-9.0.0-windows-x64-setup.exe" $installer
+          $sbom = "dist/MutagenControl-9.0.0-windows-x64.sbom.cdx.json"
           $assets = @($singleExe, $portableZip, $installer, $sbom)
           $hashes = $assets | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash.ToLowerInvariant()

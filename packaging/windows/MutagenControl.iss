@@ -1,6 +1,6 @@
 #define MyAppName "Mutagen Control"
 #ifndef MyAppVersion
-#define MyAppVersion "8.2.0"
+#define MyAppVersion "9.0.0"
 #endif
 #define MyAppPublisher "Mutagen Control"
 #define MyAppExeName "MutagenControl.exe"
