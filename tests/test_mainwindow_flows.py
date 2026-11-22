@@ -2240,7 +2240,7 @@ def test_safe_support_report_exports_metadata_and_event_counts_without_event_tex
 
     payload = output.read_text(encoding="utf-8")
     data = json.loads(payload)
-    assert data["application_version"] == "9.0.0"
+    assert data["application_version"] == "9.1.0"
     assert data["problem_codes"] == ["ssh_host_trust"]
     assert data["event_counts"] == {"recent_events": 1, "capped": False}
     assert data["ci_build_id"] == "123456"

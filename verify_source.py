@@ -172,7 +172,7 @@ def verify() -> None:
     if mistakes:
         raise RuntimeError("Invalid Qt layout usage:\n" + "\n".join(mistakes))
     version = (ROOT / "assets/version_info.txt").read_text(encoding="utf-8")
-    if "'9.0.0'" not in version:
+    if "'9.1.0'" not in version:
         raise RuntimeError("Incorrect EXE version")
     print(f"OK: {len(MODULES)} Python modules, {len(FILES)} files, and static Qt layout checks")
 
