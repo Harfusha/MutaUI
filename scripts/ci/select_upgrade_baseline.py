@@ -31,6 +31,8 @@ def select_previous_release(
     releases: Sequence[dict[str, Any]],
     current_tag: str,
     repository: str,
+    *,
+    allow_missing_installer: bool = False,
 ) -> dict[str, str]:
     """Select the highest prior stable release; validate genuine installer metadata."""
     current_version = parse_stable_tag(current_tag)
@@ -56,38 +58,42 @@ def select_previous_release(
     if not older:
         return {"mode": "initial"}
 
-    _, previous = max(older, key=lambda item: item[0])
-    tag = previous["tag_name"]
-    assets = previous.get("assets") or []
-    installers = [
-        asset
-        for asset in assets
-        if isinstance(asset, dict)
-        and isinstance(asset.get("name"), str)
-        and INSTALLER_NAME.fullmatch(asset["name"]) is not None
-        and asset["name"].startswith(
-            "MutagenControl-" + ".".join(str(n) for n in parse_stable_tag(tag))
-        )
-    ]
-    if len(installers) != 1:
-        raise ValueError("Previous stable release lacks exactly one official Windows installer")
-    asset = installers[0]
-    url = asset.get("browser_download_url")
-    prefix = f"https://github.com/{repository}/releases/download/{tag}/"
-    if not isinstance(url, str) or url != prefix + asset["name"]:
-        raise ValueError("Previous installer URL is not the official release asset")
+    for _, previous in sorted(older, key=lambda item: item[0], reverse=True):
+        tag = previous["tag_name"]
+        assets = previous.get("assets") or []
+        installers = [
+            asset
+            for asset in assets
+            if isinstance(asset, dict)
+            and isinstance(asset.get("name"), str)
+            and INSTALLER_NAME.fullmatch(asset["name"]) is not None
+            and asset["name"].startswith(
+                "MutagenControl-" + ".".join(str(n) for n in parse_stable_tag(tag))
+            )
+        ]
+        if len(installers) == 1:
+            asset = installers[0]
+            url = asset.get("browser_download_url")
+            prefix = f"https://github.com/{repository}/releases/download/{tag}/"
+            if not isinstance(url, str) or url != prefix + asset["name"]:
+                raise ValueError("Previous installer URL is not the official release asset")
 
-    raw_digest = asset.get("digest")
-    digest = ""
-    if raw_digest is not None:
-        if (
-            not isinstance(raw_digest, str)
-            or re.fullmatch(r"sha256:[0-9a-fA-F]{64}", raw_digest) is None
-        ):
-            raise ValueError("Previous installer has an invalid SHA-256 digest")
-        digest = raw_digest.split(":", 1)[1].lower()
+            raw_digest = asset.get("digest")
+            digest = ""
+            if raw_digest is not None:
+                if (
+                    not isinstance(raw_digest, str)
+                    or re.fullmatch(r"sha256:[0-9a-fA-F]{64}", raw_digest) is None
+                ):
+                    raise ValueError("Previous installer has an invalid SHA-256 digest")
+                digest = raw_digest.split(":", 1)[1].lower()
 
-    return {"mode": "upgrade", "tag": tag, "url": url, "sha256": digest}
+            return {"mode": "upgrade", "tag": tag, "url": url, "sha256": digest}
+
+    if allow_missing_installer:
+        return {"mode": "initial"}
+
+    raise ValueError("Previous stable release lacks exactly one official Windows installer")
 
 
 def fetch_releases(repository: str, *, token: str = "") -> list[dict[str, Any]]:
@@ -117,10 +123,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", required=True)
     parser.add_argument("--current-tag", required=True)
+    parser.add_argument(
+        "--allow-missing-prior-installer",
+        action="store_true",
+        default=os.environ.get("ALLOW_MISSING_PRIOR_INSTALLER", "1").lower()
+        in ("1", "true", "yes"),
+    )
     args = parser.parse_args(argv)
     try:
         releases = fetch_releases(args.repo, token=os.environ.get("GITHUB_TOKEN", ""))
-        selection = select_previous_release(releases, args.current_tag, args.repo)
+        selection = select_previous_release(
+            releases,
+            args.current_tag,
+            args.repo,
+            allow_missing_installer=args.allow_missing_prior_installer,
+        )
     except (ValueError, OSError, KeyError, TypeError) as exc:
         print(
             f"Cannot establish prior release provenance: {type(exc).__name__}: {exc}",

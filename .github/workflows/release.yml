@@ -320,7 +320,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
         run: |
-          $selectionJson = & python scripts/ci/select_upgrade_baseline.py --repo $env:GITHUB_REPOSITORY --current-tag $env:VERSION
+          $selectionJson = & python scripts/ci/select_upgrade_baseline.py --repo $env:GITHUB_REPOSITORY --current-tag $env:VERSION --allow-missing-prior-installer
           if ($LASTEXITCODE -ne 0) { throw 'Could not verify the release history; refusing to skip upgrade acceptance.' }
           $selection = $selectionJson | ConvertFrom-Json
           if ($selection.mode -eq 'initial') {

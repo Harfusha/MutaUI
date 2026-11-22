@@ -90,3 +90,20 @@ def test_release_baseline_rejects_future_older_asset_without_valid_url() -> None
     previous["assets"][0]["browser_download_url"] += "?redirect=http://example.org/"
     with pytest.raises(ValueError, match="official release asset"):
         select_previous_release([previous], "v8.2.0", REPO)
+
+
+def test_release_baseline_allows_initial_mode_when_prior_has_no_installer() -> None:
+    assert select_previous_release(
+        [release("v8.1.0", installer=False)],
+        "v8.2.0",
+        REPO,
+        allow_missing_installer=True,
+    ) == {"mode": "initial"}
+
+
+def test_release_baseline_picks_older_with_installer_skipping_one_without() -> None:
+    older_without = release("v8.1.9", installer=False)
+    older_with = release("v8.1.0", installer=True)
+    selected = select_previous_release([older_without, older_with], "v8.2.0", REPO)
+    assert selected["mode"] == "upgrade"
+    assert selected["tag"] == "v8.1.0"
