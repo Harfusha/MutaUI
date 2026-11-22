@@ -14,7 +14,6 @@ ADVANCED_ROUTE_IDS = frozenset(
         "action-history",
         "daemon",
         "monitoring",
-        "diagnostics",
         "alerts",
         "endpoints",
         "servers",
@@ -847,6 +846,10 @@ _TEXT_CATALOG = {
     "Mutagen Documentation →": "Nápověda a dokumentace k Mutagenu →",
     "⚠ Troubleshoot…": "⚠ Vyřešit problém…",
     "No sessions": "Žádné relace",
+    "Related tools:": "Související nástroje:",
+    "Daemon (Ctrl+5) →": "Daemon (Ctrl+5) →",
+    "Action History (Ctrl+4) →": "Historie akcí (Ctrl+4) →",
+    "Monitoring (Ctrl+7) →": "Monitoring (Ctrl+7) →",
 }
 
 _TOOLTIP_CATALOG = {
@@ -917,6 +920,10 @@ _TOOLTIP_CATALOG = {
     "Turn off to read older entries without automatic scrolling": "Vypněte, chcete-li číst starší položky bez automatického posouvání",
     "Uses native pause/resume and daemon registration; turning this off pauses sync immediately.": "Používá nativní pozastavení/obnovení a registraci služby; vypnutím se synchronizace ihned pozastaví.",
     "two-way-safe: bidirectional sync; preserves conflicts (safe).\ntwo-way-resolved: bidirectional; resolves conflicts automatically (Alpha wins).\none-way-safe: copies from ALPHA to BETA; does not delete existing files.\none-way-replica: BETA becomes an exact copy of ALPHA — DELETES anything extra!": "two-way-safe: obousměrná synchronizace; zachovává konflikty (bezpečný režim).\ntwo-way-resolved: obousměrná synchronizace; konflikty řeší automaticky (vyhrává Alpha).\none-way-safe: kopíruje z ALPHA do BETA; nemaže existující soubory.\none-way-replica: BETA se přesně zkopíruje z ALPHA — SMAŽE vše navíc!",
+    "Open Mutagen daemon management and registration": "Otevřít správu daemona Mutagenu a registraci služby",
+    "View records of commands executed by this application": "Zobrazit historii příkazů spuštěných touto aplikací",
+    "View historical resource usage and process graphs": "Zobrazit historii využití systémových prostředků a grafy procesů",
+    "Check Mutagen connection and diagnose issues (Ctrl+D)": "Zkontrolovat spojení s daemonem a diagnostikovat potíže (Ctrl+D)",
 }
 
 _PLACEHOLDER_CATALOG = {

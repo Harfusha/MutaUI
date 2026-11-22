@@ -944,3 +944,67 @@ def test_modern_adapters() -> None:
     res = executor.run(["sync", "list"], timeout_seconds=10)
     assert res.stdout == "ok"
     assert res.returncode == 0
+
+
+def test_button_metrics_prevent_descender_clipping() -> None:
+    """Verify primary and standard buttons provide sufficient vertical height for font descenders."""
+    app = _app()
+    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtWidgets import QPushButton, QStyle, QStyleOptionButton
+
+    from mutaui.ui.styles.main_stylesheet import CSS
+
+    app.setStyleSheet(CSS)
+
+    btn = QPushButton("+ Create first sync session")
+    btn.setObjectName("primary")
+    btn.adjustSize()
+
+    opt = QStyleOptionButton()
+    opt.initFrom(btn)
+    opt.text = btn.text()
+
+    cr = btn.style().subElementRect(QStyle.SubElement.SE_PushButtonContents, opt, btn)
+    fm = QFontMetrics(btn.font())
+
+    # Contents rect must be tall enough for font height plus descenders
+    assert cr.height() >= 22
+    assert cr.height() >= fm.height()
+    # Button overall height must comfortably accommodate the font and vertical padding
+    assert btn.sizeHint().height() >= 36
+
+
+def test_empty_state_guided_onboarding_and_diagnostics_hub(monkeypatch: Any) -> None:
+    """Verify empty states offer guided onboarding and diagnostics page has related tool links."""
+    _app()
+    from PySide6.QtWidgets import QFrame, QPushButton
+
+    window = app_module.MainWindow(demo=True)
+    window.set_page(1)
+
+    empty_frame = window.findChild(QFrame, "syncEmptyStateFrame")
+    assert empty_frame is not None
+
+    buttons = empty_frame.findChildren(QPushButton)
+    btn_texts = [b.text() for b in buttons]
+    assert "+ Create first sync session" in btn_texts
+    assert "Troubleshoot…" in btn_texts
+
+    troubleshoot_clicked = []
+    monkeypatch.setattr(
+        window, "open_troubleshooter", lambda *_args: troubleshoot_clicked.append(True)
+    )
+    troubleshoot_btn = next(b for b in buttons if b.text() == "Troubleshoot…")
+    troubleshoot_btn.click()
+    assert troubleshoot_clicked == [True]
+
+    # Test diagnostics page quick hub links
+    window.set_page(7)
+    diag_page = window.pages.widget(7)
+    diag_buttons = diag_page.findChildren(QPushButton)
+    diag_texts = [b.text() for b in diag_buttons]
+    assert any("Daemon" in t for t in diag_texts)
+    assert any("Action History" in t for t in diag_texts)
+    assert any("Monitoring" in t for t in diag_texts)
+
+    window.close()

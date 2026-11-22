@@ -119,7 +119,6 @@ def test_only_secondary_pages_are_hidden_in_basic_mode():
         "action-history",
         "daemon",
         "monitoring",
-        "diagnostics",
         "alerts",
         "endpoints",
         "servers",

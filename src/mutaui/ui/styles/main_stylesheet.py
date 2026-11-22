@@ -31,14 +31,14 @@ QLabel#metric {{ font-size: 28px; font-weight: 750; }}
 QLabel#section {{ font-size: 16px; font-weight: 700; }}
 QLabel#smallnum {{ font-size: 19px; font-weight: 700; }}
 QPushButton {{ background: {CARD2}; color: {TEXT}; border: 1px solid {BORDER}; border-radius: 9px;
-              padding: 10px 15px; font-weight: 600; }}
+              padding: 7px 16px 8px 16px; min-height: 22px; font-weight: 600; }}
 QPushButton:hover {{ background: #26344E; border-color: #435675; }}
 QPushButton:pressed {{ background: #344866; }}
 QPushButton:disabled {{ color: #9BAAC0; background: #171E2D; border-color: #33435B; }}
 QPushButton:focus {{ border-color: {BLUE}; }}
 QPushButton#primary:focus {{ border-color: #B6FFE9; }}
 QPushButton#danger:focus {{ border-color: {RED}; }}
-QPushButton#primary {{ background: {TEAL}; color: #071A1A; border-color: {TEAL}; font-weight: 800; }}
+QPushButton#primary {{ background: {TEAL}; color: #071A1A; border-color: {TEAL}; font-weight: 700; min-height: 22px; }}
 QPushButton#primary:hover {{ background: #94F4D9; }}
 QPushButton#primary:pressed {{ background: #3EC6A2; }}
 QPushButton#danger {{ background: #3B2537; border-color: #734050; color: #FFACB8; }}

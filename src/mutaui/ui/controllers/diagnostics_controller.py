@@ -8,6 +8,7 @@ import sqlite3
 import sys
 import time
 from datetime import UTC, datetime
+from functools import partial
 from html import escape as html_escape
 from pathlib import Path
 from typing import Any, Literal
@@ -92,6 +93,30 @@ class DiagnosticsMixin:
         self.diag_summary.setTextFormat(Qt.TextFormat.PlainText)
         self.diag_summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         vl.addWidget(self.diag_summary)
+
+        hub_row = QHBoxLayout()
+        hub_row.setSpacing(10)
+        hub_row.addWidget(label("Related tools:", muted=True, size=11))
+
+        daemon_btn = button("Daemon (Ctrl+5) →", partial(self.set_page, 4))
+        set_localized_text(daemon_btn, "Daemon (Ctrl+5) →", czech="Daemon (Ctrl+5) →")
+        set_localized_tooltip(daemon_btn, "Open Mutagen daemon management and registration")
+        hub_row.addWidget(daemon_btn)
+
+        history_btn = button("Action History (Ctrl+4) →", partial(self.set_page, 3))
+        set_localized_text(
+            history_btn, "Action History (Ctrl+4) →", czech="Historie akcí (Ctrl+4) →"
+        )
+        set_localized_tooltip(history_btn, "View records of commands executed by this application")
+        hub_row.addWidget(history_btn)
+
+        monitoring_btn = button("Monitoring (Ctrl+7) →", partial(self.set_page, 6))
+        set_localized_text(monitoring_btn, "Monitoring (Ctrl+7) →", czech="Monitoring (Ctrl+7) →")
+        set_localized_tooltip(monitoring_btn, "View historical resource usage and process graphs")
+        hub_row.addWidget(monitoring_btn)
+
+        hub_row.addStretch()
+        vl.addLayout(hub_row)
         l.addWidget(card1)
         problems, pl = card()
         problems_head = QHBoxLayout()

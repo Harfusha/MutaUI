@@ -53,6 +53,9 @@ def test_basic_mode_hides_advanced_routes_and_leaves_hidden_page() -> None:
     assert [button.visible for button in window.nav] == [
         route.route_id not in ADVANCED_ROUTE_IDS for route in PAGE_ROUTES
     ]
+    # Diagnostics must remain visible in basic mode
+    diag_index = next(i for i, r in enumerate(PAGE_ROUTES) if r.route_id == "diagnostics")
+    assert window.nav[diag_index].visible is True
     assert window.page_changes == [0]
 
 

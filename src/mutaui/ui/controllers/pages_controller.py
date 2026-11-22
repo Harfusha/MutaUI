@@ -478,12 +478,12 @@ class PagesMixin:
         empty_l.addWidget(empty_heading)
 
         desc_en = (
-            "Create a sync session to start synchronizing files between endpoints."
+            "Create a sync session to start synchronizing files between endpoints.\nTip: You can also drag and drop any folder directly into this window."
             if kind == "sync"
             else "Create a forwarding session to forward network ports between endpoints."
         )
         desc_cs = (
-            "Vytvořte synchronizaci pro přenos souborů mezi koncovými body."
+            "Vytvořte synchronizaci pro přenos souborů mezi koncovými body.\nTip: Libovolnou složku můžete také přetáhnout přímo do tohoto okna."
             if kind == "sync"
             else "Vytvořte přesměrování pro spojení síťových portů mezi koncovými body."
         )
@@ -499,13 +499,29 @@ class PagesMixin:
         btn_cs = (
             "+ Vytvořit první synchronizaci" if kind == "sync" else "+ Vytvořit první přesměrování"
         )
+        empty_actions = QHBoxLayout()
+        empty_actions.setSpacing(10)
+        empty_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         empty_create_btn = button(
             btn_en,
             partial(self.create_session, kind),
             kind="primary",
         )
         set_localized_text(empty_create_btn, btn_en, czech=btn_cs)
-        empty_l.addWidget(empty_create_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        empty_actions.addWidget(empty_create_btn)
+
+        empty_diag_btn = button(
+            "Troubleshoot…",
+            self.open_troubleshooter,
+        )
+        set_localized_text(empty_diag_btn, "Troubleshoot…", czech="Řešení potíží…")
+        set_localized_tooltip(
+            empty_diag_btn, "Check Mutagen connection and diagnose issues (Ctrl+D)"
+        )
+        empty_actions.addWidget(empty_diag_btn)
+
+        empty_l.addLayout(empty_actions)
         empty_frame.setVisible(False)
         table_l.addWidget(empty_frame)
 
