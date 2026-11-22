@@ -374,17 +374,18 @@ jobs:
 
           if ($env:BASELINE_SETUP_PATH -and (Test-Path -LiteralPath $env:BASELINE_SETUP_PATH)) {
             Write-Host "Running genuine previous-release upgrade test..."
-            & $env:BASELINE_SETUP_PATH /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-            if ($LASTEXITCODE -ne 0) { throw "Baseline installer run failed: $LASTEXITCODE" }
+            $proc = Start-Process -FilePath $env:BASELINE_SETUP_PATH -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) { throw "Baseline installer run failed: $($proc.ExitCode)" }
             ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed-Baseline"
-            & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-            if ($LASTEXITCODE -ne 0) { throw "Version upgrade run failed: $LASTEXITCODE" }
+            $proc = Start-Process -FilePath (Convert-Path $setup) -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) { throw "Version upgrade run failed: $($proc.ExitCode)" }
             if (-not (Test-Path -LiteralPath $marker)) { throw 'In-place upgrade removed user data.' }
             ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Upgraded"
           } else {
             Write-Host "No genuine previous release found; executing initial clean install preservation smoke..."
-            & $setup /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-            if ($LASTEXITCODE -ne 0) { throw "Clean installer run failed: $LASTEXITCODE" }
+            if (-not (Test-Path $setup)) { throw "Setup executable not found: $setup" }
+            $proc = Start-Process -FilePath (Convert-Path $setup) -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+            if ($proc.ExitCode -ne 0) { throw "Clean installer run failed: $($proc.ExitCode)" }
             if (-not (Test-Path -LiteralPath $marker)) { throw 'Install removed pre-existing user data.' }
             ./scripts/run-self-test.ps1 -Executable (Join-Path $installDir 'MutagenControl.exe') -Label "Installed"
           }
@@ -395,8 +396,9 @@ jobs:
             }
           }
           $uninstaller = Join-Path $installDir 'unins000.exe'
-          & $uninstaller /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Uninstaller failed: $LASTEXITCODE" }
+          if (-not (Test-Path $uninstaller)) { throw "Uninstaller not found at $uninstaller" }
+          $proc = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) { throw "Uninstaller failed: $($proc.ExitCode)" }
           if (-not (Test-Path -LiteralPath $marker)) { throw 'Uninstall removed user data.' }
       - name: Package Windows release files
         if: runner.os == 'Windows'
