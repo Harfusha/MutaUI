@@ -23,7 +23,7 @@ from settings import settings_path
 class CommandExecutionMixin:
     """Mixin providing creation, lifecycle commands, and error reporting for sessions/daemon."""
 
-    def create_session(self: Any, kind: str) -> None:
+    def create_session(self: Any, kind: str, initial_path: str | None = None) -> None:
         if self.demo:
             QMessageBox.information(
                 self,
@@ -54,6 +54,7 @@ class CommandExecutionMixin:
             ui_mode=self.ui_mode,
             executable=self.client.binary or "mutagen",
             saved_profiles=profile_load.profiles if profile_load.valid else (),
+            initial_path=initial_path,
         )
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.run_command(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence
 from html import escape as html_escape
 
@@ -10,8 +11,10 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -120,6 +123,10 @@ class TroubleshooterDialog(QDialog):
         )
         self.copy_btn.clicked.connect(self._copy_diagnostic_summary)
         actions_layout.addWidget(self.copy_btn)
+
+        self.export_btn = QPushButton("Uložit zprávu…" if self._czech else "Export Report…", self)
+        self.export_btn.clicked.connect(self._export_diagnostic_report)
+        actions_layout.addWidget(self.export_btn)
 
         if self._on_open_settings is not None:
             self.settings_btn = QPushButton(
@@ -455,3 +462,97 @@ class TroubleshooterDialog(QDialog):
             orig_text = self.refresh_btn.text()
             self.refresh_btn.setText("Obnoveno!" if self._czech else "Refreshed!")
             QTimer.singleShot(1500, lambda: self.refresh_btn.setText(orig_text))
+
+    def _generate_diagnostic_report(self, fmt: str = "markdown") -> str:
+        selected_id = self.session_combo.currentData()
+        session = next((s for s in self._sessions if s.identity.identifier == selected_id), None)
+        if not session:
+            return "{}" if fmt == "json" else ""
+
+        issues = self._issues_for_session(session.identity.identifier)
+        lang = "cs" if self._czech else "en"
+
+        if fmt == "json":
+            data = {
+                "session": {
+                    "identifier": session.identity.identifier,
+                    "name": session.identity.name,
+                    "kind": session.identity.kind,
+                    "state": session.state,
+                },
+                "issues": [
+                    {
+                        "code": issue.code,
+                        "severity": issue.severity,
+                        "explanation": issue.explanation,
+                        "technical_detail": issue.technical_detail,
+                        "remedy": {
+                            "title": remedy.title,
+                            "explanation": remedy.explanation,
+                            "steps": list(remedy.remedy_steps),
+                            "quick_command": remedy.quick_command,
+                            "article_url": remedy.article_url,
+                        },
+                    }
+                    for issue in issues
+                    for remedy in [
+                        get_diagnostic_remedy(issue.code or "session_error", language=lang)
+                    ]
+                ],
+            }
+            return json.dumps(data, indent=2, ensure_ascii=False)
+
+        lines = [
+            "# MutaUI Diagnostic Report",
+            "",
+            f"- **Session**: `{session.identity.name or session.identity.identifier}`",
+            f"- **Identifier**: `{session.identity.identifier}`",
+            f"- **Kind**: `{session.identity.kind}`",
+            f"- **State**: `{session.state}`",
+            f"- **Issues**: {len(issues)}",
+            "",
+            "## Issues and Remediation",
+            "",
+        ]
+        if not issues:
+            lines.append(
+                "No active issues detected."
+                if not self._czech
+                else "Nebyly zjištěny žádné aktivní problémy."
+            )
+        for idx, issue in enumerate(issues, start=1):
+            remedy = get_diagnostic_remedy(issue.code or "session_error", language=lang)
+            lines.append(f"### {idx}. [{issue.severity.upper()}] {remedy.title or issue.code}")
+            lines.append(f"**Explanation**: {issue.explanation or remedy.explanation}")
+            if issue.technical_detail:
+                lines.append(f"**Technical Detail**: `{issue.technical_detail.strip()}`")
+            if remedy.remedy_steps:
+                lines.append("**Steps**:")
+                for step_idx, step in enumerate(remedy.remedy_steps, start=1):
+                    lines.append(f"{step_idx}. {step}")
+            if remedy.quick_command:
+                lines.append(f"**Quick Command**:\n```bash\n{remedy.quick_command}\n```")
+            lines.append("")
+        return "\n".join(lines)
+
+    def _export_diagnostic_report(self) -> None:
+        selected_id = self.session_combo.currentData()
+        session = next((s for s in self._sessions if s.identity.identifier == selected_id), None)
+        if not session:
+            return
+        default_name = f"mutaui-diagnostics-{session.identity.name or session.identity.identifier}"
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Uložit diagnostickou zprávu" if self._czech else "Export Diagnostic Report",
+            default_name,
+            "Markdown (*.md);;JSON (*.json)",
+        )
+        if not path:
+            return
+        is_json = path.endswith(".json") or "JSON" in selected_filter
+        report_content = self._generate_diagnostic_report("json" if is_json else "markdown")
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(report_content)
+        except OSError as exc:
+            QMessageBox.critical(self, "Chyba zápisu" if self._czech else "Write Error", str(exc))

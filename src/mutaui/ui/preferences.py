@@ -618,6 +618,8 @@ _TEXT_CATALOG = {
     "Select a session": "Vyberte relaci",
     "☆ Add to Favorites": "☆ Přidat k oblíbeným",
     "Copy ID": "Kopírovat ID",
+    "Copy Path / Endpoints": "Kopírovat cesty / koncové body",
+    "Copied endpoint paths to clipboard": "Cesty koncových bodů byly zkopírovány do schránky",
     "Export JSON": "Exportovat JSON",
     "Start at sign-in: checking…": "Spuštění při přihlášení: kontroluje se…",
     "Automatic session start means the daemon starts at sign-in and the session is not paused. Turning off auto-start pauses it now; no additional service is needed.": "Automatické spuštění relace znamená, že se služba Mutagen spustí při přihlášení a relace nebude pozastavena. Vypnutí automatického spouštění relaci ihned pozastaví; další služba není potřeba.",

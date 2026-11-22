@@ -78,6 +78,7 @@ class SessionDialog(QDialog):
         ui_mode: str = "basic",
         executable: str = "mutagen",
         saved_profiles: tuple[ConnectionProfile, ...] = (),
+        initial_path: str | None = None,
     ) -> None:
         super().__init__(parent)
         self.kind = kind
@@ -361,6 +362,13 @@ class SessionDialog(QDialog):
         self.update_replica_backup_visibility()
         if self.connection_profile is not None:
             self.connection_profile.currentIndexChanged.connect(self.apply_connection_profile)
+        if initial_path:
+            norm_path = initial_path.replace("/", "\\") if os.name == "nt" else initial_path
+            self.a.setText(norm_path)
+            if not self.name.text():
+                folder_name = Path(initial_path).name
+                if folder_name:
+                    self.name.setText(folder_name)
         self.update_command_preview()
         controls = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok

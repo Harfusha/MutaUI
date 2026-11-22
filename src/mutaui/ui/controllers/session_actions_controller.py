@@ -822,12 +822,43 @@ class SessionActionsMixin:
         except OSError as exc:
             self.report_error(str(exc))
 
+    def copy_session_paths(self: Any, kind: str) -> None:
+        sess = self.selected_session(kind)
+        if not sess:
+            return
+        if kind == "sync":
+            alpha = sess.get("alpha", {}).get("path") or sess.get("alpha", {}).get("raw") or ""
+            beta = sess.get("beta", {}).get("path") or sess.get("beta", {}).get("raw") or ""
+            text = f"{alpha} <-> {beta}" if alpha and beta else (alpha or beta)
+        else:
+            src = str(sess.get("source", ""))
+            dst = str(sess.get("destination", ""))
+            text = f"{src} -> {dst}" if src and dst else (src or dst)
+        if text:
+            QApplication.clipboard().setText(text)
+            if hasattr(self, "statusBar") and self.statusBar():
+                self.statusBar().showMessage(
+                    translate_text("Copied endpoint paths to clipboard", active_language()),
+                    3000,
+                )
+
     def session_context_menu(self: Any, kind: str, point: QPoint) -> None:
         table = self.sync_table if kind == "sync" else self.forward_table
-        item = table.itemAt(point)
-        if not item:
+        if hasattr(table, "indexAt"):
+            index = table.indexAt(point)
+            if not index.isValid():
+                return
+            row = index.row()
+        elif hasattr(table, "itemAt"):
+            item = table.itemAt(point)
+            if not item:
+                return
+            row = item.row() if callable(item.row) else item.row
+        else:
             return
-        table.selectRow(item.row())
+        table.selectRow(row)
+        if hasattr(self, "on_select"):
+            self.on_select(kind)
         sess = self.selected_session(kind)
         if not sess:
             return
@@ -844,6 +875,11 @@ class SessionActionsMixin:
         menu.addAction(
             translate_text("Copy ID", active_language()), lambda: self.copy_session_id(kind)
         )
+        if hasattr(self, "statusBar") and hasattr(self, "copy_session_paths"):
+            menu.addAction(
+                translate_text("Copy Path / Endpoints", active_language()),
+                lambda: self.copy_session_paths(kind),
+            )
         menu.addAction(
             translate_text("Export JSON", active_language()) + "…",
             lambda: self.export_session_json(kind),

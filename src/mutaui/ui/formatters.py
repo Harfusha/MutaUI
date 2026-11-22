@@ -55,6 +55,16 @@ def settings_warning_message(warnings: tuple[str, ...]) -> str | None:
 
 
 def write_settings(data: dict[str, Any]) -> None:
+    import sys
+
+    app_mod = sys.modules.get("app")
+    if (
+        app_mod is not None
+        and hasattr(app_mod, "write_settings")
+        and app_mod.write_settings is not write_settings
+    ):
+        app_mod.write_settings(data)
+        return
     save_settings_file(get_settings_path(), data)
 
 

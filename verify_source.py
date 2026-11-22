@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 MODULES = (
     "app.py",
+    "src/mutaui/ui/main_window.py",
     "mutagen_client.py",
     "monitoring.py",
     "async_recorder.py",

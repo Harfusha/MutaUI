@@ -46,6 +46,8 @@ extend-select = [
 # SQL identifiers here come only from the fixed METRIC_COLUMNS/REMOTE_COLUMNS tuples.
 "async_recorder.py" = ["S608"]
 "monitoring.py" = ["S608"]
+# app.py acts as backward-compatible facade re-exporting symbols for legacy callers and tests.
+"app.py" = ["F401"]
 # MutagenClient uses an allowlisted executable and verb, explicit IDs, list arguments,
 # shell=False, timeouts, and no shell expansion. S603 cannot infer this contract.
 "mutagen_client.py" = ["S603"]

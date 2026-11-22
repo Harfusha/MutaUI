@@ -326,6 +326,17 @@ def test_search_clear_buttons_and_shortcuts(tmp_path: Any, monkeypatch: Any) -> 
     status_text = window.statusBar().currentMessage()
     assert "Motiv přepnut na" in status_text
 
+    # Test Ctrl+D troubleshooter shortcut
+    from PySide6.QtGui import QShortcut
+
+    shortcuts = window.findChildren(QShortcut)
+    ctrl_d = next((s for s in shortcuts if s.key().toString() == "Ctrl+D"), None)
+    assert ctrl_d is not None
+    troubleshoot_called: list[bool] = []
+    monkeypatch.setattr(window, "open_troubleshooter", lambda *a: troubleshoot_called.append(True))
+    ctrl_d.activated.emit()
+    assert troubleshoot_called == [True]
+
     # 4. Status bar toast on command dispatch
     window.demo = False
     window.snapshot.sync = [{"identifier": "s-1", "name": "Test"}]
@@ -388,3 +399,461 @@ def test_search_clear_buttons_and_shortcuts(tmp_path: Any, monkeypatch: Any) -> 
     assert sample_count == 125
 
     window.close()
+
+
+def test_main_window_import_locations() -> None:
+    from app import MainWindow as MW1
+    from mutaui.ui.main_window import MainWindow as MW2
+
+    assert MW1 is MW2
+
+
+def test_session_context_menu_and_copy_paths(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+    window.set_page(1)
+
+    from PySide6.QtCore import QPoint
+
+    # 1. Right click on empty point -> nothing selected, no crash
+    window.session_context_menu("sync", QPoint(9999, 9999))
+
+    # 2. Add sample session and select
+    window.snapshot.sync = [
+        {
+            "identifier": "sync-123",
+            "name": "alpha-sync",
+            "status": 6,
+            "paused": False,
+            "alpha": {"path": "/local/dir"},
+            "beta": {"path": "/remote/dir"},
+        }
+    ]
+    window.apply_snapshot(window.snapshot)
+
+    # Test copy_session_paths for sync
+    monkeypatch.setattr(window, "selected_session", lambda kind: window.snapshot.sync[0])
+    window.copy_session_paths("sync")
+    from PySide6.QtWidgets import QApplication
+
+    assert QApplication.clipboard().text() == "/local/dir <-> /remote/dir"
+
+    # Test copy_session_paths for forward
+    fwd_sess = {
+        "identifier": "fwd-456",
+        "name": "my-fwd",
+        "source": "tcp:localhost:8080",
+        "destination": "tcp:remote:8080",
+    }
+    monkeypatch.setattr(window, "selected_session", lambda kind: fwd_sess)
+    window.copy_session_paths("forward")
+    assert QApplication.clipboard().text() == "tcp:localhost:8080 -> tcp:remote:8080"
+
+    # Test context menu creation with menu mock
+    actions_added: list[tuple[str, Any]] = []
+
+    class DummyMenu:
+        def addAction(self, text: str, callback: Any = None) -> None:
+            actions_added.append((text, callback))
+
+        def addSeparator(self) -> None:
+            pass
+
+        def exec(self, pos: Any) -> None:
+            pass
+
+    monkeypatch.setattr(app_module, "QMenu", lambda *a: DummyMenu())
+    monkeypatch.setattr(
+        "mutaui.ui.controllers.session_actions_controller.QMenu", lambda *a: DummyMenu()
+    )
+    monkeypatch.setattr(
+        window.sync_table, "indexAt", lambda pt: window.sync_table.model().index(0, 0)
+    )
+    window.session_context_menu("sync", QPoint(10, 10))
+    action_names = [a[0] for a in actions_added]
+    assert any("Copy Path" in a or "Cesty" in a for a in action_names)
+    assert any("Copy ID" in a or "ID" in a for a in action_names)
+
+    window.close()
+
+
+def test_session_dialog_initial_path(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    sample_dir = tmp_path / "my_project"
+    sample_dir.mkdir()
+    from mutaui.ui.session_dialog import SessionDialog
+
+    dlg = SessionDialog("sync", initial_path=str(sample_dir))
+    assert dlg.a.text() == str(sample_dir)
+    assert dlg.name.text() == "my_project"
+    dlg.close()
+
+
+def test_main_window_drag_and_drop(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+
+    folder = tmp_path / "dropped_folder"
+    folder.mkdir()
+
+    from PySide6.QtCore import QMimeData, QUrl
+
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(folder))])
+
+    accepted: list[str] = []
+
+    class DummyDragEvent:
+        def __init__(self, data: QMimeData) -> None:
+            self._data = data
+
+        def mimeData(self) -> QMimeData:
+            return self._data
+
+        def acceptProposedAction(self) -> None:
+            accepted.append("proposed")
+
+        def ignore(self) -> None:
+            accepted.append("ignored")
+
+    dummy_event = DummyDragEvent(mime)
+    window.dragEnterEvent(dummy_event)  # type: ignore[arg-type]
+    assert accepted == ["proposed"]
+
+    accepted.clear()
+    window.dragMoveEvent(dummy_event)  # type: ignore[arg-type]
+    assert accepted == ["proposed"]
+
+    import os
+
+    created: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        window,
+        "create_session",
+        lambda kind, initial_path=None: created.append((kind, initial_path)),
+    )
+    window.dropEvent(dummy_event)  # type: ignore[arg-type]
+    assert created == [("sync", os.path.normpath(str(folder)))]
+    assert window.pages.currentIndex() == 1
+
+    # Test non-directory file rejected
+    non_dir = tmp_path / "file.txt"
+    non_dir.write_text("hello", encoding="utf-8")
+    mime2 = QMimeData()
+    mime2.setUrls([QUrl.fromLocalFile(str(non_dir))])
+    dummy_event2 = DummyDragEvent(mime2)
+    accepted.clear()
+    window.dragEnterEvent(dummy_event2)  # type: ignore[arg-type]
+    assert accepted == ["ignored"]
+
+    window.close()
+
+
+def test_troubleshooter_diagnostic_report_export(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    from datetime import UTC, datetime
+
+    from mutaui.adapters.mutagen_snapshot import from_legacy_session
+    from mutaui.domain.models import DiagnosticIssue
+    from mutaui.ui.troubleshooter_dialog import TroubleshooterDialog
+
+    raw = {
+        "identifier": "sync-test",
+        "name": "TestSync",
+        "status": 0,
+        "lastError": "agent incompatible",
+        "alpha": {"path": "C:\\repo"},
+        "beta": {"path": "/var/www"},
+    }
+    sess = from_legacy_session("sync", raw, measured_at=datetime.now(UTC))
+    issue = DiagnosticIssue(
+        code="agent_incompatible",
+        severity="error",
+        confidence=0.98,
+        evidence=(),
+        cause="version mismatch",
+        suggested_actions=("upgrade",),
+        can_auto_fix=False,
+        source_version="0.18.1",
+        certainty="confirmed",
+        explanation="Mutagen agent version mismatch",
+        technical_detail="remote agent 0.17 != local 0.18",
+        article_url="",
+        session_identifier="sync-test",
+        observed_at=datetime.now(UTC),
+    )
+
+    class MockReport:
+        def __init__(self, issues: list[DiagnosticIssue]) -> None:
+            self.issues = tuple(issues)
+
+        def issues_for_session(self, sid: str) -> list[DiagnosticIssue]:
+            return [i for i in self.issues if i.session_identifier == sid]
+
+        def unassociated_issues(self) -> list[DiagnosticIssue]:
+            return []
+
+    dlg = TroubleshooterDialog([sess], MockReport([issue]), selected_identifier="sync-test")  # type: ignore[arg-type]
+
+    # 1. Test markdown report generation
+    md_report = dlg._generate_diagnostic_report("markdown")
+    assert "# MutaUI Diagnostic Report" in md_report
+    assert "TestSync" in md_report
+
+    # 2. Test JSON report generation
+    import json
+
+    json_report = dlg._generate_diagnostic_report("json")
+    data = json.loads(json_report)
+    assert data["session"]["identifier"] == "sync-test"
+    assert len(data["issues"]) == 1
+    assert data["issues"][0]["code"] == "agent_incompatible"
+
+    # 3. Test export button and file dialog for markdown
+    target_md = tmp_path / "report.md"
+    monkeypatch.setattr(
+        "mutaui.ui.troubleshooter_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(target_md), "Markdown (*.md)"),
+    )
+    dlg._export_diagnostic_report()
+    assert target_md.exists()
+    assert "# MutaUI Diagnostic Report" in target_md.read_text(encoding="utf-8")
+
+    # 4. Test export to JSON
+    target_json = tmp_path / "report.json"
+    monkeypatch.setattr(
+        "mutaui.ui.troubleshooter_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(target_json), "JSON (*.json)"),
+    )
+    dlg._export_diagnostic_report()
+    assert target_json.exists()
+    assert "sync-test" in target_json.read_text(encoding="utf-8")
+
+    dlg.close()
+
+
+def test_drag_and_drop_comprehensive(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+
+    class MockMimeData:
+        def __init__(self, urls: list[Any] | None = None) -> None:
+            self._urls = urls
+
+        def hasUrls(self) -> bool:
+            return self._urls is not None
+
+        def urls(self) -> list[Any]:
+            return self._urls or []
+
+    class MockUrl:
+        def __init__(self, path: str, is_local: bool = True) -> None:
+            self._path = path
+            self._is_local = is_local
+
+        def isLocalFile(self) -> bool:
+            return self._is_local
+
+        def toLocalFile(self) -> str:
+            return self._path
+
+    class MockDragEvent:
+        def __init__(self, mime: MockMimeData) -> None:
+            self._mime = mime
+            self.accepted = False
+            self.ignored = False
+
+        def mimeData(self) -> MockMimeData:
+            return self._mime
+
+        def acceptProposedAction(self) -> None:
+            self.accepted = True
+
+        def ignore(self) -> None:
+            self.ignored = True
+
+    # 1. No URLs
+    ev = MockDragEvent(MockMimeData(None))
+    window.dragEnterEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData(None))
+    window.dragMoveEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData(None))
+    window.dropEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    # 2. Non-local URL
+    non_local_url = MockUrl("http://example.com/dir", is_local=False)
+    ev = MockDragEvent(MockMimeData([non_local_url]))
+    window.dragEnterEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData([non_local_url]))
+    window.dragMoveEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData([non_local_url]))
+    window.dropEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    # 3. Local URL but is a file (not dir)
+    file_path = tmp_path / "regular_file.txt"
+    file_path.write_text("hello", encoding="utf-8")
+    file_url = MockUrl(str(file_path), is_local=True)
+    ev = MockDragEvent(MockMimeData([file_url]))
+    window.dragEnterEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData([file_url]))
+    window.dragMoveEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    ev = MockDragEvent(MockMimeData([file_url]))
+    window.dropEvent(ev)  # type: ignore[arg-type]
+    assert ev.ignored and not ev.accepted
+
+    # 4. Valid dir URL
+    dir_path = tmp_path / "valid_folder"
+    dir_path.mkdir()
+    dir_url = MockUrl(str(dir_path), is_local=True)
+
+    ev = MockDragEvent(MockMimeData([dir_url]))
+    window.dragEnterEvent(ev)  # type: ignore[arg-type]
+    assert ev.accepted and not ev.ignored
+
+    ev = MockDragEvent(MockMimeData([dir_url]))
+    window.dragMoveEvent(ev)  # type: ignore[arg-type]
+    assert ev.accepted and not ev.ignored
+
+    handled: list[str] = []
+    monkeypatch.setattr(window, "handle_dropped_folder", lambda p: handled.append(p))
+    ev = MockDragEvent(MockMimeData([dir_url]))
+    window.dropEvent(ev)  # type: ignore[arg-type]
+    assert ev.accepted and not ev.ignored
+    assert len(handled) == 1
+
+    window.close()
+
+
+def test_main_window_theme_branches(tmp_path: Any, monkeypatch: Any) -> None:
+    _app()
+    monkeypatch.setattr(app_module, "settings_path", lambda: tmp_path / "settings.json")
+    monkeypatch.setattr(app_module.QTimer, "singleShot", lambda *_args: None)
+    window = app_module.MainWindow(demo=True)
+
+    # _update_theme_toggle_icon without button
+    orig_btn = getattr(window, "theme_toggle_btn", None)
+    del window.theme_toggle_btn
+    window._update_theme_toggle_icon()
+    if orig_btn is not None:
+        window.theme_toggle_btn = orig_btn
+
+    # toggle_theme_quick in czech with statusbar
+    window.ui_language = "cs"
+    window.toggle_theme_quick()
+    assert window.conf.get("theme") in ("light", "dark")
+
+    # toggle_theme_quick in english without statusbar
+    window.ui_language = "en"
+    monkeypatch.setattr(window, "statusBar", lambda: None)
+    window.toggle_theme_quick()
+
+    window.close()
+
+
+def test_troubleshooter_export_report_edge_cases(tmp_path: Any, monkeypatch: Any) -> None:
+    from datetime import UTC, datetime
+
+    from mutaui.adapters.mutagen_snapshot import from_legacy_session
+    from mutaui.domain.models import DiagnosticIssue
+    from mutaui.ui.troubleshooter_dialog import TroubleshooterDialog
+
+    raw = {
+        "identifier": "sync-edge",
+        "name": "EdgeSync",
+        "status": 0,
+        "lastError": "err",
+        "alpha": {"path": "C:\\a"},
+        "beta": {"path": "/b"},
+    }
+    sess = from_legacy_session("sync", raw, measured_at=datetime.now(UTC))
+
+    class EmptyReport:
+        def __init__(self) -> None:
+            self.issues: tuple[Any, ...] = ()
+
+        def issues_for_session(self, sid: str) -> list[DiagnosticIssue]:
+            return []
+
+        def unassociated_issues(self) -> list[DiagnosticIssue]:
+            return []
+
+    dlg = TroubleshooterDialog([sess], EmptyReport(), selected_identifier="sync-edge")  # type: ignore[arg-type]
+
+    # Markdown generation with 0 issues in english and czech
+    dlg._czech = False
+    md_en = dlg._generate_diagnostic_report("markdown")
+    assert "No active issues detected." in md_en
+
+    dlg._czech = True
+    md_cs = dlg._generate_diagnostic_report("markdown")
+    assert "Nebyly zjištěny žádné aktivní problémy." in md_cs
+
+    # Session not found in dialog._export_diagnostic_report
+    monkeypatch.setattr(dlg.session_combo, "currentData", lambda: "nonexistent")
+    dlg._export_diagnostic_report()
+
+    # Cancelled file dialog (empty path)
+    monkeypatch.setattr(dlg.session_combo, "currentData", lambda: "sync-edge")
+    monkeypatch.setattr(
+        "mutaui.ui.troubleshooter_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: ("", ""),
+    )
+    dlg._export_diagnostic_report()
+
+    # OSError on file write triggers QMessageBox.critical
+    critical_called: list[Any] = []
+    monkeypatch.setattr(
+        "mutaui.ui.troubleshooter_dialog.QFileDialog.getSaveFileName",
+        lambda *a, **k: (str(tmp_path / "bad.md"), "Markdown (*.md)"),
+    )
+    import builtins
+
+    orig_open = builtins.open
+
+    def bad_open(*args: Any, **kwargs: Any) -> Any:
+        if "bad.md" in str(args[0]):
+            raise OSError("Permission denied")
+        return orig_open(*args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", bad_open)
+    monkeypatch.setattr(
+        "mutaui.ui.troubleshooter_dialog.QMessageBox.critical",
+        lambda *a, **k: critical_called.append(a),
+    )
+    dlg._export_diagnostic_report()
+    assert len(critical_called) == 1
+
+    dlg.close()
+
+
+def test_app_main_cli_branches(monkeypatch: Any) -> None:
+    monkeypatch.setattr("sys.argv", ["app.py", "--version"])
+    assert app_module.main() == 0
+
+    monkeypatch.setattr("sys.argv", ["app.py", "--install-linux-file-manager"])
+    monkeypatch.setattr("sys.platform", "win32")
+    assert app_module.main() == 2
+
+    monkeypatch.setattr("sys.argv", ["app.py", "--remove-linux-file-manager"])
+    monkeypatch.setattr("sys.platform", "win32")
+    assert app_module.main() == 2
