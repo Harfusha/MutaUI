@@ -65,6 +65,8 @@ QTableWidget, QTableView {{ background: {CARD}; color: {TEXT}; alternate-backgro
                 gridline-color: transparent; selection-background-color: #233D4F; }}
 QTableWidget::item, QTableView::item {{ padding: 8px 8px; border-bottom: 1px solid #232F46; }}
 QTableWidget::item:selected, QTableView::item:selected {{ color: white; }}
+QTableView#sessionTable::item:focus {{ border: 0; }}
+QTableView#sessionTable:focus {{ border: 2px solid {BLUE}; }}
 QHeaderView::section {{ background: {CARD}; color: {MUTED}; border: 0;
                         border-bottom: 1px solid {BORDER}; padding: 11px 8px; font-size: 11px; font-weight: 750; }}
 QScrollBar:vertical {{ background: transparent; width: 8px; }}

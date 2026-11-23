@@ -76,7 +76,7 @@ class SessionTableMixin:
         header_height = max(
             table.horizontalHeader().height(), table.horizontalHeader().sizeHint().height()
         )
-        height = min(520, max(160, header_height + rows_height + 2 * table.frameWidth() + 4))
+        height = min(520, max(112, header_height + rows_height + 2 * table.frameWidth() + 4))
         table.setFixedHeight(height)
 
     def filter_table(self: Any, kind: str, value: str | None = None) -> None:

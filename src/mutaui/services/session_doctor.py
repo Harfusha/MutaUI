@@ -71,6 +71,11 @@ def _error_code(text: str, *, kind: str, endpoint_name: str = "") -> str | None:
         "permission denied" in value and ("ssh" in value or kind == "ssh")
     ):
         return "ssh_authentication"
+    if (
+        "permission denied" in value
+        and ("unable to swap file" in value or "relocate staged file" in value)
+    ):
+        return "staged_file_swap_permission"
     if any(
         term in value
         for term in (
@@ -662,6 +667,25 @@ def get_diagnostic_remedy(code: str, language: str = "en", *, detail: str = "") 
                 "Zkontrolujte vlastnictví a oprávnění souborů a složek (chmod / chown).",
                 "Ujistěte se, že uživatel, pod kterým Mutagen běží, má právo zápisu do dané složky.",
                 "Ve Windows zkontrolujte, zda složka není chráněna nebo určena jen pro čtení.",
+            ),
+            "command": "",
+            "url": SYNC_HELP,
+            "category": "permission",
+        },
+        "staged_file_swap_permission": {
+            "title_en": "Cannot Replace Staged File",
+            "title_cs": "Nelze nahradit připravený soubor",
+            "expl_en": "Mutagen prepared a file but could not move it into place. Replacing a file requires modify and rename permissions on its containing directory.",
+            "expl_cs": "Mutagen připravil soubor, ale nedokázal ho přesunout na cílové místo. Nahrazení vyžaduje oprávnění měnit a přejmenovat soubory v nadřazené složce.",
+            "steps_en": (
+                "Check the affected endpoint and path shown in the error. Ensure the user running Mutagen can create, rename, and delete files in the containing directory.",
+                "Close programs that may hold the file. On Windows, check Controlled Folder Access or antivirus protection for a blocked move.",
+                "After access is restored, click 'Refresh Status'. Avoid changing ownership or permissions recursively.",
+            ),
+            "steps_cs": (
+                "Podle chyby zjistěte dotčený počítač a cestu. Uživatel, pod kterým běží Mutagen, musí mít v nadřazené složce právo soubory vytvářet, přejmenovat a mazat.",
+                "Zavřete programy, které mohou soubor držet. Ve Windows ověřte, zda přesun neblokuje Řízený přístup ke složkám nebo antivir.",
+                "Po obnovení přístupu klikněte na „Zkontrolovat stav“. Neměňte rekurzivně vlastníka ani oprávnění.",
             ),
             "command": "",
             "url": SYNC_HELP,

@@ -296,6 +296,7 @@ class PagesMixin:
         dashboard: bool = False,
     ) -> QTableView:
         table = QTableView()
+        table.setObjectName("sessionTable")
         set_localized_accessible_name(
             table,
             "Forwarding sessions table" if kind == "forward" else "Sync sessions table",
