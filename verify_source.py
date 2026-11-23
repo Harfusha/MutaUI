@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -171,8 +172,17 @@ def verify() -> None:
     mistakes = find_qt_layout_misuses((ROOT / "app.py").read_text(encoding="utf-8"))
     if mistakes:
         raise RuntimeError("Invalid Qt layout usage:\n" + "\n".join(mistakes))
-    version = (ROOT / "assets/version_info.txt").read_text(encoding="utf-8")
-    if "'9.1.0'" not in version:
+    project_version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))[
+        "project"
+    ]["version"]
+    version_info = (ROOT / "assets/version_info.txt").read_text(encoding="utf-8")
+    version_tuple = ", ".join((*project_version.split("."), "0"))
+    if (
+        f"filevers=({version_tuple})," not in version_info
+        or f"prodvers=({version_tuple})," not in version_info
+        or f"StringStruct('FileVersion', '{project_version}')" not in version_info
+        or f"StringStruct('ProductVersion', '{project_version}')" not in version_info
+    ):
         raise RuntimeError("Incorrect EXE version")
     print(f"OK: {len(MODULES)} Python modules, {len(FILES)} files, and static Qt layout checks")
 

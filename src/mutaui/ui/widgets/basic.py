@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QLayout,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -69,6 +70,24 @@ def localized_label(text: str) -> QLabel:
     result = QLabel()
     set_localized_text(result, text)
     return result
+
+
+def append_plain_text_preserving_view(
+    editor: QPlainTextEdit, text: str, *, follow_end: bool = False
+) -> None:
+    """Append live text without moving a reader's selection or scroll position."""
+    scrollbar = editor.verticalScrollBar()
+    old_position = scrollbar.value()
+    was_at_end = old_position >= scrollbar.maximum()
+    cursor = editor.textCursor()
+    has_selection = cursor.hasSelection()
+    editor.appendPlainText(text)
+    if has_selection:
+        editor.setTextCursor(cursor)
+    if follow_end and was_at_end and not has_selection:
+        scrollbar.setValue(scrollbar.maximum())
+    else:
+        scrollbar.setValue(min(old_position, scrollbar.maximum()))
 
 
 def add_localized_row(form: QFormLayout, text: str, field: QWidget | QLayout) -> None:

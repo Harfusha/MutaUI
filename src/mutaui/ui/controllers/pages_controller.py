@@ -56,6 +56,7 @@ from mutaui.ui.widgets.basic import (
     add_localized_item,
     add_localized_items,
     add_localized_row,
+    append_plain_text_preserving_view,
     button,
     card,
     label,
@@ -718,6 +719,7 @@ class PagesMixin:
         self.tail_view.setStyleSheet(
             f"font-family: Consolas, monospace; font-size:12px; background:#0A1421; color:{TEXT};"
         )
+        self.follow_tail.toggled.connect(self._set_tail_follow)
         contents.addWidget(self.tail_view)
         l.addWidget(logbox, 1)
         note = label(
@@ -779,6 +781,11 @@ class PagesMixin:
         self._tail_render_pending = False
         self.render_tail()
 
+    def _set_tail_follow(self: Any, enabled: bool) -> None:
+        if enabled and hasattr(self, "tail_view"):
+            scrollbar = self.tail_view.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+
     def render_tail(self: Any, *_: object) -> None:
         """Append only newly arrived matching lines; never reread Qt's full text.
 
@@ -790,6 +797,11 @@ class PagesMixin:
         term = self.tail_filter.text().casefold().strip()
         scrollbar = self.tail_view.verticalScrollBar()
         old_position = scrollbar.value()
+        cursor = self.tail_view.textCursor()
+        if self.follow_tail.isChecked() and (
+            old_position < scrollbar.maximum() or cursor.hasSelection()
+        ):
+            self.follow_tail.setChecked(False)
         auto_follow = self.follow_tail.isChecked()
         reset = self._tail_render_epoch != self.tail_lines.epoch or self._tail_render_filter != term
         if reset:
@@ -804,11 +816,16 @@ class PagesMixin:
                 if not term or term in line.casefold()
             ]
             if addition:
-                self.tail_view.appendPlainText("\n".join(addition))
+                append_plain_text_preserving_view(
+                    self.tail_view, "\n".join(addition), follow_end=auto_follow
+                )
         self._tail_render_epoch = self.tail_lines.epoch
         self._tail_render_filter = term
         self._tail_render_count = self.tail_lines.total
-        scrollbar.setValue(scrollbar.maximum() if auto_follow else old_position)
+        if reset:
+            scrollbar.setValue(
+                scrollbar.maximum() if auto_follow else min(old_position, scrollbar.maximum())
+            )
         if hasattr(self, "tail_count_label"):
             n = self.tail_view.document().blockCount()
             self.tail_count_label.setText(

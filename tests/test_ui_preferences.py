@@ -112,6 +112,14 @@ def test_theme_stylesheet_only_replaces_dark_colors_in_light_mode():
     assert "#FFFFFF" in light
 
 
+def test_wizard_pages_follow_the_active_theme_colors():
+    from mutaui.ui.styles.main_stylesheet import BG, CSS, TEXT
+
+    assert f"QWizard, QWizardPage {{ background: {BG}; color: {TEXT}; }}" in CSS
+    light = theme_stylesheet(CSS, "light")
+    assert "QWizard, QWizardPage { background: #F5F7FA; color: #17212B; }" in light
+
+
 def test_only_secondary_pages_are_hidden_in_basic_mode():
     route_ids = {route.route_id for route in PAGE_ROUTES}
     assert route_ids >= ADVANCED_ROUTE_IDS

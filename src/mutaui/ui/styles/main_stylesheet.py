@@ -80,6 +80,7 @@ QCheckBox::indicator:checked {{ background: {TEAL}; border-color: {TEAL}; }}
 QCheckBox::indicator:hover {{ border-color: {TEAL}; }}
 QCheckBox:focus::indicator {{ border-color: {BLUE}; }}
 QDialog {{ background: #101729; }}
+QWizard, QWizardPage {{ background: {BG}; color: {TEXT}; }}
 QDialogButtonBox QPushButton {{ min-width: 90px; }}
 QMenu {{ background: #17243A; border: 1px solid {BORDER}; border-radius: 9px; padding: 6px; }}
 QMenu::item {{ padding: 9px 20px; border-radius: 6px; }}

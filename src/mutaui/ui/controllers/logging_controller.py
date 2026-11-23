@@ -11,6 +11,7 @@ from typing import Any
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from mutaui.ui.preferences import active_language, translate_text
+from mutaui.ui.widgets.basic import append_plain_text_preserving_view
 
 
 class LoggingMixin:
@@ -26,9 +27,7 @@ class LoggingMixin:
             with suppress(sqlite3.Error):
                 self.history.add_event(safe_message, severity)
         if hasattr(self, "log_view"):
-            self.log_view.appendPlainText(self.logs[-1])
-            bar = self.log_view.verticalScrollBar()
-            bar.setValue(bar.maximum())
+            append_plain_text_preserving_view(self.log_view, self.logs[-1], follow_end=True)
         if hasattr(self, "log_count_label"):
             n = len(self.logs)
             self.log_count_label.setText(

@@ -261,6 +261,7 @@ from mutaui.ui.widgets.basic import (
     add_localized_item,  # noqa: F401
     add_localized_items,  # noqa: F401
     add_localized_row,  # noqa: F401
+    append_plain_text_preserving_view,  # noqa: F401
     button,
     card,  # noqa: F401
     label,

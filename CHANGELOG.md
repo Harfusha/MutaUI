@@ -1,3 +1,13 @@
+# Mutagen Control v9.1.1 — Onboarding readability
+
+## Fixes
+
+- Fixed onboarding wizard contrast in light and dark themes.
+- Live log updates preserve scroll position and selection. Manual scrolling pauses follow
+  mode.
+
+---
+
 # Mutagen Control v8.2 — Windows GUI fixes and watch profiles
 
 ## Integration work

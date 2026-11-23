@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 from PySide6.QtCore import QEvent, QPoint, Qt
-from PySide6.QtGui import QAccessible, QCloseEvent, QFontDatabase, QTextDocument
+from PySide6.QtGui import QAccessible, QCloseEvent, QFontDatabase, QTextCursor, QTextDocument
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -2240,7 +2240,7 @@ def test_safe_support_report_exports_metadata_and_event_counts_without_event_tex
 
     payload = output.read_text(encoding="utf-8")
     data = json.loads(payload)
-    assert data["application_version"] == "9.1.0"
+    assert data["application_version"] == app_module.APP_VERSION
     assert data["problem_codes"] == ["ssh_host_trust"]
     assert data["event_counts"] == {"recent_events": 1, "capped": False}
     assert data["ci_build_id"] == "123456"
@@ -4720,6 +4720,25 @@ def test_logs_are_recorded_cleared_and_exported(window, monkeypatch, tmp_path):
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args: (str(target), "Text (*.txt)"))
     window.export_logs()
     assert "ERROR transfer failed" in target.read_text(encoding="utf-8")
+
+
+def test_live_event_log_preserves_manual_scroll_and_text_selection(window):
+    view = window.log_view
+    view.resize(480, 100)
+    view.setPlainText("\n".join(f"event {index}" for index in range(80)))
+    view.show()
+    QApplication.processEvents()
+    scrollbar = view.verticalScrollBar()
+    scrollbar.setValue(0)
+    cursor = view.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+    view.setTextCursor(cursor)
+
+    window.add_log("new event")
+
+    assert scrollbar.value() == 0
+    assert view.textCursor().selectedText() == "event"
 
 
 def test_full_snapshot_export_requires_privacy_confirmation(window, monkeypatch, tmp_path):
@@ -7661,6 +7680,28 @@ def test_render_tail_rebuilds_filtered_lines_then_appends_without_losing_scroll(
 
     assert window.tail_view.toPlainText().splitlines()[-1] == "error third"
     assert scrollbar.value() == scrollbar.maximum()
+
+
+def test_render_tail_preserves_selection_and_pauses_follow_after_manual_scroll(window):
+    view = window.tail_view
+    view.resize(480, 100)
+    window.tail_lines.extend(f"event {index}" for index in range(80))
+    window.render_tail()
+    view.show()
+    QApplication.processEvents()
+    scrollbar = view.verticalScrollBar()
+    scrollbar.setValue(0)
+    cursor = view.textCursor()
+    cursor.setPosition(0)
+    cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+    view.setTextCursor(cursor)
+
+    window.tail_lines.append("new event")
+    window.render_tail()
+
+    assert view.textCursor().selectedText() == "event"
+    assert scrollbar.value() == 0
+    assert window.follow_tail.isChecked() is False
 
 
 def test_render_tail_returns_for_uninitialized_window():
