@@ -71,9 +71,8 @@ def _error_code(text: str, *, kind: str, endpoint_name: str = "") -> str | None:
         "permission denied" in value and ("ssh" in value or kind == "ssh")
     ):
         return "ssh_authentication"
-    if (
-        "permission denied" in value
-        and ("unable to swap file" in value or "relocate staged file" in value)
+    if "permission denied" in value and (
+        "unable to swap file" in value or "relocate staged file" in value
     ):
         return "staged_file_swap_permission"
     if any(
