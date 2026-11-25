@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Mutagen Control 8.2 - Fast-start builder
+title Mutagen Control 9.1 - Fast-start builder
 set "PYTHONUTF8=1"
 echo ========================================================
-echo   MUTAGEN CONTROL 8.2 - Fast Startup (one-folder)
+echo   MUTAGEN CONTROL 9.1 - Fast Startup (one-folder)
 echo ========================================================
 echo.
 if /I not "%OS%"=="Windows_NT" goto :error
@@ -13,13 +13,13 @@ if not exist "app.py" goto :error
 if not exist ".venv\Scripts\python.exe" (
   where py >nul 2>nul
   if not errorlevel 1 (
-    py -3 -m venv .venv
+    py -3.12 -m venv .venv 2>nul || py -3 -m venv .venv
   ) else (
     python -m venv .venv
   )
   if errorlevel 1 goto :error
 )
-".venv\Scripts\python.exe" -c "import sys; assert (3,11)<=sys.version_info[:2]<(3,14), 'Use Python 3.11 through 3.13'"
+".venv\Scripts\python.exe" -c "import sys; assert sys.version_info[:2] == (3, 12), f'Python 3.12 required, found {sys.version}. Please use Python 3.12.'"
 if errorlevel 1 goto :error
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
 if errorlevel 1 goto :error

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, cast
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QDialog,
     QLineEdit,
@@ -16,10 +17,12 @@ from PySide6.QtWidgets import (
 )
 
 from mutaui.ui.localization import (
+    set_localized_accessible_name,
     set_localized_placeholder,
     set_localized_title,
 )
 from mutaui.ui.page_shell import PAGE_ROUTES
+from mutaui.ui.preferences import active_language, translate_text
 from mutaui.ui.widgets.basic import label
 
 
@@ -46,15 +49,19 @@ class QuickNavigator(QDialog):
         layout.setSpacing(13)
         layout.addWidget(label("Go to page or run a command", size=19, bold=True))
         hint = label(
-            "Search pages, sessions, and commands · Enter to choose · Escape to close", muted=True
+            "Search pages, sessions, and commands · ↑/↓ to navigate · Enter to choose · Escape to close",
+            muted=True,
         )
         layout.addWidget(hint)
         self.search = QLineEdit()
         self.search.setClearButtonEnabled(True)
         set_localized_placeholder(self.search, "Search page…")
+        set_localized_accessible_name(self.search, "Search pages, sessions, and commands")
+        self.search.installEventFilter(self)
         layout.addWidget(self.search)
         self.list = QListWidget()
         self.list.setSpacing(2)
+        set_localized_accessible_name(self.list, "Search results")
         layout.addWidget(self.list, 1)
         self.search.textChanged.connect(self.filter)
         self.search.returnPressed.connect(self.choose)
@@ -63,23 +70,48 @@ class QuickNavigator(QDialog):
         self.filter("")
         self.search.setFocus()
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.search and event.type() == QEvent.Type.KeyPress:
+            key_event = cast(QKeyEvent, event)
+            if key_event.key() == Qt.Key.Key_Down:
+                row = self.list.currentRow()
+                if row < self.list.count() - 1:
+                    self.list.setCurrentRow(row + 1)
+                return True
+            if key_event.key() == Qt.Key.Key_Up:
+                row = self.list.currentRow()
+                if row > 0:
+                    self.list.setCurrentRow(row - 1)
+                return True
+        return super().eventFilter(watched, event)
+
     def filter(self, term: str) -> None:
         self.list.clear()
         query = term.casefold().split()
+        lang = active_language()
         for index, page in enumerate(self.PAGES):
             caption = self.CAPTIONS[index] if index < len(self.CAPTIONS) else ""
-            searchable = f"{page} {caption}".casefold()
+            route = PAGE_ROUTES[index] if index < len(PAGE_ROUTES) else None
+            title_en = page
+            title_cs = translate_text(page, "cs")
+            caption_en = caption
+            caption_cs = translate_text(caption, "cs")
+            route_id = route.route_id if route else ""
+            searchable = f"{title_en} {title_cs} {caption_en} {caption_cs} {route_id}".casefold()
             if all(word in searchable for word in query):
                 glyph = self.GLYPHS[index] if index < len(self.GLYPHS) else "·"
-                item = QListWidgetItem(f"  {glyph}   {page}")
+                display_title = translate_text(page, lang)
+                item = QListWidgetItem(f"  {glyph}   {display_title}")
                 item.setData(Qt.ItemDataRole.UserRole, index)
-                item.setToolTip(caption)
+                item.setToolTip(translate_text(caption, lang))
                 self.list.addItem(item)
         for action, kind, identifier, title, searchable in self.commands:
-            if all(word in f"{title} {searchable}".casefold() for word in query):
-                item = QListWidgetItem(f"  ↪   {title}")
+            title_localized = translate_text(title, lang)
+            searchable_full = f"{title} {title_localized} {searchable}".casefold()
+            if all(word in searchable_full for word in query):
+                item = QListWidgetItem(f"  ↪   {title_localized}")
                 item.setData(Qt.ItemDataRole.UserRole, ("command", action, kind, identifier))
-                item.setToolTip(title)
+                item.setToolTip(title_localized)
                 self.list.addItem(item)
         if self.list.count():
             self.list.setCurrentRow(0)

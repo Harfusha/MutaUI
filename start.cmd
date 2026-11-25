@@ -5,12 +5,14 @@ if not exist ".venv\Scripts\python.exe" (
   echo [1/3] Creating virtual environment...
   where py >nul 2>nul
   if not errorlevel 1 (
-    py -3 -m venv .venv
+    py -3.12 -m venv .venv 2>nul || py -3 -m venv .venv
   ) else (
     python -m venv .venv
   )
   if errorlevel 1 goto :error
 )
+".venv\Scripts\python.exe" -c "import sys; assert sys.version_info[:2] == (3, 12), f'Python 3.12 required, found {sys.version}. Please use Python 3.12.'; print(f'Python {sys.version.split()[0]} OK')"
+if errorlevel 1 goto :error
 echo [2/3] Checking dependencies...
 ".venv\Scripts\python.exe" -m pip install -r requirements.txt
 if errorlevel 1 goto :error

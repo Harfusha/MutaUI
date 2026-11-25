@@ -1,3 +1,3 @@
 """Typed, UI-independent MutaUI core."""
 
-__version__ = "9.1.1"
+__version__ = "9.2.0"

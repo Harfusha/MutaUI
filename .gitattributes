@@ -1,0 +1,28 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Explicit LF for shell scripts, GitHub workflows, YAML, JSON, desktop entries, python, markdown
+*.sh text eol=lf
+*.bash text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.desktop text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.iss text eol=lf
+
+# Windows command and batch files require CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png binary
+*.ico binary
+*.svg text eol=lf
+*.p12 binary
+*.pfx binary
+*.dylib binary
+*.so binary
+*.exe binary
+*.dll binary

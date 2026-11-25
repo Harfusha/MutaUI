@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -32,10 +33,44 @@ class SessionNotificationGate:
         errors: dict[SessionKey, str],
         *,
         now: float,
+        healthy_keys: set[SessionKey] | Sequence[SessionKey] | None = None,
+        terminated_keys: set[SessionKey] | Sequence[SessionKey] | None = None,
+        paused_keys: set[SessionKey] | Sequence[SessionKey] | None = None,
         notifications_allowed: bool = True,
     ) -> tuple[SessionNotification, ...]:
         current_keys = set(errors)
-        recovered = tuple(key for key in self._notified if key not in current_keys)
+        healthy_set = set(healthy_keys) if healthy_keys is not None else None
+        terminated_set = set(terminated_keys) if terminated_keys is not None else set()
+        paused_set = set(paused_keys) if paused_keys is not None else set()
+
+        # If healthy_keys is explicitly supplied, only positively observed healthy
+        # sessions trigger a recovery notification. Vanished or paused sessions do not (M58).
+        if healthy_set is not None:
+            recovered = tuple(
+                key for key in self._notified if key in healthy_set and key not in current_keys
+            )
+            # Sessions that vanished, were terminated, or ceased being errors without confirmed health:
+            dropped = tuple(
+                key
+                for key in self._notified
+                if (
+                    key in terminated_set
+                    or key in paused_set
+                    or (key not in healthy_set and key not in current_keys)
+                )
+            )
+            for key in dropped:
+                del self._notified[key]
+        else:
+            recovered = tuple(
+                key
+                for key in self._notified
+                if key not in current_keys and key not in terminated_set and key not in paused_set
+            )
+            for key in terminated_set | paused_set:
+                if key in self._notified:
+                    del self._notified[key]
+
         recovery_titles = tuple(self._notified[key] for key in recovered)
         if recovered and notifications_allowed:
             for key in recovered:
@@ -72,4 +107,16 @@ class SessionNotificationGate:
                 self._notified[key] = self._pending.pop(key)[1]
                 self._last_notified[key] = now
             notifications.append(SessionNotification("issue", ready, titles))
+
+        # Bound self._last_notified cache growth for vanished sessions (M57)
+        cutoff = now - max(self.throttle_seconds * 2, 300.0)
+        for key in tuple(self._last_notified):
+            if (
+                key not in self._notified
+                and key not in self._pending
+                and key not in current_keys
+                and self._last_notified[key] < cutoff
+            ):
+                del self._last_notified[key]
+
         return tuple(notifications)

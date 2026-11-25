@@ -75,19 +75,24 @@ def build_settings_page(window: Any) -> QScrollArea:
     )
     layout.addWidget(appearance)
     pathcard, pl = card()
+    import sys
+
+    placeholder_path = (
+        "C:\\Program Files\\Mutagen\\mutagen.exe   (or blank = PATH)"
+        if sys.platform == "win32"
+        else "/usr/local/bin/mutagen   (or blank = PATH)"
+    )
     pl.addWidget(label("Mutagen CLI Location", size=16, bold=True))
     pl.addWidget(
         label(
-            "The application communicates with mutagen.exe. If it is not on the system PATH, select it manually.",
+            "The application communicates with the Mutagen CLI. If it is not on the system PATH, select it manually.",
             muted=True,
         )
     )
     r = QHBoxLayout()
     window.binary_edit = QLineEdit(window.conf.get("binary", ""))
     window.binary_edit.setToolTip(setting_tooltip("binary", window.ui_language))
-    set_localized_placeholder(
-        window.binary_edit, "C:\\Program Files\\Mutagen\\mutagen.exe   (or blank = PATH)"
-    )
+    set_localized_placeholder(window.binary_edit, placeholder_path)
     r.addWidget(window.binary_edit, 1)
     r.addWidget(button("Select…", window.browse_binary))
     pl.addLayout(r)
@@ -260,6 +265,10 @@ def build_settings_page(window: Any) -> QScrollArea:
     transfer = QVBoxLayout()
     transfer.addWidget(button("Export Portable Bundle…", window.export_portable_bundle))
     transfer.addWidget(button("Import Portable Bundle…", window.import_portable_bundle))
+    transfer.addWidget(button("Migrate Current Settings…", window.migrate_current_settings))
+    transfer.addWidget(
+        button("Rollback Settings Migration…", window.rollback_current_settings_migration)
+    )
     portability_layout.addLayout(transfer)
     layout.addWidget(portability)
     note, nl = card()

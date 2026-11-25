@@ -75,12 +75,14 @@ class ConnectionProfilesDialog(QDialog):
         layout.addWidget(self.table, 1)
         controls = QHBoxLayout()
         controls.addWidget(button("New…", self.new_profile, kind="primary"))
+        controls.addWidget(button("Edit…", self.edit_selected))
         controls.addWidget(button("Duplicate", self.duplicate_selected))
         controls.addWidget(button("Favorite", self.toggle_favorite))
         controls.addWidget(button("Delete…", self.delete_selected, kind="danger"))
         controls.addStretch(1)
         controls.addWidget(button("Done", self.accept))
         layout.addLayout(controls)
+        self.table.cellDoubleClicked.connect(lambda _r, _c: self.edit_selected())
         self.search_input.textChanged.connect(self.refresh)
         self.kind_filter.currentIndexChanged.connect(self.refresh)
         self.favorites_only.stateChanged.connect(lambda _state: self.refresh())
@@ -161,6 +163,78 @@ class ConnectionProfilesDialog(QDialog):
                 favorite=favorite.isChecked(),
                 defaults=raw_defaults,
             )
+        except (ProfileStoreError, json.JSONDecodeError, ValueError, OSError) as exc:
+            QMessageBox.warning(
+                self, translate_text("Invalid Profile", active_language()), str(exc)
+            )
+            return
+        self.refresh()
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.data(Qt.ItemDataRole.UserRole).id == profile.id:
+                self.table.selectRow(row)
+                break
+
+    def edit_selected(self) -> None:
+        profile = self.selected_profile()
+        if profile is None:
+            QMessageBox.warning(
+                self,
+                translate_text("No Selection", active_language()),
+                translate_text("Please select a profile to edit.", active_language()),
+            )
+            return
+        dialog = QDialog(self)
+        set_localized_title(dialog, "Edit Connection Profile")
+        form = QFormLayout(dialog)
+        name = QLineEdit(profile.name)
+        kind = QComboBox()
+        add_localized_item(kind, "Sync", "sync")
+        add_localized_item(kind, "Forward", "forward")
+        kind.setCurrentIndex(max(0, kind.findData(profile.kind)))
+        endpoint_a = QLineEdit(profile.endpoint_a)
+        endpoint_b = QLineEdit(profile.endpoint_b)
+        tags = QLineEdit(", ".join(profile.tags))
+        favorite = localized_checkbox("Favorite")
+        favorite.setChecked(profile.favorite)
+        defaults = QPlainTextEdit(json.dumps(dict(profile.defaults), indent=2))
+        defaults.setMaximumHeight(100)
+        add_localized_row(form, "Name", name)
+        add_localized_row(form, "Type", kind)
+        add_localized_row(form, "Endpoint A / Source", endpoint_a)
+        add_localized_row(form, "Endpoint B / Destination", endpoint_b)
+        add_localized_row(form, "Tags (comma-separated)", tags)
+        add_localized_row(form, "Default settings (JSON)", defaults)
+        form.addRow("", favorite)
+        note = label(
+            "Editing a profile updates future session creation only. Existing active sessions remain unaffected.",
+            muted=True,
+            size=11,
+        )
+        form.addRow(note)
+        controls = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        controls.accepted.connect(dialog.accept)
+        controls.rejected.connect(dialog.reject)
+        form.addRow(controls)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        try:
+            raw_defaults = json.loads(defaults.toPlainText())
+            if not isinstance(raw_defaults, dict):
+                raise ValueError("Default settings must be a JSON object.")
+            updated_profile = replace(
+                profile,
+                name=name.text().strip(),
+                kind=kind.currentData(),
+                endpoint_a=endpoint_a.text().strip(),
+                endpoint_b=endpoint_b.text().strip(),
+                tags=tuple(tag.strip() for tag in tags.text().split(",") if tag.strip()),
+                favorite=favorite.isChecked(),
+                defaults=raw_defaults,
+            )
+            self.store.update(updated_profile)
         except (ProfileStoreError, json.JSONDecodeError, ValueError, OSError) as exc:
             QMessageBox.warning(
                 self, translate_text("Invalid Profile", active_language()), str(exc)

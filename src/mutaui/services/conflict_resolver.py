@@ -67,6 +67,21 @@ class ManualResolutionReceipt:
     message: str
     audit_complete: bool = True
 
+    @property
+    def recovery_instructions(self) -> str:
+        if not self.backup_directory:
+            return "No backups were created; original files remained unmodified."
+        alpha_bak = self.backup_directory / "alpha.backup"
+        beta_bak = self.backup_directory / "beta.backup"
+        manifest = self.backup_directory / "manifest.json"
+        return (
+            f"Backups are stored in: {self.backup_directory}\n"
+            "To restore manually:\n"
+            f"1. Copy '{alpha_bak}' back to alpha file.\n"
+            f"2. Copy '{beta_bak}' back to beta file.\n"
+            f"Refer to {manifest} for integrity hashes."
+        )
+
 
 def _file_evidence(root: str, relative_path: str) -> FileEvidence:
     path = safe_local_conflict_path(root, relative_path)
@@ -178,12 +193,11 @@ def prepare_manual_resolution(
     )
 
 
+from mutaui.services.audit_retention import safe_append_audit_record
+
+
 def _append_audit(path: Path, record: dict[str, object]) -> None:
-    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-    with path.open("a", encoding="utf-8", newline="\n") as stream:
-        stream.write(payload)
-        stream.flush()
-        os.fsync(stream.fileno())
+    safe_append_audit_record(path, record)
 
 
 def _atomic_replace(

@@ -551,6 +551,10 @@ _TEXT_CATALOG = {
     "Traffic details are available for the session as a whole.": "Podrobnosti provozu jsou dostupné pouze pro celou relaci.",
     "Unavailable": "Nedostupné",
     "no issues": "bez problémů",
+    "partial scope": "částečný rozsah",
+    "last known": "poslední známý",
+    "unverified": "neověřeno",
+    "Open Diagnostics →": "Otevřít diagnostiku →",
     "DEMO DATA": "UKÁZKOVÁ DATA",
     "DEMO • All actions are disabled": "DEMO • Všechny akce jsou vypnuté",
     "● Start at sign-in: on": "● Spouštění při přihlášení: zapnuto",
@@ -560,6 +564,8 @@ _TEXT_CATALOG = {
     "": "",
     "MUTAGEN": "MUTAGEN",
     "v8.2": "v8.2",
+    "v9.1.1": "v9.1.1",
+    "v9.2.0": "v9.2.0",
     "—": "—",
     "…": "…",
     "CONTROL  /  SERVER MANAGER": "OVLÁDÁNÍ  /  SPRÁVA SERVERU",
@@ -627,6 +633,7 @@ _TEXT_CATALOG = {
     "Mode changes are temporary. Theme and language are saved with application settings.": "Režim je dočasný. Motiv a jazyk se ukládají do nastavení aplikace.",
     "Mutagen CLI Location": "Umístění Mutagen CLI",
     "The application communicates with mutagen.exe. If it is not on the system PATH, select it manually.": "Aplikace komunikuje s mutagen.exe. Pokud není v systémové cestě PATH, vyberte jej ručně.",
+    "The application communicates with the Mutagen CLI. If it is not on the system PATH, select it manually.": "Aplikace komunikuje s Mutagen CLI. Pokud není v systémové cestě PATH, vyberte jej ručně.",
     "Settings were restored from the last valid backup. Review Settings.": "Nastavení byla obnovena z poslední platné zálohy. Zkontrolujte Nastavení.",
     "Select…": "Vybrat…",
     "Application Behavior": "Chování aplikace",
@@ -652,8 +659,9 @@ _TEXT_CATALOG = {
     "Portable bundles include validated connection profiles and selected safe preferences. Session notes, history, Mutagen state, executable paths, and private keys stay local.": "Přenosné balíčky obsahují ověřené profily připojení a vybraná bezpečná nastavení. Poznámky k relacím, historie, stav Mutagenu, cesty k programům a soukromé klíče zůstávají místně.",
     "Export Portable Bundle…": "Exportovat přenosný balíček…",
     "Import Portable Bundle…": "Importovat přenosný balíček…",
-    "Migrate Settings with Backup…": "Migrovat nastavení se zálohou…",
+    "Migrate Current Settings…": "Migrovat současné nastavení…",
     "Rollback Settings Migration…": "Vrátit migraci nastavení…",
+    "Migrate Settings with Backup…": "Migrovat nastavení se zálohou…",
     "Information and Limitations": "Informace a omezení",
     "• CPU, RAM, and process I/O are totals for local Mutagen processes, not individual sessions.\n• The Mutagen CLI provides no universal bandwidth limit for existing sync sessions; watch/polling profiles apply to new sessions.\n• File and conflict counts come from the exported session status.\n• Sessions may prompt for SSH credentials; unattended SSH keys are recommended.\n• This application is not an official Mutagen product and does not modify its internal database.": "• CPU, RAM a vstup/výstup jsou souhrny za místní procesy Mutagenu, ne za jednotlivé relace.\n• Mutagen CLI nenabízí univerzální limit přenosové rychlosti pro existující relace; profily sledování a kontrol se vztahují na nové relace.\n• Počty souborů a konfliktů vycházejí z exportovaného stavu relace.\n• Relace mohou vyžadovat SSH přihlašovací údaje; doporučujeme klíče vhodné pro automatické připojení.\n• Tato aplikace není oficiálním produktem Mutagenu a neupravuje jeho interní databázi.",
     "0 entries": "0 položek",
@@ -808,7 +816,8 @@ _TEXT_CATALOG = {
     "Forwarding settings are current read-only values plus a local proposal. Socket overwrite, owner, group and permissions require verified CLI, endpoint and platform support. Existing sessions stay unchanged.": "Nastavení přesměrování obsahují aktuální hodnoty pouze ke čtení a místní návrh. Přepsání socketu, vlastník, skupina a oprávnění vyžadují ověřenou podporu CLI, koncového bodu a platformy. Stávající relace zůstávají beze změny.",
     "Hosts are identified from Mutagen ALPHA/BETA and source/destination addresses. No new SSH connections or server service are used. An alias for the same server may be recognized as a different host.": "Hostitelé se určují z adres ALPHA/BETA a zdroje/cíle v Mutagenu. Nenavazují se nová spojení SSH ani se nepoužívá služba na serveru. Alias téhož serveru může být rozpoznán jako jiný hostitel.",
     "Live events above come from status changes reported by the local Mutagen daemon. This is not a complete internal debug log. You can optionally monitor an existing local log file without affecting the running daemon. The application does not start any logging process on the server.": "Živé události výše pocházejí ze změn stavu hlášených místní službou Mutagen. Nejde o úplný interní ladicí protokol. Volitelně lze sledovat existující místní soubor protokolu bez vlivu na běžící službu. Aplikace na serveru nespouští žádný proces pro protokolování.",
-    "Monitor-only is the default. Assisted mode can recommend a manual step. Auto-safe currently has no connected recovery action in this release slice.": "Výchozí režim pouze sleduje stav. Asistovaný režim může doporučit ruční krok. Režim Auto-safe zatím v této části vydání nemá napojené akce obnovy.",
+    "Monitor-only is the default. Assisted mode recommends verified manual steps. Auto-safe triggers non-invasive diagnostic status checks (refresh_status) when errors persist, within strict cooldown and attempt limits. Auto-safe never modifies files or sessions; all session changes require human confirmation.": "Výchozí režim pouze sleduje stav. Asistovaný režim doporučuje ověřené ruční kroky. Režim Auto-safe při přetrvávajících chybách spouští neinvazivní diagnostické kontroly stavu (refresh_status) v rámci přísných limitů pokusů a prodlev. Auto-safe nikdy nemění soubory ani relace; veškeré změny relací vyžadují potvrzení člověkem.",
+    "Monitor-only is the default. Assisted mode recommends manual steps. Auto-safe requests non-invasive diagnostic status refreshes when errors persist. Modifying actions always require manual confirmation.": "Výchozí režim pouze sleduje stav. Asistovaný režim doporučuje ruční kroky. Režim Auto-safe při přetrvávajících chybách vyžádá neinvazivní obnovení stavu. Jakékoli změny relací vždy vyžadují ruční potvrzení.",
     "Release updates": "Aktualizace vydání",
     "Save the setting to allow one GitHub Releases check at each startup. You can also check now. It sends only a public metadata request; it never downloads or installs updates.": "Uložte volbu a povolte jednu kontrolu GitHub Releases při každém spuštění. Kontrolu lze spustit i ručně. Odešlou se pouze veřejná metadata; aktualizace se nestahuje ani neinstaluje.",
     "Optional. If enabled, MutaUI checks public GitHub release metadata at startup. No session or device data is sent; no files are downloaded or installed.": "Volitelné. Po zapnutí MutaUI při spuštění kontroluje veřejná metadata vydání na GitHubu. Neodesílají se údaje o relacích ani zařízení; soubory se nestahují ani neinstalují.",
@@ -938,6 +947,7 @@ _PLACEHOLDER_CATALOG = {
     "Optional socket group": "Volitelná skupina socketu",
     "Optional octal mode, e.g. 0600": "Volitelný osmičkový režim, např. 0600",
     "C:\\Program Files\\Mutagen\\mutagen.exe   (or blank = PATH)": "C:\\Program Files\\Mutagen\\mutagen.exe   (nebo prázdné = PATH)",
+    "/usr/local/bin/mutagen   (or blank = PATH)": "/usr/local/bin/mutagen   (nebo prázdné = PATH)",
     "Select the Mutagen global YAML file": "Vyberte globální soubor YAML Mutagenu",
     "Load a global Mutagen YAML file to edit it safely.": "Načtěte globální soubor YAML Mutagenu pro bezpečné úpravy.",
     "Search name, status, server, or path…": "Hledat název, stav, server nebo cestu…",
@@ -958,6 +968,7 @@ _TITLE_CATALOG = {
     "New Connection Profile": "Nový profil připojení",
     "Quick Navigation  ·  Ctrl+K": "Rychlá navigace  ·  Ctrl+K",
     "Mutagen Control 8.2 · Server Manager": "Mutagen Control 8.2 · Správce serverů",
+    "Mutagen Control 9.1.1 · Server Manager": "Mutagen Control 9.1.1 · Správce serverů",
     "Welcome to Mutagen Control": "Vítejte v Mutagen Control",
     "Review Mutagen YAML changes": "Kontrola změn YAML Mutagenu",
     "Mutagen config changed": "Konfigurace Mutagenu se změnila",
@@ -999,6 +1010,7 @@ _DIALOG_CATALOG = {
     "Export Currently Displayed Live Log": "Exportovat právě zobrazený živý protokol",
     "Text (*.txt)": "Text (*.txt)",
     "Select mutagen.exe": "Vyberte mutagen.exe",
+    "Select Mutagen CLI": "Vyberte Mutagen CLI",
     "Executable (*.exe);;All files (*)": "Spustitelné soubory (*.exe);;Všechny soubory (*)",
     "Export Portable Bundle": "Exportovat přenosný balíček",
     "JSON (*.json)": "JSON (*.json)",
@@ -1071,6 +1083,8 @@ _DIALOG_CATALOG = {
     "Exact session ID is unavailable or ambiguous in the latest snapshot.": "Přesné ID relace není v posledním snímku dostupné nebo není jednoznačné.",
     "A current session list is unavailable. Refresh status and retry.": "Aktuální seznam relací není dostupný. Obnovte stav a zkuste to znovu.",
     "First, configure mutagen.exe in Settings.": "Nejprve v Nastavení vyberte mutagen.exe.",
+    "First, configure Mutagen CLI in Settings.": "Nejprve v Nastavení vyberte Mutagen CLI.",
+    "Mutagen CLI is not configured. Open Settings.": "Mutagen CLI není nastaven. Otevřete Nastavení.",
     "First, select a session in the table.": "Nejprve vyberte relaci v tabulce.",
     "Global source": "Globální zdroj",
     "For sessions to resume at sign-in, the Mutagen daemon itself must be registered. Registration also affects other unpaused sessions. Register the daemon and resume this sync now?": "Aby se relace po přihlášení obnovily, musí být zaregistrována samotná služba Mutagen. Registrace ovlivní i ostatní nepozastavené relace. Zaregistrovat službu a nyní obnovit tuto synchronizaci?",
@@ -1120,6 +1134,7 @@ _DIALOG_CATALOG = {
     "Test SSH connection": "Otestovat připojení SSH",
     "The original file stays unchanged. Fix it outside MutaUI, then load it again.": "Původní soubor zůstane beze změny. Opravte jej mimo MutaUI a znovu ho načtěte.",
     "The selected mutagen.exe file does not exist or is unavailable.": "Vybraný soubor mutagen.exe neexistuje nebo není dostupný.",
+    "The selected Mutagen CLI file does not exist or is unavailable.": "Vybraný soubor Mutagen CLI neexistuje nebo není dostupný.",
     "This full snapshot can contain local paths, SSH hosts, usernames, and session names. Only save or share it with people you trust. Continue?": "Tento úplný snímek může obsahovat místní cesty, SSH hostitele, uživatelská jména a názvy relací. Uložte jej nebo sdílejte pouze s důvěryhodnými osobami. Pokračovat?",
     "This source binds beyond loopback and may expose the destination publicly. Continue?": "Tento zdroj naslouchá mimo loopback a může cíl zpřístupnit veřejně. Pokračovat?",
     "Turn Off Sync Start?": "Vypnout spouštění synchronizace?",
@@ -1146,6 +1161,11 @@ _LIGHT_COLORS = {
     "#F1F6FA": "#17212B",
     "#61E0B9": "#087F68",
     "#7AAEFF": "#145EC7",
+    "#F2BF70": "#9A6200",
+    "#FB8696": "#B91C1C",
+    "#FFACB8": "#991B1B",
+    "#B6FFE9": "#047857",
+    "#071A1A": "#FFFFFF",
     "#101824": "#EDF1F5",
     "#111D2B": "#FFFFFF",
     "#182536": "#F0F3F7",
@@ -1184,6 +1204,11 @@ def translate(key: str, language: str) -> str:
 
 def translate_text(text: str, language: str) -> str:
     if language == "cs":
+        if text.startswith("Mutagen Control ") and text.endswith(" · Server Manager"):
+            version_part = text[len("Mutagen Control ") : -len(" · Server Manager")]
+            return native_shortcut_text(f"Mutagen Control {version_part} · Správce serverů")
+        if text.startswith("v") and len(text) > 1 and text[1].isdigit():
+            return text
         translated = _TEXT_CATALOG.get(
             text,
             _TOOLTIP_CATALOG.get(
@@ -1221,4 +1246,5 @@ def theme_stylesheet(stylesheet: str, theme: str) -> str:
         return stylesheet
     for dark, light in _LIGHT_COLORS.items():
         stylesheet = stylesheet.replace(dark, light)
+    stylesheet = stylesheet.replace("color: white;", "color: #17212B;")
     return stylesheet

@@ -2,7 +2,7 @@
 
 ## English
 
-1. Install Mutagen CLI separately and confirm `mutagen version` works. Read the official [Getting Started guide](https://mutagen.io/documentation/introduction/getting-started).
+1. Install Mutagen CLI separately and confirm `mutagen version` works. Read the official [Getting Started guide](https://mutagen.io/documentation/introduction/getting-started). Ensure the background Mutagen service is started (`mutagen daemon start`) before creating persistent sessions; MutaUI's status bar and onboarding wizard provide daemon health checks and start actions.
 2. Create two disposable local folders with a few sample files. Do not use valuable or sole copies of data for a first run.
 3. Launch MutaUI, choose **New Sync**, select the folders, and inspect mode, direction, endpoint paths, and the complete operation preview.
 4. Start only when the preview matches your intent. Change a sample file on one side, refresh the session, and inspect the other side. Mutagen can propagate modifications and deletions.
@@ -12,7 +12,7 @@ For SSH, read [SSH profiles](../ssh-profiles.md) and the official [SSH transport
 
 ## Česky
 
-1. Samostatně nainstalujte Mutagen CLI a ověřte příkaz `mutagen version`. Přečtěte si oficiální [Začínáme](https://mutagen.io/documentation/introduction/getting-started).
+1. Samostatně nainstalujte Mutagen CLI a ověřte příkaz `mutagen version`. Přečtěte si oficiální [Začínáme](https://mutagen.io/documentation/introduction/getting-started). Před vytvořením první trvalé relace se ujistěte, že běží služba Mutagen (`mutagen daemon start`); stavový řádek MutaUI i průvodce onboarding umožňují kontrolu a spuštění daemona.
 2. Vytvořte dvě dočasné místní složky s několika ukázkovými soubory. Při prvním pokusu nepoužívejte důležitá data ani jejich jedinou kopii.
 3. Spusťte MutaUI, zvolte **New Sync**, vyberte složky a zkontrolujte režim, směr, cesty endpointů i celý náhled operace.
 4. Spusťte synchronizaci jen tehdy, když náhled odpovídá záměru. Upravte vzorový soubor na jedné straně, obnovte relaci a zkontrolujte druhou stranu. Mutagen může přenášet změny i mazání.

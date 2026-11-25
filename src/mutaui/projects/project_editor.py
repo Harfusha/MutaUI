@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
-import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -70,18 +68,13 @@ def preview_project_yaml_edit(
     )
 
 
+from mutaui.services.audit_retention import AuditRetentionError, safe_append_audit_record
+
+
 def _append_audit(path: Path, record: dict[str, object]) -> None:
-    if path.is_symlink():
-        raise ProjectEditError("Project edit audit file cannot be a symbolic link.")
-    if path.exists() and not stat.S_ISREG(path.lstat().st_mode):
-        raise ProjectEditError("Project edit audit path must be a regular file.")
-    encoded = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
     try:
-        with path.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(encoded)
-            stream.flush()
-            os.fsync(stream.fileno())
-    except OSError as exc:
+        safe_append_audit_record(path, record)
+    except (AuditRetentionError, OSError) as exc:
         raise ProjectEditError(f"Could not persist project edit audit: {exc}") from exc
 
 

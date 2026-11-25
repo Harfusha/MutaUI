@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import json
 import os
@@ -19,8 +20,37 @@ CURRENT_SCHEMA_VERSION = 1
 
 
 def settings_path() -> Path:
-    root = Path(os.getenv("APPDATA") or str(Path.home() / ".config")) / "MutagenControl"
-    return root / "settings.json"
+    custom_dir = os.getenv("MUTAGEN_CONTROL_CONFIG_DIR")
+    if custom_dir:
+        return Path(custom_dir) / "settings.json"
+    import sys
+
+    if sys.platform == "win32":
+        root = Path(os.getenv("APPDATA") or str(Path.home() / ".config")) / "MutagenControl"
+        return root / "settings.json"
+    if sys.platform == "darwin":
+        primary = (
+            Path.home() / "Library" / "Application Support" / "MutagenControl" / "settings.json"
+        )
+        if primary.is_file():
+            return primary
+        xdg_root = (
+            Path(os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")) / "MutagenControl"
+        )
+        if (xdg_root / "settings.json").is_file():
+            return xdg_root / "settings.json"
+        return primary
+    # Linux / POSIX: strictly adhere to XDG Base Directory specification
+    xdg_config = Path(os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config"))
+    primary = xdg_config / "MutagenControl" / "settings.json"
+    if not primary.is_file():
+        legacy_mutaui = Path.home() / ".mutaui" / "settings.json"
+        legacy_config = xdg_config / "mutaui" / "settings.json"
+        if legacy_mutaui.is_file() and not legacy_config.is_file():
+            return legacy_mutaui
+        if legacy_config.is_file():
+            return legacy_config
+    return primary
 
 
 DEFAULT_SETTINGS: dict[str, Any] = {
@@ -435,8 +465,9 @@ def write_settings(path: str | Path, data: dict[str, Any]) -> None:
                 with backup.open("xb") as stream:
                     stream.write(previous_bytes)
 
-    # Persist the validated candidate first. After a successful main-file
-    # replace, the sidecar is therefore the newest known-good settings state.
+    # Write the main settings file first. Only after a successful replace,
+    # update the sidecar as the newest confirmed known-good settings generation.
     payload = json.dumps(validated.values, indent=2, ensure_ascii=False).encode("utf-8")
-    _atomic_write_bytes(path.with_name(path.name + ".last-valid.bak"), payload)
     _atomic_write_bytes(path, payload)
+    with contextlib.suppress(OSError):
+        _atomic_write_bytes(path.with_name(path.name + ".last-valid.bak"), payload)

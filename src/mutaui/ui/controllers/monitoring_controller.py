@@ -6,6 +6,7 @@ import math
 import sqlite3
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -82,10 +83,7 @@ class MonitoringMixin:
         # Runs in the GUI thread; psutil enumeration itself happens in QThreadPool.
         self.last_metrics = data
         cpu, ram, count = data["cpu"], data["memory"], data["processes"]
-        if hasattr(self, "alert_runtime_label"):
-            self.alert_runtime_label.setText(
-                f"CPU: {cpu:.1f} %  ·  RAM: {human_bytes(ram)}  ·  Procesy: {count}"
-            )
+        active_alerts: list[str] = []
         if not self.demo:
             for alert in self.alert_engine.evaluate(
                 cpu,
@@ -96,6 +94,7 @@ class MonitoringMixin:
                 ram_limit_mb=float(self.conf.get("ram_alert_limit", 1024)),
                 hold_seconds=float(self.conf.get("alert_hold", 20)),
             ):
+                active_alerts.append(alert.message)
                 self.add_log("WARNING: " + alert.message)
                 if (
                     self.conf.get("alerts", True)
@@ -114,20 +113,27 @@ class MonitoringMixin:
                         QSystemTrayIcon.MessageIcon.Warning,
                         7000,
                     )
-        if self.recorder is not None:
-            if self.recorder.last_error:
-                set_localized_text(self.writer_status, "History: write error")
-                self.writer_status.setToolTip(self.recorder.last_error)
-            elif self.recorder.dropped:
-                self.writer_status.setText(
-                    translate_text(
-                        "Number of skipped history samples: {count}", active_language()
-                    ).format(count=self.recorder.dropped)
-                )
+        self.active_resource_alert = "; ".join(active_alerts) if active_alerts else None
+        if hasattr(self, "alert_runtime_label"):
+            prefix = f"⚠️ {self.active_resource_alert}  ·  " if self.active_resource_alert else ""
+            self.alert_runtime_label.setText(
+                f"{prefix}CPU: {cpu:.1f} %  ·  RAM: {human_bytes(ram)}  ·  Procesy: {count}"
+            )
+        if hasattr(self, "writer_status"):
+            if self.recorder is not None:
+                if self.recorder.last_error:
+                    set_localized_text(self.writer_status, "History: write error")
+                    self.writer_status.setToolTip(self.recorder.last_error)
+                elif self.recorder.dropped:
+                    self.writer_status.setText(
+                        translate_text(
+                            "Number of skipped history samples: {count}", active_language()
+                        ).format(count=self.recorder.dropped)
+                    )
+                else:
+                    set_localized_text(self.writer_status, "History: saving continuously")
             else:
-                set_localized_text(self.writer_status, "History: saving continuously")
-        else:
-            set_localized_text(self.writer_status, "History: demo mode")
+                set_localized_text(self.writer_status, "History: demo mode")
         if hasattr(self, "gui_usage_label"):
             language = self.ui_language
             self.gui_usage_label.setText(
@@ -136,15 +142,22 @@ class MonitoringMixin:
                 f"RAM {human_bytes(data.get('gui_memory', 0))}  ·  "
                 f"{translate_text('measured for the UI process, not Mutagen', language)}"
             )
-        self.snapshot.cpu, self.snapshot.memory, self.snapshot.processes = cpu, ram, count
-        self.snapshot.resource_observed_at = datetime.now().astimezone()
+        if hasattr(self, "snapshot"):
+            self.snapshot.cpu, self.snapshot.memory, self.snapshot.processes = cpu, ram, count
+            self.snapshot.resource_observed_at = datetime.now().astimezone()
+        if not hasattr(self, "session_counts"):
+            return
         # State changes only on CLI polls, not on each CPU sample.
         active, problems = self.session_counts
         forward_rates = (
             self.traffic_rates if self.demo or self._traffic_sample_pending else (None, None)
         )
         self._traffic_sample_pending = False
-        cli_launch_count = self.client.cli_launch_count
+        cli_launch_count = (
+            self.client.total_cli_launches()
+            if hasattr(self.client, "total_cli_launches")
+            else self.client.cli_launch_count
+        )
         sample = Sample(
             ts=time.time(),
             cpu=cpu,
@@ -505,6 +518,31 @@ class MonitoringMixin:
         if not self.chart_frozen:
             self.refresh_charts(force=True)
 
+    def send_test_alert(self: Any) -> tuple[bool, str]:
+        """Trigger an immediate test alert to verify notification paths and in-app display."""
+        test_msg = "Test resource limit notification (CPU: 95%, RAM: 2.1 GB)"
+        self.active_resource_alert = test_msg
+        self.add_log("TEST ALERT: " + test_msg)
+        if hasattr(self, "alert_runtime_label"):
+            self.alert_runtime_label.setText(f"⚠️ {test_msg}")
+        can_deliver = bool(self.conf.get("alerts", True)) and self.tray.isVisible()
+        is_quiet = quiet_hours_active(
+            datetime.now(),
+            enabled=bool(self.conf.get("quiet_hours_enabled", False)),
+            start=str(self.conf.get("quiet_hours_start", "22:00")),
+            end=str(self.conf.get("quiet_hours_end", "07:00")),
+        )
+        if can_deliver and not is_quiet:
+            self.tray.showMessage(
+                translate_text("Mutagen Control — Limit (Test)", active_language()),
+                test_msg,
+                QSystemTrayIcon.MessageIcon.Warning,
+                5000,
+            )
+            return True, "Delivered to system tray and logged in application."
+        reason = "quiet hours active" if is_quiet else "tray icon hidden or notifications disabled"
+        return False, f"Logged in application only ({reason})."
+
     def export_monitor_png(self: Any) -> None:
         path, _ = QFileDialog.getSaveFileName(
             self,
@@ -536,11 +574,22 @@ class MonitoringMixin:
         )
         if not path:
             return
-        try:
-            self.history.export_csv(path, hours=float(self.monitor_range.currentData()))
-            self.add_log("Monitoring history exported to CSV")
-        except (sqlite3.Error, OSError) as exc:
-            self.report_error(str(exc))
+        hours = float(self.monitor_range.currentData())
+        target = Path(path)
+
+        def do_export() -> int:
+            self.history.export_csv(target, hours=hours)
+            return target.stat().st_size
+
+        def on_success(size: int) -> None:
+            self.add_log(
+                f"Monitoring history ({hours:.1f}h, {human_bytes(size)}) exported to CSV: {target.name}"
+            )
+
+        def on_error(err: str) -> None:
+            self.report_error(f"CSV export failed: {err}")
+
+        self.submit(do_export, on_success, on_error=on_error)
 
     def seed_demo_history(self: Any) -> None:
         """Populate illustrative graphs offline (only in explicitly marked demo mode)."""

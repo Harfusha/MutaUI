@@ -72,28 +72,32 @@ class ForwardTrafficMeter:
     """
 
     def __init__(self) -> None:
-        self.previous: dict[str, tuple[float, int, int]] = {}
+        self.previous: dict[str, tuple[float, int | None, int | None]] = {}
 
     def update(
         self, sessions: list[dict[str, Any]], now: float | None = None
     ) -> tuple[float, float]:
         now = time.monotonic() if now is None else now
-        current: dict[str, tuple[float, int, int]] = {}
+        current: dict[str, tuple[float, int | None, int | None]] = {}
         outgoing = incoming = 0.0
         for session in sessions:
             identifier = str(session.get("identifier") or "")
             if not identifier:
                 continue
-            out_total = max(0, int(session.get("totalOutboundData") or 0))
-            in_total = max(0, int(session.get("totalInboundData") or 0))
+            raw_out = session.get("totalOutboundData")
+            raw_in = session.get("totalInboundData")
+            out_total = max(0, int(raw_out)) if raw_out is not None else None
+            in_total = max(0, int(raw_in)) if raw_in is not None else None
             previous = self.previous.get(identifier)
             if previous and now > previous[0]:
                 dt = now - previous[0]
-                if out_total >= previous[1]:
-                    outgoing += (out_total - previous[1]) / dt
-                if in_total >= previous[2]:
-                    incoming += (in_total - previous[2]) / dt
-            current[identifier] = now, out_total, in_total
+                prev_out = previous[1]
+                prev_in = previous[2]
+                if out_total is not None and prev_out is not None and out_total >= prev_out:
+                    outgoing += (out_total - prev_out) / dt
+                if in_total is not None and prev_in is not None and in_total >= prev_in:
+                    incoming += (in_total - prev_in) / dt
+            current[identifier] = (now, out_total, in_total)
         self.previous = current
         return round(outgoing, 2), round(incoming, 2)
 
@@ -173,16 +177,21 @@ class HistoryStore:
         hours = max(1 / 60, min(float(hours), self.retention_hours))
         max_points = max(10, min(2000, int(max_points)))
         now = time.time() if now is None else now
-        interval = max(1.0, hours * 3600 / max_points)
+        start_ts = now - hours * 3600
+        interval = max(1.0, (hours * 3600) / max_points)
         cols = ", ".join(f"AVG({col})" for col in METRIC_COLUMNS)
         cursor = self.db.execute(
             f"SELECT AVG(ts), {cols} FROM metrics WHERE ts >= ? AND ts <= ? "
-            "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)",
-            (now - hours * 3600, now, interval, interval),
+            "GROUP BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER)) "
+            "ORDER BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER))",
+            (start_ts, now, max_points - 1, start_ts, interval, max_points - 1, start_ts, interval),
         )
-        return [
+        points = [
             {"ts": ts, **dict(zip(METRIC_COLUMNS, fields, strict=True))} for ts, *fields in cursor
         ]
+        if len(points) > max_points:
+            points = points[-max_points:]
+        return points
 
     def statistics(self, hours: float = 1.0, now: float | None = None) -> dict[str, Any]:
         """Summary of raw measurements over the range (not downsampled chart points)."""
@@ -260,16 +269,32 @@ class HistoryStore:
         """Aggregate only a selected host's metrics, preserving NULL rates."""
         now = time.time() if now is None else now
         hours = max(1 / 60, min(float(hours), self.retention_hours))
-        interval = max(1.0, hours * 3600 / max(10, min(1000, int(max_points))))
+        bounded_max = max(10, min(1000, int(max_points)))
+        start_ts = now - hours * 3600
+        interval = max(1.0, (hours * 3600) / bounded_max)
         columns = ", ".join("AVG(" + col + ")" for col in REMOTE_COLUMNS)
         cursor = self.db.execute(
             f"SELECT AVG(ts), {columns} FROM remote_metrics WHERE host=? AND ts>=? AND ts<=? "
-            "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)",
-            (host, now - hours * 3600, now, interval, interval),
+            "GROUP BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER)) "
+            "ORDER BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER))",
+            (
+                host,
+                start_ts,
+                now,
+                bounded_max - 1,
+                start_ts,
+                interval,
+                bounded_max - 1,
+                start_ts,
+                interval,
+            ),
         )
-        return [
+        points = [
             {"ts": ts, **dict(zip(REMOTE_COLUMNS, values, strict=True))} for ts, *values in cursor
         ]
+        if len(points) > bounded_max:
+            points = points[-bounded_max:]
+        return points
 
     def export_remote(self, path: Path | str, host: str, hours: float = 24.0) -> None:
         """Export a chosen host's raw measurements. Host strings are private."""
@@ -339,18 +364,23 @@ def query_metrics_from_file(
     now = time.time() if now is None else now
     hours = max(1 / 60, min(float(hours), retention_hours))
     max_points = max(10, min(2000, int(max_points)))
-    interval = max(1.0, hours * 3600 / max_points)
+    start_ts = now - hours * 3600
+    interval = max(1.0, (hours * 3600) / max_points)
     uri = path.resolve().as_uri() + "?mode=ro"
     connection = sqlite3.connect(uri, uri=True, timeout=5)
     try:
         cols = ", ".join(f"AVG({col})" for col in METRIC_COLUMNS)
         cursor = connection.execute(
             f"SELECT AVG(ts), {cols} FROM metrics WHERE ts >= ? AND ts <= ? "
-            "GROUP BY CAST(ts / ? AS INTEGER) ORDER BY CAST(ts / ? AS INTEGER)",
-            (now - hours * 3600, now, interval, interval),
+            "GROUP BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER)) "
+            "ORDER BY MIN(?, CAST(MAX(0.0, (ts - ?)) / ? AS INTEGER))",
+            (start_ts, now, max_points - 1, start_ts, interval, max_points - 1, start_ts, interval),
         )
-        return [
+        points = [
             {"ts": ts, **dict(zip(METRIC_COLUMNS, values, strict=True))} for ts, *values in cursor
         ]
+        if len(points) > max_points:
+            points = points[-max_points:]
+        return points
     finally:
         connection.close()

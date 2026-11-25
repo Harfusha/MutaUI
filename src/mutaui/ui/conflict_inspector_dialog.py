@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import suppress
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, QRunnable, QThreadPool, QUrl, Signal
+from PySide6.QtCore import QMetaObject, QObject, QProcess, QRunnable, QThreadPool, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
@@ -64,16 +65,20 @@ class _InspectionSignals(QObject):
 class _InspectionTask(QRunnable):
     def __init__(self, request: RemoteInspectionRequest) -> None:
         super().__init__()
-        self.request = request
-        self.signals = _InspectionSignals()
+        self.request: RemoteInspectionRequest | None = request
+        self.signals: _InspectionSignals | None = _InspectionSignals()
 
     def run(self) -> None:
+        request = self.request
+        signals = self.signals
+        if request is None or signals is None:
+            return
         try:
-            result = ParamikoRemoteInspector().inspect(self.request, consent=True)
+            result = ParamikoRemoteInspector().inspect(request, consent=True)
         except Exception as exc:
-            self.signals.completed.emit(None, exc)
+            signals.completed.emit(None, exc)
         else:
-            self.signals.completed.emit(result, None)
+            signals.completed.emit(result, None)
 
 
 def _changes_text(changes: tuple[ConflictChange, ...]) -> str:
@@ -121,6 +126,7 @@ class ConflictInspectorDialog(QDialog):
         self._remote_artifact_side: str | None = None
         self._remote_artifact_target: tuple[str, str] | None = None
         self._inspection_task: _InspectionTask | None = None
+        self._inspection_connection: QMetaObject.Connection | None = None
         self._inspection_target: tuple[str, str] | None = None
         self._inspection_side: str | None = None
         self._close_pending = False
@@ -397,16 +403,33 @@ class ConflictInspectorDialog(QDialog):
         )
         self.inspect_alpha.setEnabled(False)
         self.inspect_beta.setEnabled(False)
-        self.details.appendPlainText("\nRemote inspection in progress…")
+        self.details.appendPlainText(
+            f"\nRemote inspection in progress ({side.upper()}: {username}@{hostname}:{endpoint.port or 22}:{endpoint_root}/{record.relative_path}, limit 2 MiB)…"
+        )
         task = _InspectionTask(request)
-        task.signals.completed.connect(self._inspection_completed)
+        if task.signals is None:
+            return
+        self._inspection_connection = task.signals.completed.connect(self._inspection_completed)
         self._inspection_task = task
         self._inspection_target = (record.session_identifier, record.relative_path)
         self._inspection_side = side
         self._inspection_pool.start(task)
 
     def _inspection_completed(self, artifact: object, error: object) -> None:
+        task = self._inspection_task
         self._inspection_task = None
+        connection = self._inspection_connection
+        self._inspection_connection = None
+        if connection is not None:
+            with suppress(RuntimeError, TypeError):
+                QObject.disconnect(connection)
+        if task is not None:
+            task.request = None
+            signals = task.signals
+            task.signals = None
+            if signals is not None:
+                with suppress(RuntimeError):
+                    signals.deleteLater()
         if self._close_pending:
             if isinstance(artifact, RemoteInspectionArtifact):
                 artifact.close()

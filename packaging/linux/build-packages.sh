@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_BUNDLE="${1:-dist-platform/MutagenControl}"
 OUTPUT_DIR="${2:-dist}"
-VERSION="${MUTAUI_VERSION:-8.2.0}"
+VERSION="${MUTAUI_VERSION:-9.2.0}"
 VERSION="${VERSION#v}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_BUNDLE="$(cd "$ROOT/$APP_BUNDLE" && pwd)"
@@ -54,7 +54,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Mutagen Control contributors
-Depends: libc6, libstdc++6, libx11-6, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-shape0, libxcb-xfixes0, libxcb-xinerama0, libegl1, libgl1, libdbus-1-3, libfontconfig1
+Depends: libc6 (>= 2.38), libstdc++6, libx11-6, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-shape0, libxcb-xfixes0, libxcb-xinerama0, libegl1, libgl1, libdbus-1-3, libfontconfig1
 Description: Desktop control center for the Mutagen CLI
  A PySide6 desktop application for inspecting and managing local Mutagen sessions.
 CONTROL
@@ -69,6 +69,6 @@ curl --fail --location --retry 3 --connect-timeout 15 --max-time 120 \
   "$APPIMAGETOOL_URL"
 echo "${APPIMAGETOOL_SHA256}  $STAGING/appimagetool.AppImage" | sha256sum --check
 chmod 755 "$STAGING/appimagetool.AppImage"
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$STAGING/appimagetool.AppImage" \
+TMPDIR="$STAGING" ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$STAGING/appimagetool.AppImage" \
   "$APPDIR" "$OUTPUT_DIR/MutagenControl-$VERSION-linux-x86_64.AppImage"
 chmod 755 "$OUTPUT_DIR/MutagenControl-$VERSION-linux-x86_64.AppImage"

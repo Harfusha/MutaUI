@@ -43,6 +43,20 @@ if getattr(sys, "frozen", False) and hasattr(os, "add_dll_directory"):  # pragma
     for _dll_directory in _dll_directories:
         if _dll_directory.is_dir():
             _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(_dll_directory)))
+elif sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    try:
+        import importlib.util
+
+        _spec = importlib.util.find_spec("PySide6")
+        if _spec and _spec.origin:
+            _pyside_pkg = Path(_spec.origin).parent
+            if _pyside_pkg.is_dir():
+                _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(_pyside_pkg)))
+            _shiboken_pkg = _pyside_pkg.parent / "shiboken6"
+            if _shiboken_pkg.is_dir():
+                _DLL_DIRECTORY_HANDLES.append(os.add_dll_directory(str(_shiboken_pkg)))
+    except Exception:
+        pass
 
 from PySide6.QtCore import (
     QAbstractTableModel,  # noqa: F401
@@ -149,11 +163,15 @@ from monitoring import (
     statistics_from_file,  # noqa: F401
 )
 from mutagen_client import (
+    BULK_OPERATION_LIMIT,  # noqa: F401
     MutagenClient,
+    MutagenCommandTimeout,  # noqa: F401
     MutagenError,  # noqa: F401
+    MutagenLaunchError,  # noqa: F401
     ProcessSampler,
     Snapshot,
     classify,  # noqa: F401
+    classify_daemon_error,  # noqa: F401
     conflict_count,  # noqa: F401
     endpoint_text,  # noqa: F401
     example_snapshot,
@@ -161,6 +179,7 @@ from mutagen_client import (
     problem_count,  # noqa: F401
     read_registration,  # noqa: F401
     session_preflight_fingerprint,  # noqa: F401
+    validate_session_rows,  # noqa: F401
 )
 from mutaui import __version__ as APP_VERSION
 from mutaui.adapters.cli_executor import LegacyMutagenExecutor, MutagenCliExecutor  # noqa: F401
@@ -199,6 +218,16 @@ from mutaui.services.session_doctor import (  # noqa: F401
 )
 from mutaui.services.session_notification_gate import SessionNotificationGate
 from mutaui.services.session_provenance import ProvenanceStoreError, SessionProvenanceStore  # noqa: F401
+from mutaui.services.snapshot_status import (  # noqa: F401
+    compute_daemon_controls,
+    compute_overview_scope,
+    format_daemon_status,
+    format_footer_status,
+    format_hero_status,
+    format_registration_status,
+    format_side_status,
+    parse_mutagen_version_output,
+)
 from mutaui.services.update_checker import RELEASES_URL, UpdateCheckResult, check_for_update  # noqa: F401
 from mutaui.ui import global_config_editor, settings_migration  # noqa: F401
 from mutaui.ui.conflict_inspector_dialog import ConflictInspectorDialog  # noqa: F401
@@ -272,7 +301,13 @@ from mutaui.ui.widgets.basic import (
 from mutaui.ui.widgets.graph import Graph  # noqa: F401
 from mutaui.ui.widgets.health_ring import HealthRing  # noqa: F401
 from mutaui.ui.widgets.session_table import SessionTableModel
-from mutaui.ui.worker import Worker, WorkerSignals  # noqa: F401
+from mutaui.ui.worker import (
+    Worker,  # noqa: F401
+    WorkerDispatcher,  # noqa: F401
+    WorkerSignals,  # noqa: F401
+    cleanup_worker_dispatcher,  # noqa: F401
+    submit_background_task,  # noqa: F401
+)
 from performance import (  # noqa: F401
     PollBackoff,
     RefreshGate,
@@ -401,6 +436,7 @@ def main() -> int:
         from mutaui.services.linux_file_manager_integration import (
             IntegrationError,
             install_linux_file_manager_integration,
+            is_transient_extraction_path,
             remove_linux_file_manager_integration,
         )
 
@@ -412,7 +448,19 @@ def main() -> int:
                     raise IntegrationError(
                         "Install the packaged AppImage first; source-mode integration is unsupported."
                     )
-                result = install_linux_file_manager_integration(sys.executable)
+                appimage_env = os.environ.get("APPIMAGE", "").strip()
+                if appimage_env:
+                    binary = Path(appimage_env).resolve()
+                else:
+                    exe = Path(sys.executable).resolve()
+                    if is_transient_extraction_path(exe):
+                        raise IntegrationError(
+                            "Cannot register integration from temporary AppImage extraction directory. "
+                            "Please run via the AppImage file directly or set the APPIMAGE environment variable "
+                            "to the persistent AppImage path."
+                        )
+                    binary = exe
+                result = install_linux_file_manager_integration(binary)
             else:
                 result = remove_linux_file_manager_integration()
         except IntegrationError as exc:
@@ -427,7 +475,6 @@ def main() -> int:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         import tempfile
         import traceback
-        from pathlib import Path
 
         result_path = Path(
             os.environ.get(
@@ -468,7 +515,10 @@ def main() -> int:
                     raise AssertionError(
                         "Packaged settings recovery did not restore the expected state."
                     )
-            if history_path is not None and window.history.path != str(Path(history_path)):
+            if (
+                history_path is not None
+                and Path(window.history.path).resolve() != Path(history_path).resolve()
+            ):
                 raise AssertionError(
                     "Packaged self-test did not open the requested history database."
                 )

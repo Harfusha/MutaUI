@@ -84,6 +84,8 @@ class SessionDialog(QDialog):
         self.kind = kind
         self.ui_mode = ui_mode if ui_mode in {"basic", "advanced"} else "basic"
         self.executable = executable or "mutagen"
+        self.default_profile = default_profile
+        self.default_sync_mode = "two-way-safe"
         set_localized_title(self, "New Sync" if kind == "sync" else "New Forward")
         self.setMinimumWidth(520)
         box = QVBoxLayout(self)
@@ -369,6 +371,9 @@ class SessionDialog(QDialog):
                 folder_name = Path(initial_path).name
                 if folder_name:
                     self.name.setText(folder_name)
+        self._base_name = self.name.text()
+        self._base_a = self.a.text()
+        self._base_b = self.b.text()
         self.update_command_preview()
         controls = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Ok
@@ -471,7 +476,7 @@ class SessionDialog(QDialog):
             self,
             translate_text("Ignore Preview", active_language()),
             f"{status}{matched}\n\n"
-            f"{format_ignore_layers(global_rules=global_rules, project_rules=project_rules, session_rules=session_rules)}"
+            f"{format_ignore_layers(global_rules=global_rules, project_rules=project_rules, session_rules=session_rules, annotate=True)}"
             "\n\nNative project defaults are not selected here. Built-in defaults are not enumerated.\n"
             f"{result.note}",
         )
@@ -521,6 +526,31 @@ class SessionDialog(QDialog):
             return
         profile = self.connection_profile.currentData()
         if not isinstance(profile, ConnectionProfile):
+            self.name.setText(self._base_name)
+            self.a.setText(self._base_a)
+            self.b.setText(self._base_b)
+            if self.kind == "sync":
+                self.mode.setCurrentText(self.default_sync_mode)
+                self.ignore.setPlainText("")
+                self.ignore_vcs.setCheckState(Qt.CheckState.PartiallyChecked)
+                idx = max(0, self.profile.findData(self.default_profile))
+                self.profile.setCurrentIndex(idx)
+            elif self.kind == "forward" and self.ui_mode == "advanced":
+                if self.socket_overwrite_source is not None:
+                    self.socket_overwrite_source.setCurrentIndex(0)
+                if self.socket_overwrite_destination is not None:
+                    self.socket_overwrite_destination.setCurrentIndex(0)
+                for ctrl in (
+                    self.socket_owner_source,
+                    self.socket_owner_destination,
+                    self.socket_group_source,
+                    self.socket_group_destination,
+                    self.socket_permission_source,
+                    self.socket_permission_destination,
+                ):
+                    if ctrl is not None:
+                        ctrl.setText("")
+            self.update_command_preview()
             return
         self.name.setText(profile.name)
         self.a.setText(profile.endpoint_a)
@@ -530,12 +560,18 @@ class SessionDialog(QDialog):
             mode = defaults.get("mode")
             if isinstance(mode, str) and self.mode.findText(mode) >= 0:
                 self.mode.setCurrentText(mode)
+            else:
+                self.mode.setCurrentText(self.default_sync_mode)
             ignore_paths = defaults.get("ignore.paths")
             if isinstance(ignore_paths, (list, tuple)):
                 self.ignore.setPlainText("\n".join(str(item) for item in ignore_paths))
+            else:
+                self.ignore.setPlainText("")
             ignore_vcs = defaults.get("ignore.vcs")
             if isinstance(ignore_vcs, bool):
                 self.ignore_vcs.setChecked(ignore_vcs)
+            else:
+                self.ignore_vcs.setCheckState(Qt.CheckState.PartiallyChecked)
             watch = defaults.get("watch.mode")
             interval = defaults.get("watch.pollingInterval")
             profile_code = None
@@ -551,6 +587,39 @@ class SessionDialog(QDialog):
                 profile_index = self.profile.findData(profile_code)
                 if profile_index >= 0:
                     self.profile.setCurrentIndex(profile_index)
+            else:
+                idx = max(0, self.profile.findData(self.default_profile))
+                self.profile.setCurrentIndex(idx)
+        elif self.kind == "forward" and self.ui_mode == "advanced":
+            defaults = profile.defaults
+            for side, combo, owner_ctrl, group_ctrl, perm_ctrl in (
+                (
+                    "source",
+                    self.socket_overwrite_source,
+                    self.socket_owner_source,
+                    self.socket_group_source,
+                    self.socket_permission_source,
+                ),
+                (
+                    "destination",
+                    self.socket_overwrite_destination,
+                    self.socket_owner_destination,
+                    self.socket_group_destination,
+                    self.socket_permission_destination,
+                ),
+            ):
+                side_overwrite = defaults.get(
+                    f"{side}.socket.overwriteMode", defaults.get("socket.overwriteMode", "leave")
+                )
+                if combo is not None:
+                    combo_idx = combo.findData(side_overwrite)
+                    combo.setCurrentIndex(max(0, combo_idx))
+                if owner_ctrl is not None:
+                    owner_ctrl.setText(str(defaults.get(f"{side}.socket.owner", "")))
+                if group_ctrl is not None:
+                    group_ctrl.setText(str(defaults.get(f"{side}.socket.group", "")))
+                if perm_ctrl is not None:
+                    perm_ctrl.setText(str(defaults.get(f"{side}.socket.permissionMode", "")))
         self.update_command_preview()
 
     def update_command_preview(self, *_args: object) -> None:
@@ -738,21 +807,27 @@ class SessionDialog(QDialog):
                     ),
                 )
                 return
-        if self.kind == "forward" and self.a.text().strip().startswith(
-            ("tcp:0.0.0.0:", "tcp:::", "tcp4:0.0.0.0:", "tcp6:[::]:")
-        ):
-            response = QMessageBox.warning(
-                self,
-                translate_text("Public Forwarding Listener", active_language()),
-                translate_text(
-                    "This source binds beyond loopback and may expose the destination publicly. Continue?",
-                    active_language(),
-                ),
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if response != QMessageBox.StandardButton.Yes:
-                return
+        if self.kind == "forward":
+            from forward_configuration import classify_forward_listener
+
+            classification = classify_forward_listener(self.a.text().strip())
+            if classification.warning_required:
+                response = QMessageBox.warning(
+                    self,
+                    translate_text("Public Forwarding Listener", active_language()),
+                    translate_text(
+                        "This source binds outside loopback ({scope}): {desc}.\n\n"
+                        "Traffic to the destination may be exposed publicly or to other network devices. Continue?",
+                        active_language(),
+                    ).format(
+                        scope=classification.scope,
+                        desc=translate_text(classification.description, active_language()),
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if response != QMessageBox.StandardButton.Yes:
+                    return
         self.accept()
 
     def update_replica_backup_visibility(self, *_args: object) -> None:

@@ -173,7 +173,13 @@ class IsolatedMutagenDaemon:
                     break
                 time.sleep(0.2)
         if daemon_stopped and self._owned_root.is_dir():
-            shutil.rmtree(self._owned_root)
+            for attempt in range(25):
+                try:
+                    shutil.rmtree(self._owned_root)
+                    break
+                except OSError:
+                    if attempt < 24:
+                        time.sleep(0.1)
         self._started = False
         self._start_attempted = not daemon_stopped
 

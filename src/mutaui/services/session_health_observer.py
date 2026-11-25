@@ -20,6 +20,7 @@ def observe_session_health(
     command_durations: Mapping[str, float | None],
     now: float,
 ) -> list[SessionHealth]:
+    tracker.prune({session.identity.identifier for session in sessions})
     results = []
     for session in sessions:
         session_kind = session.identity.kind

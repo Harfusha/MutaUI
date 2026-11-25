@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -27,6 +29,39 @@ from mutaui.ui.localization import (
 )
 from mutaui.ui.preferences import active_language, translate_text
 from mutaui.ui.widgets.basic import label
+
+
+def show_config_compare_dialog(parent: Any, external_text: str, draft_text: str) -> None:
+    diff_lines = list(
+        difflib.unified_diff(
+            external_text.splitlines(keepends=True),
+            draft_text.splitlines(keepends=True),
+            fromfile="External file (on disk)",
+            tofile="Your draft (in editor)",
+        )
+    )
+    diff_text = "".join(diff_lines) or "No textual differences detected."
+    dialog = QDialog(parent)
+    dialog.setWindowTitle(translate_text("Compare External Config vs Draft", active_language()))
+    layout = QVBoxLayout(dialog)
+    info = QLabel(
+        translate_text(
+            "Comparing external file changes on disk against your local editor draft:",
+            active_language(),
+        ),
+        dialog,
+    )
+    info.setWordWrap(True)
+    layout.addWidget(info)
+    view = QPlainTextEdit(dialog)
+    view.setPlainText(diff_text)
+    view.setReadOnly(True)
+    layout.addWidget(view, 1)
+    close_btn = QPushButton(translate_text("Close", active_language()), dialog)
+    close_btn.clicked.connect(dialog.accept)
+    layout.addWidget(close_btn)
+    dialog.resize(720, 520)
+    dialog.exec()
 
 
 def browse_global_config(window: Any) -> None:
@@ -139,9 +174,16 @@ def preview_global_config(window: Any) -> None:
     confirm = QMessageBox(window)
     set_localized_title(confirm, "Review Mutagen YAML changes")
     confirm.setIcon(QMessageBox.Icon.Question)
-    set_localized_text(
-        confirm, "Review this diff. Save creates a backup and atomically replaces the file."
-    )
+    backup_target = snapshot.path.with_name(f"{snapshot.path.name}.bak")
+    confirm_text = translate_text(
+        "Target: {target}\n"
+        "Backup: {backup}\n\n"
+        "Scope: Global configuration defines defaults for newly created sessions and projects. "
+        "Currently running sessions will continue using their active configuration and are not changed. "
+        "Save creates a backup and atomically replaces the file.",
+        active_language(),
+    ).format(target=snapshot.path, backup=backup_target)
+    confirm.setText(confirm_text)
     confirm.setDetailedText(preview.diff or "No changes.")
     apply_button = confirm.addButton(
         translate_text("Save reviewed changes", active_language()),
@@ -167,6 +209,10 @@ def preview_global_config(window: Any) -> None:
             translate_text("Reload external changes", active_language()),
             QMessageBox.ButtonRole.AcceptRole,
         )
+        compare_button = choice.addButton(
+            translate_text("Compare with draft", active_language()),
+            QMessageBox.ButtonRole.ActionRole,
+        )
         merge_button = choice.addButton(
             translate_text("Keep draft and merge manually", active_language()),
             QMessageBox.ButtonRole.ActionRole,
@@ -177,6 +223,18 @@ def preview_global_config(window: Any) -> None:
         choice.exec()
         if choice.clickedButton() is reload_button:
             window.load_global_config()
+        elif choice.clickedButton() is compare_button:
+            show_config_compare_dialog(
+                window,
+                collision.latest.text or "",
+                window.global_config_editor.toPlainText(),
+            )
+            if collision.latest.valid:
+                window._global_config_snapshot = collision.latest
+                set_localized_text(
+                    window.global_config_status,
+                    "External version compared. Draft retained; merge manually, review the new diff, then save.",
+                )
         elif choice.clickedButton() is merge_button and collision.latest.valid:
             window._global_config_snapshot = collision.latest
             set_localized_text(

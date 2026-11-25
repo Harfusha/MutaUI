@@ -48,7 +48,11 @@ class AsyncRecorder:
         self._closed = False
         self._busy = False
         self.dropped = 0
+        self.dropped_metrics = 0
+        self.dropped_events = 0
         self.failed = 0
+        self.failed_metrics = 0
+        self.failed_events = 0
         self.last_error = ""
         self._thread = threading.Thread(target=self._run, daemon=True, name="MutagenHistoryWriter")
         self._thread.start()
@@ -58,13 +62,66 @@ class AsyncRecorder:
             if self._closed:
                 return False
             if len(self._queue) >= self.max_pending:
-                # Prefer dropping an old raw sample over losing a recent
-                # operator event. Never let SQLite backpressure freeze Qt.
-                victim = next(
-                    (i for i, (k, _) in enumerate(self._queue) if k in ("metric", "remote")), 0
+                # Prioritize high-severity operator events over metrics and info events.
+                is_urgent_event = (
+                    kind == "event"
+                    and isinstance(value, tuple)
+                    and len(value) >= 2
+                    and value[1] in ("error", "warning")
                 )
-                del self._queue[victim]
-                self.dropped += 1
+                metric_idx = next(
+                    (i for i, (k, _) in enumerate(self._queue) if k in ("metric", "remote")),
+                    None,
+                )
+                if metric_idx is not None:
+                    # Drop a raw metric sample first to preserve events
+                    del self._queue[metric_idx]
+                    self.dropped += 1
+                    self.dropped_metrics += 1
+                elif is_urgent_event:
+                    # An urgent event can displace an info event or oldest item
+                    info_idx = next(
+                        (
+                            i
+                            for i, (k, v) in enumerate(self._queue)
+                            if k == "event"
+                            and isinstance(v, tuple)
+                            and len(v) >= 2
+                            and v[1] == "info"
+                        ),
+                        None,
+                    )
+                    victim = info_idx if info_idx is not None else 0
+                    del self._queue[victim]
+                    self.dropped += 1
+                    self.dropped_events += 1
+                elif kind == "event":
+                    # An info event can displace another info event, but cannot displace urgent events
+                    info_idx = next(
+                        (
+                            i
+                            for i, (k, v) in enumerate(self._queue)
+                            if k == "event"
+                            and isinstance(v, tuple)
+                            and len(v) >= 2
+                            and v[1] == "info"
+                        ),
+                        None,
+                    )
+                    if info_idx is not None:
+                        del self._queue[info_idx]
+                        self.dropped += 1
+                        self.dropped_events += 1
+                    else:
+                        # Only urgent events in queue; reject incoming non-urgent event
+                        self.dropped += 1
+                        self.dropped_events += 1
+                        return False
+                else:
+                    # Metric with no metrics left to evict; reject metric to preserve events
+                    self.dropped += 1
+                    self.dropped_metrics += 1
+                    return False
             self._queue.append((kind, value))
             self._condition.notify()
             return True
@@ -97,12 +154,25 @@ class AsyncRecorder:
             self._closed = True
             self._condition.notify_all()
         self._thread.join(timeout)
-        return not self._thread.is_alive()
+        alive = self._thread.is_alive()
+        if alive:
+            with self._condition:
+                if self._queue:
+                    lost_count = len(self._queue)
+                    self.failed += lost_count
+                    for k, _ in self._queue:
+                        if k in ("metric", "remote"):
+                            self.failed_metrics += 1
+                        elif k == "event":
+                            self.failed_events += 1
+                    self.last_error = f"Recorder timed out during shutdown; {lost_count} pending items not flushed."
+        return not alive
 
     def _run(self) -> None:
         store = None
         try:
             store = HistoryStore(self.path, retention_hours=self.retention_hours)
+            metric_columns = ("ts", *METRIC_COLUMNS)
             last_prune = time.monotonic()
             while True:
                 with self._condition:
@@ -132,7 +202,7 @@ class AsyncRecorder:
                                     getattr(value, col) for col in METRIC_COLUMNS
                                 )
                                 store.db.execute(
-                                    "INSERT OR REPLACE INTO metrics VALUES ("
+                                    f"INSERT OR REPLACE INTO metrics ({', '.join(metric_columns)}) VALUES ("
                                     + ",".join("?" for _ in fields)
                                     + ")",
                                     fields,
@@ -163,6 +233,11 @@ class AsyncRecorder:
                         last_prune = time.monotonic()
                 except (sqlite3.Error, OSError, ValueError) as exc:
                     self.failed += len(batch)
+                    for k, _ in batch:
+                        if k in ("metric", "remote"):
+                            self.failed_metrics += 1
+                        elif k == "event":
+                            self.failed_events += 1
                     self.last_error = str(exc)[:250]
                 finally:
                     with self._condition:
@@ -171,7 +246,13 @@ class AsyncRecorder:
         except (sqlite3.Error, OSError) as exc:
             self.last_error = str(exc)[:250]
             with self._condition:
-                self.failed += len(self._queue)
+                lost_count = len(self._queue)
+                self.failed += lost_count
+                for k, _ in self._queue:
+                    if k in ("metric", "remote"):
+                        self.failed_metrics += 1
+                    elif k == "event":
+                        self.failed_events += 1
                 self._queue.clear()
                 self._busy = False
                 self._condition.notify_all()

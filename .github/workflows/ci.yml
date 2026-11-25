@@ -137,8 +137,18 @@ jobs:
             coverage.xml
           if-no-files-found: warn
           retention-days: 7
+      - name: Resolve application candidate version
+        shell: bash
+        run: |
+          candidate_version="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")"
+          echo "MUTAUI_VERSION=${candidate_version}" >> "$GITHUB_ENV"
       - name: Build packaged demo
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --paths src --collect-all paramiko --name MutagenControl --distpath dist-platform app.py
+      - name: Patch macOS Info.plist metadata
+        if: runner.os == 'macOS'
+        run: python scripts/ci/patch_macos_plist.py dist-platform/MutagenControl.app/Contents/Info.plist "$MUTAUI_VERSION"
+      - name: Audit packaged native libraries
+        run: python scripts/ci/audit_native_libraries.py dist-platform
       - name: Prepare package metadata directory
         run: python -c "from pathlib import Path; Path('dist').mkdir(exist_ok=True)"
       - name: Generate Windows package SBOM
@@ -147,7 +157,7 @@ jobs:
         with:
           path: dist-platform/MutagenControl
           format: cyclonedx-json
-          output-file: dist/MutagenControl-9.1.0-windows-x64.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.MUTAUI_VERSION }}-windows-x64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Generate macOS package SBOM
@@ -156,7 +166,7 @@ jobs:
         with:
           path: dist-platform/MutagenControl.app
           format: cyclonedx-json
-          output-file: dist/MutagenControl-9.1.0-macos-${{ runner.arch }}.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.MUTAUI_VERSION }}-macos-${{ runner.arch }}.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Verify packaged demo on Windows
@@ -173,23 +183,21 @@ jobs:
         run: python scripts/run_self_test.py dist-platform/MutagenControl/MutagenControl
       - name: Build Linux AppImage and deb packages
         if: runner.os == 'Linux'
-        env:
-          MUTAUI_VERSION: 9.1.0
         run: bash packaging/linux/build-packages.sh dist-platform/MutagenControl dist
       - name: Generate Linux package SBOM
         if: runner.os == 'Linux'
         uses: anchore/sbom-action@v0.24.3
         with:
-          path: dist
+          path: dist-platform/MutagenControl
           format: cyclonedx-json
-          output-file: dist/MutagenControl-9.1.0-linux-amd64.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.MUTAUI_VERSION }}-linux-amd64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Verify Linux packages
         if: runner.os == 'Linux'
         run: |
-          APPIMAGE_EXTRACT_AND_RUN=1 dist/MutagenControl-9.1.0-linux-x86_64.AppImage --self-test
-          sudo apt-get install -y ./dist/MutagenControl-9.1.0-linux-amd64.deb
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/MutagenControl-${MUTAUI_VERSION}-linux-x86_64.AppImage --self-test
+          sudo apt-get install -y ./dist/MutagenControl-${MUTAUI_VERSION}-linux-amd64.deb
           python scripts/run_self_test.py /usr/bin/mutagen-control
       - name: Package macOS disk image
         if: runner.os == 'macOS'
@@ -200,7 +208,7 @@ jobs:
           ditto dist-platform/MutagenControl.app dist/dmg-root/MutagenControl.app
           ln -s /Applications dist/dmg-root/Applications
           for attempt in 1 2 3; do
-            if hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-9.1.0-macos-${arch}.dmg"; then
+            if hdiutil create -volname "Mutagen Control" -srcfolder dist/dmg-root -ov -format UDZO "dist/MutagenControl-${MUTAUI_VERSION}-macos-${arch}.dmg"; then
               break
             fi
             echo "hdiutil create attempt $attempt failed, retrying in 3 seconds..."
@@ -213,7 +221,7 @@ jobs:
         run: |
           arch="$(uname -m)"
           mkdir -p "$RUNNER_TEMP/mutaui-dmg"
-          hdiutil attach "dist/MutagenControl-9.1.0-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$RUNNER_TEMP/mutaui-dmg"
+          hdiutil attach "dist/MutagenControl-${MUTAUI_VERSION}-macos-${arch}.dmg" -nobrowse -noverify -mountpoint "$RUNNER_TEMP/mutaui-dmg"
           python scripts/run_self_test.py "$RUNNER_TEMP/mutaui-dmg/MutagenControl.app/Contents/MacOS/MutagenControl"
           hdiutil detach "$RUNNER_TEMP/mutaui-dmg" -force || hdiutil detach "$RUNNER_TEMP/mutaui-dmg" || true
       - name: Write package checksums
@@ -259,7 +267,7 @@ jobs:
         with:
           name: mutaui-macos-dmg-${{ matrix.os }}
           path: |
-            dist/MutagenControl-9.1.0-macos-*.dmg
+            dist/MutagenControl-*-macos-*.dmg
             dist/*.sbom.cdx.json
             dist/SHA256SUMS.txt
           if-no-files-found: error

@@ -173,6 +173,15 @@ def _write_exclusive(path: Path, contents: bytes, mode: int) -> None:
         raise
 
 
+def is_transient_extraction_path(path: Path | str) -> bool:
+    """Check if the path is located in a transient AppImage or PyInstaller extraction directory."""
+    str_path = str(path)
+    return any(
+        token in str_path
+        for token in ("/tmp/", "/temp/", "/var/tmp/", ".mount_", "appimage_extracted")
+    )
+
+
 def install_linux_file_manager_integration(
     executable: Path | str,
     *,
@@ -182,6 +191,15 @@ def install_linux_file_manager_integration(
     """Install Nautilus and Dolphin hooks in the current user's data directory."""
     _assert_linux(platform_name)
     binary = Path(executable).expanduser()
+    if is_transient_extraction_path(binary):
+        appimage_path = os.environ.get("APPIMAGE", "").strip()
+        if appimage_path:
+            binary = Path(appimage_path).expanduser()
+        else:
+            raise IntegrationError(
+                f"Refusing to register transient extraction path: {binary}. "
+                "Set APPIMAGE environment variable to your permanent AppImage file path."
+            )
     if not binary.is_absolute() or not binary.is_file() or binary.is_symlink():
         raise IntegrationError("Install requires an existing absolute packaged executable.")
     root = _data_home(data_home)
@@ -192,11 +210,17 @@ def install_linux_file_manager_integration(
     if manifest_path.exists():
         manifest = _load_manifest(manifest_path)
         _verify_owned_files(root, manifest)
-        if manifest.get("executable") != str(binary):
-            raise IntegrationError(
-                "Integration is installed for a different executable; remove it before reinstalling."
-            )
-        return "already_installed"
+        old_exe_str = str(manifest.get("executable", ""))
+        if old_exe_str != str(binary):
+            old_binary = Path(old_exe_str)
+            if not old_binary.exists() or is_transient_extraction_path(old_binary):
+                remove_linux_file_manager_integration(data_home=root, platform_name=platform_name)
+            else:
+                raise IntegrationError(
+                    "Integration is installed for a different executable; remove it before reinstalling."
+                )
+        else:
+            return "already_installed"
 
     if any(path.exists() for path in (*destinations.values(), manifest_path)):
         raise IntegrationError("Integration conflict: refusing to overwrite an existing file.")

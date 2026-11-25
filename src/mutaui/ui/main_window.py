@@ -42,6 +42,7 @@ from insights import AlertEngine
 from log_stream import FileTail, TrackedLogLines
 from monitoring import ForwardTrafficMeter, HistoryStore
 from mutagen_client import MutagenClient, ProcessSampler, Snapshot, example_snapshot
+from mutaui import __version__
 from mutaui.services.action_planner import ActionPlanner
 from mutaui.services.health_tracker import HealthTracker
 from mutaui.services.session_notification_gate import SessionNotificationGate
@@ -79,7 +80,6 @@ from mutaui.ui.preferences import (
 from mutaui.ui.preferences_controller import PreferencesController
 from mutaui.ui.styles import CSS
 from mutaui.ui.widgets.basic import button, label
-from mutaui.ui.worker import Worker
 from performance import PollBackoff, RefreshGate
 from settings import load_settings
 from sync_profiles import AdaptivePolling
@@ -194,7 +194,10 @@ class MainWindow(
         self.current_kind = "sync"
         self.current_id = ""
         self._allow_exit = False
-        self.workers: set[Worker] = set()
+        self.workers: set[Any] = set()
+        self._worker_dispatcher = None
+        self._worker_dispatcher_connection = None
+        self._worker_callbacks: dict[int, tuple[Any, Any, Any]] = {}
         self._shutdown_pending = False
         self.pool = QThreadPool.globalInstance()
         self.pool.setMaxThreadCount(4)
@@ -219,8 +222,8 @@ class MainWindow(
         self.ui_mode = "basic"
         self.ui_language = self.conf.get("language", "en")
         set_active_language(self.ui_language)
-        set_localized_title(self, "Mutagen Control 8.2 · Server Manager")
-        self.setMinimumSize(940, 650)
+        set_localized_title(self, f"Mutagen Control {__version__} · Server Manager")
+        self.setMinimumSize(720, 520)
         self.resize(1480, 940)
         self.setStyleSheet(CSS)
         self.setWindowIcon(self.make_icon())
@@ -272,8 +275,13 @@ class MainWindow(
         # Do not wake up the UI every 900 ms until a log file is selected.
         QTimer.singleShot(200, self._start_initial_refresh)
         QTimer.singleShot(300, self.refresh_resources)
+        has_existing_profile = bool(self.conf.get("binary") or self.conf.get("mutagen_path"))
         if not demo and not self.conf.get("onboarding_completed", False):
-            QTimer.singleShot(500, self.open_onboarding)
+            if has_existing_profile:
+                # Existing valid profile from earlier version: mark completed to avoid repeated popups on upgrade (M92)
+                self.conf["onboarding_completed"] = True
+            else:
+                QTimer.singleShot(500, self.open_onboarding)
         QTimer.singleShot(1500, self.check_for_release_update_on_startup)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
@@ -424,6 +432,7 @@ class MainWindow(
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
         sidebar.setFixedWidth(251)
+        self.sidebar = sidebar
         sidelay = QVBoxLayout(sidebar)
         sidelay.setContentsMargins(18, 24, 18, 18)
         sidelay.setSpacing(7)
@@ -494,7 +503,7 @@ class MainWindow(
         # Footer row: version on left, keyboard shortcut hint on right
         footer_row = QHBoxLayout()
         footer_row.setSpacing(4)
-        footer_row.addWidget(label("v8.2", muted=True, size=10))
+        footer_row.addWidget(label(f"v{__version__}", muted=True, size=10))
         footer_row.addStretch()
         nav_hint = label("Ctrl+K  navigation", muted=True, size=10)
         set_localized_tooltip(nav_hint, "Ctrl+K — quick navigation between pages")
@@ -567,9 +576,21 @@ class MainWindow(
         outer.addWidget(content, 1)
         self.set_page(0)
 
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "sidebar"):
+            w = event.size().width() if hasattr(event, "size") else self.width()
+            self.sidebar.setFixedWidth(190 if w < 900 else 251)
+
+    def closeEvent(self, event: Any) -> None:
+        TrayMixin.closeEvent(self, event)
+
     def set_page(self, index: int) -> None:
         route = PAGE_ROUTES[index]
         self.pages.setCurrentIndex(index)
+        # Context retention (M43): ensure current route button is visible in nav even if in basic mode
+        if hasattr(self, "nav") and index < len(self.nav):
+            self.nav[index].setVisible(True)
         self.page_name.setText(
             translate_route(route.route_id, "title", self.ui_language, route.title)
         )

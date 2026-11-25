@@ -27,7 +27,6 @@ from mutaui.ui.localization import (
     set_localized_title,
 )
 from mutaui.ui.onboarding import (
-    CLIDiscovery,
     host_architecture,
     inspect_cli,
     run_isolated_local_sync_test,
@@ -44,6 +43,7 @@ from mutaui.ui.widgets.basic import (
 class OnboardingMixin:
     onboarding_wizard: QWizard | None = None
     _release_check_result: UpdateCheckResult | None = None
+    _onboarding_check_seq: int = 0
 
     def open_onboarding(self: Any) -> None:
         if self.onboarding_wizard is not None:
@@ -110,10 +110,34 @@ class OnboardingMixin:
         self.onboarding_test_status = localized_label("Mutagen CLI is ready.")
         self.onboarding_test_status.setWordWrap(True)
         daemon_layout.addWidget(self.onboarding_test_status)
+        start_daemon_btn = localized_button("Start Mutagen daemon")
+        start_daemon_btn.clicked.connect(self.start_onboarding_daemon)
+        daemon_layout.addWidget(start_daemon_btn)
         wizard.addPage(daemon_page)
 
         wizard.accepted.connect(self.complete_onboarding)
         wizard.open()
+
+    def start_onboarding_daemon(self: Any) -> None:
+        client = self._onboarding_pending_client or self.client
+        if not client.binary:
+            set_localized_text(
+                self.onboarding_test_status,
+                "Select or install the Mutagen CLI before starting the daemon.",
+            )
+            return
+        set_localized_text(self.onboarding_test_status, "Starting Mutagen daemon…")
+        self.submit(
+            lambda: client.command(["daemon", "start"]),
+            lambda out: set_localized_text(
+                self.onboarding_test_status, "Mutagen daemon started successfully."
+            ),
+            on_error=lambda err: self.onboarding_test_status.setText(
+                translate_text("Could not start daemon: {message}", active_language()).format(
+                    message=err
+                )
+            ),
+        )
 
     def open_mutagen_install_guide(self: Any) -> None:
         QDesktopServices.openUrl(QUrl("https://mutagen.io/documentation/introduction/installation"))
@@ -133,9 +157,11 @@ class OnboardingMixin:
                 self.onboarding_cli_status, "That file is not an available Mutagen executable."
             )
             return
+        self._onboarding_check_seq = getattr(self, "_onboarding_check_seq", 0) + 1
         self._onboarding_pending_client = candidate
         self.onboarding_cli_status.setText(
-            f"Selected CLI: {candidate.binary}. Choose Check detected CLI to read its version and capabilities."
+            f"Selected CLI: {candidate.binary} ({translate_text('Unverified', active_language())}). "
+            f"{translate_text('Choose Check detected CLI to read its version and capabilities.', active_language())}"
         )
 
     def check_onboarding_cli(self: Any) -> None:
@@ -149,9 +175,21 @@ class OnboardingMixin:
         set_localized_text(
             self.onboarding_cli_status, "Checking CLI version and command capabilities…"
         )
-        self.submit(lambda: inspect_cli(client), self.show_onboarding_cli_result)
+        self._onboarding_check_seq = getattr(self, "_onboarding_check_seq", 0) + 1
+        seq = self._onboarding_check_seq
+        target_binary = client.binary
+        self.submit(
+            lambda: (seq, target_binary, inspect_cli(client)), self.show_onboarding_cli_result
+        )
 
-    def show_onboarding_cli_result(self: Any, result: CLIDiscovery) -> None:
+    def show_onboarding_cli_result(self: Any, result_payload: Any) -> None:
+        if isinstance(result_payload, tuple) and len(result_payload) == 3:
+            seq, target_binary, result = result_payload
+            current_target = (self._onboarding_pending_client or self.client).binary
+            if seq != getattr(self, "_onboarding_check_seq", 0) or target_binary != current_target:
+                return  # Discard stale check result for non-matching or superseded selection
+        else:
+            result = result_payload
         capabilities = ", ".join(result.capabilities) or "no session commands confirmed"
         binary_architecture = ", ".join(result.architectures) or "Unknown"
         detail = (
@@ -185,18 +223,15 @@ class OnboardingMixin:
         )
 
     def complete_onboarding(self: Any) -> None:
-        previous_update_preference = bool(self.conf.get("check_updates_on_startup", False))
-        if self._onboarding_pending_client is not None:
-            self.client = self._onboarding_pending_client
-            self.conf["binary"] = self.client.binary
-            if hasattr(self, "binary_edit"):
-                self.binary_edit.setText(self.client.binary)
-        self.conf["onboarding_completed"] = True
+        staged_conf = dict(self.conf)
+        staged_conf["onboarding_completed"] = True
         update_check = getattr(self, "onboarding_update_check", None)
         if update_check is not None:
-            self.conf["check_updates_on_startup"] = update_check.isChecked()
+            staged_conf["check_updates_on_startup"] = update_check.isChecked()
+        if self._onboarding_pending_client is not None:
+            staged_conf["binary"] = self._onboarding_pending_client.binary
         try:
-            write_settings(self.conf)
+            write_settings(staged_conf)
         except OSError as exc:
             self.statusBar().showMessage(
                 translate_text(
@@ -204,8 +239,14 @@ class OnboardingMixin:
                 ).format(error=exc),
                 10000,
             )
-            self.conf["onboarding_completed"] = False
-            self.conf["check_updates_on_startup"] = previous_update_preference
+            return
+        # Disk write succeeded: safely commit in-memory changes
+        self.conf.clear()
+        self.conf.update(staged_conf)
+        if self._onboarding_pending_client is not None:
+            self.client = self._onboarding_pending_client
+            if hasattr(self, "binary_edit"):
+                self.binary_edit.setText(self.client.binary)
 
     def check_for_release_update_on_startup(self: Any) -> None:
         if (
@@ -293,4 +334,9 @@ class OnboardingMixin:
             open_button.setVisible(bool(result and result.available))
 
     def open_release_page(self: Any) -> None:
-        QDesktopServices.openUrl(QUrl(RELEASES_URL))
+        target_url = (
+            self._release_check_result.release_url
+            if self._release_check_result and self._release_check_result.release_url
+            else RELEASES_URL
+        )
+        QDesktopServices.openUrl(QUrl(target_url))

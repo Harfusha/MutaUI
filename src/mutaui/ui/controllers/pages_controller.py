@@ -144,6 +144,13 @@ class PagesMixin:
             self.metric_widgets[key] = val
             metrics.addWidget(f, 1)
         l.addLayout(metrics)
+        self.overview_scope_label = label(
+            "Scope · checking sync and forwarding freshness…",
+            muted=True,
+            size=11,
+        )
+        self.overview_scope_label.setWordWrap(True)
+        l.addWidget(self.overview_scope_label)
         graphs = QHBoxLayout()
         graphs.setSpacing(14)
         cpu_card, self.cpu_chart, self.cpu_value = self.graph_card("CPU", "%", BLUE)
@@ -203,7 +210,8 @@ class PagesMixin:
             "errors": "Issues",
         }
         state_sets = {"running": {"active", "busy"}, "paused": {"paused"}, "errors": {"error"}}
-        menu = QMenu(self)
+        menu_cls = getattr(sys.modules.get("app"), "QMenu", QMenu)
+        menu = menu_cls(self)
         for kind, title in (("sync", "Sync"), ("forward", "Forwarding")):
             sessions = sessions_by_kind[kind]
             wanted = state_sets.get(metric_key)
@@ -361,11 +369,11 @@ class PagesMixin:
             forwarding_help.setWordWrap(True)
             tl.addWidget(forwarding_help)
         bulk_row = QHBoxLayout()
+        bulk_row.addWidget(label("Batch operations:", muted=True, size=11))
         if kind == "sync":
             sync_now_btn = button(
                 "↻ Sync now · all",
                 partial(self.bulk_action, "sync", "flush", "all"),
-                kind="primary",
             )
             set_localized_tooltip(
                 sync_now_btn, "Starts a sync cycle for all active (unpaused) sessions"
@@ -656,11 +664,16 @@ class PagesMixin:
         export_logs_btn = button("Save .txt", self.export_logs)
         set_localized_tooltip(export_logs_btn, "Save displayed entries to a text file")
         row.addWidget(export_logs_btn)
-        clear_logs_btn = button("Clear", self.clear_logs)
+        clear_logs_btn = button("Clear View", self.clear_logs)
         set_localized_tooltip(
             clear_logs_btn, "Clears entries from this view (does not delete database history)"
         )
         row.addWidget(clear_logs_btn)
+        purge_logs_btn = button("Purge DB...", self.purge_database_history)
+        set_localized_tooltip(
+            purge_logs_btn, "Permanently delete event history from the SQLite database"
+        )
+        row.addWidget(purge_logs_btn)
         c.addLayout(row)
         self.log_view = QPlainTextEdit()
         self.log_view.setReadOnly(True)
@@ -743,7 +756,7 @@ class PagesMixin:
         )
         if not filename:
             return
-        self.tail_file = FileTail(filename)
+        self.tail_file = FileTail(filename, annotate_gaps=True)
         self.tail_timer.start(900)
         self.tail_lines.clear()
         self.tail_info.setText("Monitoring read-only: " + filename)
@@ -883,8 +896,21 @@ class PagesMixin:
         )
         r.addWidget(self.start_button)
         r.addWidget(self.stop_button)
+        self.daemon_diagnostics_button = button("Open Diagnostics →", partial(self.set_page, 7))
+        set_localized_tooltip(
+            self.daemon_diagnostics_button,
+            "Open Diagnostics to investigate CLI errors, timeouts, or unknown daemon status",
+        )
+        r.addWidget(self.daemon_diagnostics_button)
         r.addStretch()
         al.addLayout(r)
+        self.daemon_action_hint = label(
+            "Checking Mutagen daemon status before enabling controls.",
+            muted=True,
+            size=11,
+        )
+        self.daemon_action_hint.setWordWrap(True)
+        al.addWidget(self.daemon_action_hint)
         warning_lbl = label(
             "⚠  Stopping the daemon interrupts all its sync and forwarding sessions until it is restarted.",
             muted=True,
@@ -904,23 +930,30 @@ class PagesMixin:
         autostart_descriptions = {
             "win32": (
                 "Native daemon registration through the Mutagen CLI (HKCU Run). "
-                "After sign-in, only unpaused sessions resume; paused sessions remain paused."
+                "After sign-in, only unpaused sessions resume; paused sessions remain paused.",
+                "Nativní registrace služby přes Mutagen CLI (HKCU Run). "
+                "Po přihlášení se obnoví jen nepozastavené relace; pozastavené zůstanou pozastavené.",
             ),
             "darwin": (
                 "On macOS, Mutagen daemon can be launched via launchd user agents "
-                "(~/Library/LaunchAgents). Mutagen CLI's built-in register command is Windows-only."
+                "(~/Library/LaunchAgents). Mutagen CLI's built-in register command is Windows-only.",
+                "Na macOS lze službu Mutagen spouštět pomocí uživatelských agentů launchd "
+                "(~/Library/LaunchAgents). Vestavěný příkaz register v CLI je jen pro Windows.",
             ),
         }
-        reg.addWidget(
-            label(
-                autostart_descriptions.get(
-                    sys.platform,
-                    "On Linux, Mutagen daemon can be managed via systemd user services "
-                    "or XDG autostart. Mutagen CLI's built-in register command is Windows-only.",
-                ),
-                muted=True,
-            )
+        autostart_en, autostart_cs = autostart_descriptions.get(
+            sys.platform,
+            (
+                "On Linux, Mutagen daemon can be managed via systemd user services "
+                "or XDG autostart. Mutagen CLI's built-in register command is Windows-only.",
+                "Na Linuxu lze službu Mutagen spravovat pomocí systemd --user nebo XDG autostart. "
+                "Vestavěný příkaz register v CLI je jen pro Windows.",
+            ),
         )
+        autostart_note = label(autostart_en, muted=True)
+        autostart_note.setWordWrap(True)
+        set_localized_text(autostart_note, autostart_en, czech=autostart_cs)
+        reg.addWidget(autostart_note)
         row = QHBoxLayout()
         reg_btn = button("Register", partial(self.daemon_action, "register"), kind="primary")
         reg_tooltips = {
@@ -1029,13 +1062,15 @@ class PagesMixin:
         outer.addWidget(status)
         health, hl = card()
         hl.addWidget(label("Session Health and Recovery Policy", size=17, bold=True))
-        hl.addWidget(
-            label(
-                "Monitor-only is the default. Assisted mode can recommend a manual step. "
-                "Auto-safe currently has no connected recovery action in this release slice.",
-                muted=True,
-            )
+        health_desc = label(
+            "Monitor-only is the default. Assisted mode recommends verified manual steps. "
+            "Auto-safe triggers non-invasive diagnostic status checks (refresh_status) when errors persist, "
+            "within strict cooldown and attempt limits. Auto-safe never modifies files or sessions; "
+            "all session changes require human confirmation.",
+            muted=True,
         )
+        health_desc.setWordWrap(True)
+        hl.addWidget(health_desc)
         health_form = QFormLayout()
         health_form.setVerticalSpacing(12)
         self.health_mode = QComboBox()

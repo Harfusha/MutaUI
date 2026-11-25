@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
@@ -215,6 +215,14 @@ class HealthTracker:
             self._clear_incident(state)
 
         return self._snapshot(observation.session_identifier, state, now)
+
+    def prune(self, active_identifiers: Sequence[str] | set[str]) -> int:
+        """Remove tracked state for sessions that have terminated (M57)."""
+        active = set(active_identifiers)
+        to_remove = [sid for sid in self._states if sid not in active]
+        for sid in to_remove:
+            del self._states[sid]
+        return len(to_remove)
 
     def recovery_gate(
         self,

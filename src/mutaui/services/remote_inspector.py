@@ -6,7 +6,6 @@ import base64
 import contextlib
 import hashlib
 import importlib
-import json
 import math
 import os
 import posixpath
@@ -95,14 +94,13 @@ class RemoteInspectionArtifact:
         self.close()
 
 
+from mutaui.services.audit_retention import AuditRetentionError, safe_append_audit_record
+
+
 def _append_audit(path: Path, record: dict[str, object]) -> None:
-    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
     try:
-        with path.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-    except OSError as exc:
+        safe_append_audit_record(path, record)
+    except (AuditRetentionError, OSError) as exc:
         raise RemoteInspectionError("Remote inspection audit could not be persisted.") from exc
 
 

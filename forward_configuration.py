@@ -12,6 +12,16 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class ForwardListenerClassification:
+    scope: str
+    is_loopback: bool
+    host: str
+    port: int | None
+    description: str
+    warning_required: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ForwardConfigField:
     key: str
     path: tuple[str, ...]
@@ -132,6 +142,105 @@ def local_unix_socket_entry_type(endpoint: str) -> str | None:
     return "special filesystem entry"
 
 
+def classify_forward_listener(endpoint: str) -> ForwardListenerClassification:
+    """Classify forwarding listener scope: loopback, wildcard, specific_interface, unix, pipe, remote."""
+    value = endpoint.strip()
+    if not value:
+        return ForwardListenerClassification(
+            scope="empty",
+            is_loopback=False,
+            host="",
+            port=None,
+            description="Empty endpoint address",
+            warning_required=False,
+        )
+    if "@" in value or value.startswith("docker://"):
+        return ForwardListenerClassification(
+            scope="remote",
+            is_loopback=False,
+            host="",
+            port=None,
+            description="Remote listener endpoint (unverified network scope)",
+            warning_required=True,
+        )
+    if value.lower().startswith("unix:") or ":unix:" in value.lower():
+        return ForwardListenerClassification(
+            scope="unix",
+            is_loopback=True,
+            host="",
+            port=None,
+            description="Local Unix domain socket (IPC)",
+            warning_required=False,
+        )
+    if value.lower().startswith("npipe:") or ":npipe:" in value.lower():
+        return ForwardListenerClassification(
+            scope="named_pipe",
+            is_loopback=True,
+            host="",
+            port=None,
+            description="Local Windows named pipe (IPC)",
+            warning_required=False,
+        )
+
+    tcp_prefixes = ("tcp4:", "tcp6:", "tcp:")
+    for prefix in tcp_prefixes:
+        if value.lower().startswith(prefix):
+            address = value[len(prefix) :]
+            break
+    else:
+        return ForwardListenerClassification(
+            scope="other",
+            is_loopback=False,
+            host=value,
+            port=None,
+            description=f"Non-standard listener endpoint ({value})",
+            warning_required=True,
+        )
+
+    if ":" not in address:
+        host = address
+        port = None
+    else:
+        host, port_str = address.rsplit(":", 1)
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = None
+
+    normalized_host = host.strip().lower()
+    if normalized_host.startswith("[") and normalized_host.endswith("]"):
+        normalized_host = normalized_host[1:-1].strip().lower()
+
+    if normalized_host in {"127.0.0.1", "::1", "localhost"} or normalized_host.startswith("127."):
+        return ForwardListenerClassification(
+            scope="loopback",
+            is_loopback=True,
+            host=host,
+            port=port,
+            description="Local loopback interface only (127.0.0.1 / ::1 / localhost)",
+            warning_required=False,
+        )
+
+    if normalized_host in {"0.0.0.0", "::", ":", "*", ""}:
+        return ForwardListenerClassification(
+            scope="wildcard",
+            is_loopback=False,
+            host=host or "0.0.0.0",
+            port=port,
+            description="All available network interfaces (0.0.0.0 / ::)",
+            warning_required=True,
+        )
+
+    return ForwardListenerClassification(
+        scope="specific_interface",
+        is_loopback=False,
+        host=host,
+        port=port,
+        description=f"Specific non-loopback network interface ({host})",
+        warning_required=True,
+    )
+
+
 def render_forward_reference() -> str:
     lines = [
         "## Native forwarding configuration proposals",
@@ -144,9 +253,11 @@ def render_forward_reference() -> str:
     ]
     for field in FORWARD_CONFIG_FIELDS:
         path = ".".join(field.path)
+        impact = field.impact.replace("|", r"\|")
+        help_short = field.help_short.replace("|", r"\|")
         lines.append(
             f"| `{field.key}` | `{path}` | {field.recommended} | {field.support_status} | "
-            f"{field.impact.replace('|', r'\\|')} | {field.help_short.replace('|', r'\\|')} |"
+            f"{impact} | {help_short} |"
         )
     return "\n".join(lines) + "\n"
 

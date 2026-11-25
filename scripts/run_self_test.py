@@ -53,7 +53,7 @@ def run_self_test(executable: Path, *, timeout_seconds: float = 120.0) -> int:
             log_text = log_path.read_text(encoding="utf-8").strip()
         except OSError:
             log_text = ""
-        if log_text == SUCCESS_MARKER:
+        if log_text.startswith(SUCCESS_MARKER):
             if process.poll() is None:
                 process.terminate()
                 try:

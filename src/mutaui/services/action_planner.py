@@ -317,12 +317,26 @@ class ActionPlanner:
         for plan in tuple(self._plans.values()):
             if plan.state in ("planned", "consented") and now >= plan.expires_at:
                 self._close(plan, "stale", "plan expired", now)
+        # Prune closed plans to keep ActionPlanner memory bounded (M57)
+        self._prune_closed_plans()
+
+    def _prune_closed_plans(self) -> None:
+        closed_ids = [
+            pid
+            for pid, p in self._plans.items()
+            if p.state in ("finished", "cancelled", "stale", "rejected")
+        ]
+        if len(closed_ids) > self._audit_limit:
+            overflow = len(closed_ids) - self._audit_limit
+            for pid in closed_ids[:overflow]:
+                del self._plans[pid]
 
     def _close(self, plan: ActionPlan, state: PlanState, reason: str, now: float) -> ActionPlan:
         closed = replace(plan, state=state)
         self._plans[plan.plan_id] = closed
         self._record(closed, state, reason, now)
         self._release(closed)
+        self._prune_closed_plans()
         return closed
 
     def _release(self, plan: ActionPlan) -> None:

@@ -1,4 +1,25 @@
-# Mutagen Control v9.1.1 — Onboarding readability
+# Mutagen Control v9.2.0 — Comprehensive Audit Remediation Release
+
+## Audit Remediation and Stability
+
+- **Worker Lifecycle and Resource Management (M90):** Eliminated callback reference cycles between Shiboken6 `QRunnable` workers and listener signals; constant handle/memory footprint verified over 5,000+ background tasks.
+- **Packaging and Distribution Truthfulness (Batch 2F):**
+  - Accurately disclosed Authenticode (unsigned) and Gatekeeper (ad-hoc signed, unnotarized) status across release artifacts and documentation (`M48`, `M86`).
+  - Unified application versioning across window titles, footers, settings bundle exports, and macOS `Info.plist` metadata (`M49`, `M89`).
+  - Established explicit Linux baseline (`GLIBC >= 2.38`) in deb package metadata and compatibility documentation (`M76`, `M77`).
+  - Fixed Windows release workflow to sign inner application binaries before Inno Setup packaging, and pinned Inno Setup to version 6.3.3 (`M59`, `M60`, `M75`).
+  - Resolved dynamic candidate versions in CI/release workflows instead of hardcoded strings or bare branch names (`M61`, `M62`).
+  - Enhanced Linux SBOM generation by scanning unpacked native payload rather than archive containers (`M63`).
+  - Ensured Linux desktop file-manager integration uses persistent `$APPIMAGE` paths rather than transient PyInstaller extraction mounts (`M64`).
+  - Added repository line-ending normalization via `.gitattributes` (`M73`).
+  - Documented isolated per-user AppImage extraction caches preventing multi-user permission collisions (`M91`).
+- **Core Truthfulness and Concurrency (Batches 2A-2E):**
+  - Split synchronization and forward query pipelines to prevent transient status clobbering (`M04`–`M06`, `M84`, `M85`).
+  - Added pre-check selection limits, explicit pause verification, and deferred Auto-safe config recovery (`M07`, `M08`, `M16`, `M18`, `M54`).
+  - Prevented profile configuration bleed and anchored ignore patterns (`M09`, `M10`, `M12`).
+  - Decoupled UI log clearing from durable SQLite event history (`M23`) and added atomic config backups (`M29`–`M31`).
+  - Offloaded long-running SSH checks and project commands to background threads (`M34`).
+  - Enforced safe diagnostic exports by default (`M38`) and symlink-protected audit log rotation (`M39`).
 
 ## Fixes
 

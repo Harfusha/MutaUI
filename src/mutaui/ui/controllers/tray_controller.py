@@ -186,6 +186,8 @@ class TrayMixin:
                 self.recorder.close(timeout=8)
             with suppress(Exception):
                 self.history.close()
+            if hasattr(self, "_cleanup_worker_dispatcher"):
+                self._cleanup_worker_dispatcher()
             self._shutdown_pending = False
             event.accept()
             app_inst = QApplication.instance()

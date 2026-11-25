@@ -40,11 +40,81 @@ class SessionProvenance:
     created_at: str
 
 
+@dataclass(frozen=True, slots=True)
+class ProvenanceCapacity:
+    record_count: int
+    max_records: int
+    file_bytes: int
+    max_store_bytes: int
+    is_near_limit: bool
+    is_full: bool
+
+
 class SessionProvenanceStore:
     """Atomic, non-portable store keyed only by native session identifier."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+
+    def capacity(self) -> ProvenanceCapacity:
+        try:
+            records = self._read()
+            record_count = len(records)
+            file_bytes = self.path.stat().st_size if self.path.exists() else 0
+        except Exception:
+            record_count = 0
+            file_bytes = 0
+        is_near_limit = record_count >= int(0.9 * MAX_RECORDS) or file_bytes >= int(
+            0.9 * MAX_STORE_BYTES
+        )
+        is_full = record_count >= MAX_RECORDS or file_bytes >= MAX_STORE_BYTES
+        return ProvenanceCapacity(
+            record_count=record_count,
+            max_records=MAX_RECORDS,
+            file_bytes=file_bytes,
+            max_store_bytes=MAX_STORE_BYTES,
+            is_near_limit=is_near_limit,
+            is_full=is_full,
+        )
+
+    def archive_inactive_records(
+        self,
+        active_session_ids: set[str] | list[str] | tuple[str, ...],
+        *,
+        archive_path: Path | None = None,
+    ) -> tuple[int, int]:
+        """Archive provenance records of sessions not in active_session_ids.
+
+        Returns (archived_count, remaining_count).
+        Active sessions are guaranteed to retain their provenance.
+        """
+        active_set = set(active_session_ids)
+        records = self._read()
+        inactive_records = {k: v for k, v in records.items() if k not in active_set}
+        retained_records = {k: v for k, v in records.items() if k in active_set}
+        if not inactive_records:
+            return 0, len(retained_records)
+
+        if archive_path is not None:
+            archive_path = Path(archive_path)
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_archive = archive_path.with_name(f".archive-{archive_path.name}.tmp")
+            try:
+                temp_archive.write_text(
+                    json.dumps(
+                        {"schema_version": SCHEMA_VERSION, "records": inactive_records},
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                temp_archive.replace(archive_path)
+            except OSError as exc:
+                temp_archive.unlink(missing_ok=True)
+                raise ProvenanceStoreError(f"Could not write provenance archive: {exc}") from exc
+
+        self._write(retained_records)
+        return len(inactive_records), len(retained_records)
 
     def get(self, session_identifier: str) -> SessionProvenance | None:
         records = self._read()
@@ -64,7 +134,9 @@ class SessionProvenanceStore:
                 raise ProvenanceStoreError("Creation provenance for this exact ID already exists.")
             return
         if len(records) >= MAX_RECORDS:
-            raise ProvenanceStoreError("Creation provenance store is full.")
+            raise ProvenanceStoreError(
+                "Creation provenance store is full (10,000 records). Archive inactive records to continue."
+            )
         created_at = datetime.now(UTC).isoformat(timespec="seconds")
         records[identifier] = {
             "create_arguments": list(argv),

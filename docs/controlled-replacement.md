@@ -37,3 +37,17 @@ SHA-256 manifest. Interactive GUI acceptance and other-platform CLI acceptance
 remain open. PR-028 provides the separate project-owned workflow.
 PR-030/031 and the G3 fault/platform gates remain open before conflict-file
 mutation is enabled. Cross-platform and real-CLI acceptance remain open.
+
+## Proposal and Configuration Lifecycle (M11)
+
+The configuration editor establishes three distinct lifecycle states:
+
+1. **Native Value (`nativní hodnota`)**: Read-only snapshot of current settings actively enforced by the local Mutagen daemon.
+2. **Saved Local Proposal Draft (`uložený místní návrh`)**: Stored in local application preferences (`session_prefs`). Saving drafts does not mutate running sessions or files.
+3. **Verified Applied (`ověřeně použito`)**: Attained only after explicit R2 review, preflight fingerprint validation, termination of the old exact session, creation of the new session, and post-check verification of native configuration.
+
+### Eligibility and Alternative Workflows
+
+- **Sessions without Provenance**: External sessions or sessions created outside MutaUI lack verified creation flags; controlled replacement is disabled and users are directed to native Mutagen CLI commands.
+- **Project-Owned Sessions**: Sessions labeled with `io.mutagen.project` must be reconfigured through their native project files (`mutagen.yml`/`mutagen.yaml`) in the project viewer.
+- **Failure Recovery**: On replacement failure, best-effort restoration replays the original command. The receipt explicitly distinguishes the original ID, replacement ID, and restored ID, preventing phantom duplicate tracking.

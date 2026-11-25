@@ -50,6 +50,7 @@ MODULES = (
     "src/mutaui/services/action_planner.py",
     "src/mutaui/services/reconfiguration.py",
     "src/mutaui/services/replacement.py",
+    "src/mutaui/services/snapshot_status.py",
     "src/mutaui/services/performance_advisor.py",
     "src/mutaui/ui/performance_tuning.py",
 )

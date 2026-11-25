@@ -1,11 +1,11 @@
 @echo off
 setlocal EnableExtensions
 cd /d "%~dp0"
-title Mutagen Control 8.2 - EXE builder
+title Mutagen Control 9.1 - EXE builder
 set "PYTHONUTF8=1"
 
 echo ========================================================
-echo   MUTAGEN CONTROL 8.2 - Standalone Windows EXE (one-file)
+echo   MUTAGEN CONTROL 9.1 - Standalone Windows EXE (one-file)
 echo ========================================================
 echo.
 echo NOTE: For the fastest application startup, use build_fast.cmd.
@@ -17,7 +17,7 @@ if not exist ".venv\Scripts\python.exe" (
   echo [1/5] Preparing local Python environment...
   where py >nul 2>nul
   if not errorlevel 1 (
-    py -3 -m venv .venv
+    py -3.12 -m venv .venv 2>nul || py -3 -m venv .venv
   ) else (
     python -m venv .venv
   )
@@ -25,7 +25,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo [2/5] Checking Python and dependencies...
-".venv\Scripts\python.exe" -c "import sys; assert (3,11)<=sys.version_info[:2]<(3,14), 'Use Python 3.11 through 3.13'; print(sys.version)"
+".venv\Scripts\python.exe" -c "import sys; assert sys.version_info[:2] == (3, 12), f'Python 3.12 required, found {sys.version}. Please use Python 3.12.'; print(f'Python {sys.version.split()[0]} OK')"
 if errorlevel 1 goto :error
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
 if errorlevel 1 goto :error

@@ -57,6 +57,10 @@ def window(tmp_path, monkeypatch, qapp):
     instance._allow_exit = True
     instance.close()
     instance.history.close()
+    if hasattr(instance, "cleanup_worker_dispatcher"):
+        instance.cleanup_worker_dispatcher()
+    instance.deleteLater()
+    qapp.processEvents()
 
 
 def test_quick_navigator_filters_words_and_selects_page(window):
@@ -4765,7 +4769,7 @@ def test_full_snapshot_export_requires_privacy_confirmation(window, monkeypatch,
     ("stage", "expected_error", "expected_version"),
     [
         ("missing_binary", "mutagen.exe is not configured. Open Settings.", ""),
-        ("sync_error", "sync unavailable", ""),
+        ("sync_error", "Sync: sync unavailable", "3.2.1"),
         ("forward_error", "Forwarding: forward unavailable", "3.2.1"),
         ("cached_version", "", "cached 3.2.1"),
         ("version_error", "", "cached 3.2.1"),
@@ -4818,6 +4822,9 @@ def test_refresh_builds_snapshot_for_cli_failures_and_version_cache(
     if stage == "forward_error":
         assert snapshot.daemon is True
         assert snapshot.sync == [{"identifier": "sync"}]
+    if stage == "sync_error":
+        assert snapshot.daemon is True
+        assert snapshot.forward == [{"identifier": "forward"}]
 
 
 def test_settings_recovery_warning_does_not_claim_safe_defaults(window, monkeypatch):

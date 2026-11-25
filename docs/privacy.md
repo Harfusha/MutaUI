@@ -18,12 +18,27 @@ The onboarding CLI version and help checks are read-only. Its optional sync test
 
 ## Export choices
 
-- **Safe diagnostics:** uses an allowlist. It excludes session identifiers and names, paths, hosts, authentication material, and raw errors.
-- **Full session snapshot:** can contain local paths, endpoints, session names, and daemon details. MutaUI previews it and asks for confirmation before saving.
+- **Safe diagnostics:** uses an allowlist. It excludes session identifiers and names, paths, hosts, authentication material, and raw errors. The UI "Copy diagnostics" feature defaults to this safe sanitized summary.
+- **Full session snapshot & diagnostics copy:** can contain local paths, endpoints, session names, binary locations, and daemon details. MutaUI previews it and asks for explicit confirmation before saving to disk or copying raw details to the clipboard.
 - **Session log snapshot:** event messages and monitored log lines are omitted by default. Selecting either raw-text option prompts for confirmation because logs may contain paths, hostnames, usernames, or credentials. The user selects a local destination.
 - **Portable profile bundle:** exports selected connection profiles, ignore presets, and safe preferences. It excludes the application binary, session notes, and history; import previews choices before writing local files.
 
 MutaUI does not automatically upload these exports. Review each preview and save only to a location you control. See [troubleshooting and diagnostic exports](troubleshooting/debugging.md) for the available support data.
+
+## Operational audit files and retention rules
+
+MutaUI writes append-only JSONL operational audit records for high-impact actions:
+
+- **Project action audits (`*.audit.jsonl`):** Records project action execution, preflight hashes, hook names, and post-check verification state.
+- **Project YAML edit audits (`*.audit.jsonl`):** Records in-place YAML project modifications and backup creation.
+- **Conflict inspection audits (`remote-inspection.audit.jsonl`):** Records SFTP connection attempts, target hashes, and host-key digests without logging private paths or credentials.
+- **Manual resolution manifests & audits:** Records candidate hashes and atomic file replacement manifests in dedicated backup directories (`mutaui-conflict-<hex>`).
+
+**Retention policy:**
+
+- Each operational audit file is capped at 5 MiB.
+- When reaching 5 MiB, the file is automatically rotated into up to 3 numbered backups (`.1`, `.2`, `.3`) with the oldest removed.
+- Clearing the UI log stream or metrics view does NOT purge operational audit files, ensuring auditability and rollback data remain available for recovery.
 
 ## Source references
 

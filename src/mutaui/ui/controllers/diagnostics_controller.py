@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -197,14 +198,19 @@ class DiagnosticsMixin:
                 resource_observed_at=self.snapshot.resource_observed_at,
             )
         )
-        TroubleshooterDialog(
+        dialog = TroubleshooterDialog(
             sessions=sessions,
             report=report,
             selected_identifier=session_id,
             on_refresh=self.refresh if hasattr(self, "refresh") else None,
             on_open_settings=self.edit_session if hasattr(self, "edit_session") else None,
             parent=self,
-        ).exec()
+        )
+        self._active_troubleshooter = dialog
+        try:
+            dialog.exec()
+        finally:
+            self._active_troubleshooter = None
 
     def update_diagnostics(self: Any, snap: Snapshot) -> None:
         summary = (
@@ -393,30 +399,38 @@ class DiagnosticsMixin:
             if health.recommend_manual_action:
                 notes.append("  Assisted recommendation is ready; no recovery action was executed.")
         if self.health_tracker.policy.mode == "auto_safe":
-            for session in sessions:
-                gate = self.health_tracker.recovery_gate(
+            eligible = [
+                session.identity.identifier
+                for session in sessions
+                if self.health_tracker.recovery_gate(
                     session.identity.identifier,
                     action="refresh_status",
                     now=health_now,
                     preconditions_stable=bool(snap.binary and snap.daemon),
-                )
-                if gate.allowed:
-                    try:
-                        self.health_tracker.record_recovery_attempt(
-                            session.identity.identifier,
-                            action="refresh_status",
-                            now=health_now,
-                            succeeded=True,
-                        )
-                        notes.append(
-                            f"  [AUTO-SAFE] Scoped status refresh recorded for {session.identity.identifier}"
-                        )
-                        if hasattr(self, "refresh") and not getattr(self, "_refreshing", False):
-                            self.refresh()
-                    except Exception as exc:
-                        notes.append(
-                            f"  [AUTO-SAFE] Recovery attempt failed for {session.identity.identifier}: {exc}"
-                        )
+                ).allowed
+            ]
+            if eligible:
+                if getattr(self, "pending_poll", False):
+                    notes.append(
+                        f"  [AUTO-SAFE] Status refresh coalesced with active poll for {len(eligible)} session(s)"
+                    )
+                elif getattr(self, "pending_action", False):
+                    notes.append(
+                        f"  [AUTO-SAFE] Status refresh deferred: user action pending for {len(eligible)} session(s)"
+                    )
+                else:
+                    self._pending_autosafe_sessions = list(eligible)
+                    notes.append(
+                        f"  [AUTO-SAFE] Scoped status refresh requested for {len(eligible)} session(s)"
+                    )
+                    if hasattr(self, "refresh") and not getattr(self, "_refreshing", False):
+                        self.refresh()
+        if (
+            hasattr(self, "_active_troubleshooter")
+            and self._active_troubleshooter is not None
+            and getattr(self._active_troubleshooter, "isVisible", lambda: False)()
+        ):
+            self._active_troubleshooter.update_diagnosis(sessions, report)
         notes.append(
             "Per-session finding counts: "
             + (", ".join(f"{name}={count}" for name, count in affected.items()) or "none")
@@ -434,17 +448,18 @@ class DiagnosticsMixin:
         self.diagnostics_view.setHtml("<br>".join(formatted_notes))
         if hasattr(self, "diag_problem_count"):
             if report.issue_count:
-                n = len(
-                    {
-                        issue.session_identifier
-                        for issue in report.issues
-                        if issue.session_identifier
-                    }
-                )
-                n += int(any(issue.session_identifier is None for issue in report.issues))
-                self.diag_problem_count.setText(
-                    f"⚠  {report.issue_count} findings · {n} affected session(s)"
-                )
+                session_ids = {
+                    issue.session_identifier for issue in report.issues if issue.session_identifier
+                }
+                session_count = len(session_ids)
+                global_count = sum(1 for issue in report.issues if not issue.session_identifier)
+                if session_count > 0 and global_count > 0:
+                    text = f"⚠  {report.issue_count} findings · {session_count} affected session(s) · {global_count} global"
+                elif session_count > 0:
+                    text = f"⚠  {report.issue_count} findings · {session_count} affected session(s)"
+                else:
+                    text = f"⚠  {report.issue_count} findings · {global_count} global finding(s)"
+                self.diag_problem_count.setText(text)
                 self.diag_problem_count.setStyleSheet(f"color:{RED};font-size:11px;")
             elif not report.authoritative:
                 set_localized_text(self.diag_problem_count, "?  snapshot unknown or stale")
@@ -604,11 +619,81 @@ class DiagnosticsMixin:
         except (OSError, sqlite3.Error) as exc:
             self.report_error(str(exc))
 
-    def copy_diagnostics(self: Any) -> None:
+    def copy_diagnostics(self: Any, *, safe: bool = True) -> None:
+        """Copy diagnostic summary to clipboard. Defaults to safe sanitized report without sensitive paths/hosts."""
+        if safe:
+            snap = getattr(self, "snapshot", None)
+            version = str(getattr(snap, "version", "") or "")
+            version_match = re.search(
+                r"(?:Mutagen version )?([0-9]+(?:\.[0-9A-Za-z-]+){1,4})", version
+            )
+            mutagen_ver = version_match.group(1) if version_match else "unknown"
+            daemon_online = "online" if getattr(snap, "daemon", False) else "offline"
+            sync_count = len(getattr(snap, "sync", [])) if snap else 0
+            forward_count = len(getattr(snap, "forward", [])) if snap else 0
+            procs = getattr(snap, "processes", 0) if snap else 0
+            cpu = getattr(snap, "cpu", 0.0) if snap else 0.0
+            memory = getattr(snap, "memory", 0) if snap else 0
+            registration = getattr(snap, "registration", "unknown") if snap else "unknown"
+            stale = "stale" if getattr(snap, "sessions_stale", False) else "current"
+
+            lines = [
+                "=== MutaUI Safe Diagnostic Summary (Sanitized) ===",
+                f"Application version: {getattr(self, 'application_version', APP_VERSION)}",
+                f"Mutagen version: {mutagen_ver} (binary path redacted)",
+                f"Daemon status: {daemon_online} (registration: {registration})",
+                f"System resource usage: {procs} processes | CPU: {cpu:.1f} % | RAM: {human_bytes(memory)}",
+                f"Session summary: {sync_count} sync sessions, {forward_count} forwarding sessions (data state: {stale})",
+                "Endpoints, session names, local paths, and private hostnames: [REDACTED FOR SAFE SHARING]",
+            ]
+            QApplication.clipboard().setText("\n".join(lines))
+            self.add_log("Safe diagnostics summary copied (paths and identities excluded)")
+        else:
+            self.copy_full_diagnostics()
+
+    def copy_full_diagnostics(self: Any) -> None:
+        """Copy full unredacted diagnostics to clipboard after explicit user confirmation."""
+        if (
+            QMessageBox.question(
+                self,
+                translate_text("Sensitive Diagnostics Details", active_language()),
+                translate_text(
+                    "Full diagnostics text contains local filesystem paths, binary locations, usernames, and error messages. "
+                    "Copy to clipboard only if sharing through a secure channel. Continue?",
+                    active_language(),
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
         QApplication.clipboard().setText(
             self.diag_summary.text() + "\n\n" + self.diagnostics_view.toPlainText()
         )
-        self.add_log("Diagnostics summary copied")
+        self.add_log("Full raw diagnostics copied (with operator consent)")
+
+    def export_safe_diagnostics(self: Any) -> None:
+        """Export sanitized diagnostic report allowlist as JSON."""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            translate_text("Export bezpečné diagnostiky", active_language()),
+            "mutagen-safe-diagnostics.json",
+            translate_text("JSON (*.json)", active_language()),
+        )
+        if not path:
+            return
+        report = safe_diagnostic_report(
+            self.snapshot,
+            application_version=getattr(self, "application_version", APP_VERSION),
+        )
+        try:
+            Path(path).write_text(
+                json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            self.add_log("Safe diagnostics export complete")
+        except OSError as exc:
+            self.report_error(str(exc))
 
     def export_snapshot(self: Any, *, snapshot_payload: dict[str, Any] | None = None) -> None:
         path, _ = QFileDialog.getSaveFileName(

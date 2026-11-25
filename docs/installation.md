@@ -4,7 +4,7 @@ MutaUI is a desktop frontend for the **Mutagen CLI**. It does not install Mutage
 
 ## Windows
 
-Download the Windows x64 installer or portable ZIP from the project’s GitHub Releases page. Check the release signature when present and verify the downloaded files against that release’s `SHA256SUMS.txt`.
+Download the Windows x64 installer or portable ZIP from the project’s GitHub Releases page. Note that community release binaries are distributed unsigned (`Authenticode NotSigned`) because the open-source project does not operate an enterprise code-signing certificate. When launching the installer or executable, Windows Defender SmartScreen will display an "Unknown Publisher" warning: click **More info** and then **Run anyway** to proceed. Always verify the downloaded files against that release’s `SHA256SUMS.txt` and GitHub build attestations.
 
 - The per-user installer defaults to `%LOCALAPPDATA%\Programs\Mutagen Control`; administrator rights are not required. Run a newer installer over the existing installation to upgrade. Settings and history remain in user data after uninstall.
 - For the portable build, extract the ZIP to a new folder and run `MutagenControl.exe`. Keep each release in its own folder; do not merge folders.
@@ -12,15 +12,24 @@ Download the Windows x64 installer or portable ZIP from the project’s GitHub R
 
 ## macOS
 
-Tagged releases provide a notarized DMG for Apple Silicon and Intel. Download it from GitHub Releases, open it, then drag `MutagenControl.app` onto the `Applications` shortcut in the DMG window. Install the Mutagen CLI separately; the official guide lists Homebrew and release-download options. With Homebrew, use `brew install mutagen-io/mutagen/mutagen`. In Terminal, run `mutagen version` before opening MutaUI.
+Tagged community releases provide disk images (DMG) for Apple Silicon (`arm64`) and Intel (`x86_64`). Community builds are ad-hoc signed and unnotarized because the project operates without an Apple Developer ID certificate. Gatekeeper will flag the downloaded app as coming from an unidentified developer.
+
+To open on macOS Sonoma or Sequoia:
+
+1. Drag `MutagenControl.app` from the mounted DMG into `/Applications`.
+2. In Finder, open `/Applications`, right-click (or Control-click) `MutagenControl.app`, and select **Open**.
+3. Confirm by clicking **Open** in the dialog (or navigate to **System Settings > Privacy & Security** and click **Open Anyway**).
+4. Verify the downloaded DMG checksum against `SHA256SUMS.txt`.
+5. Install Mutagen CLI separately using Homebrew (`brew install mutagen-io/mutagen/mutagen`) or official tarball; run `mutagen version` in Terminal before opening MutaUI.
 
 ## Linux
 
-Tagged releases provide x86-64 AppImage and amd64 Debian packages. The release workflow installs and self-tests the Debian package and runs the AppImage self-test on Ubuntu. Compatibility with other distributions and desktop environments has not been verified.
+Tagged releases provide x86-64 AppImage and amd64 Debian packages. Prebuilt Linux binaries require **`GLIBC >= 2.38`** (supported on Ubuntu 24.04 LTS+, Debian 13+, Fedora 39+). Older distributions such as Ubuntu 22.04 LTS or Debian 12 have older system C libraries (`GLIBC <= 2.36`) and cannot run prebuilt packages directly; users on those distributions must run from source with their system Python runtime.
 
-- For AppImage, download it from GitHub Releases, mark it executable in your file manager or with `chmod +x <downloaded-file>.AppImage`, then launch it.
-- On Debian or Ubuntu, install the downloaded package with `sudo apt install ./<downloaded-file>.deb`.
-- Install Mutagen CLI separately. Follow the [official guide](https://mutagen.io/documentation/introduction/installation); for Homebrew use `brew install mutagen-io/mutagen/mutagen`. Confirm with `mutagen version` in a terminal.
+- For AppImage on systems with FUSE (`libfuse2` installed): mark executable with `chmod +x <file>.AppImage` and launch.
+- For AppImage on systems without FUSE or shared multi-user systems: use isolated per-user extraction: `TMPDIR="${XDG_RUNTIME_DIR:-/tmp/user-$(id -u)}" APPIMAGE_EXTRACT_AND_RUN=1 ./MutagenControl-<version>-linux-x86_64.AppImage`. Do not share `/tmp` extraction caches across different system accounts.
+- On Debian 13+ or Ubuntu 24.04+, install the Debian package with `sudo apt install ./<file>.deb`.
+- Install Mutagen CLI separately following the [official guide](https://mutagen.io/documentation/introduction/installation). Confirm with `mutagen version` in a terminal.
 
 ## First launch and safe local test
 

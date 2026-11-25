@@ -39,6 +39,7 @@ from ignore_presets import (
     path_aware_ignore_rule,
 )
 from mutagen_client import (
+    BULK_OPERATION_LIMIT,
     MutagenClient,
     classify,
     conflict_count,
@@ -241,8 +242,43 @@ class SessionActionsMixin:
         if hasattr(self, "open_troubleshooter"):
             self.open_troubleshooter(sess_id)
 
-    def open_session_preferences(self: Any, kind: str) -> None:
-        sess = self.selected_session(kind)
+    def edit_session(self: Any, session_identifier: str) -> None:
+        """Open settings dialog directly for the specified session identifier (M19)."""
+        if not session_identifier:
+            return
+        sess = next(
+            (s for s in self.snapshot.sync if str(s.get("identifier") or "") == session_identifier),
+            None,
+        )
+        kind = "sync"
+        if sess is None:
+            sess = next(
+                (
+                    s
+                    for s in self.snapshot.forward
+                    if str(s.get("identifier") or "") == session_identifier
+                ),
+                None,
+            )
+            kind = "forward"
+        if sess is None:
+            QMessageBox.information(
+                self,
+                translate_text("Session Unavailable", active_language()),
+                translate_text(
+                    "The selected session is no longer available in the current snapshot.",
+                    active_language(),
+                ),
+            )
+            return
+        if hasattr(self, "focus_session_from_navigator"):
+            self.focus_session_from_navigator(kind, session_identifier)
+        self.open_session_preferences(kind, session=sess)
+
+    def open_session_preferences(
+        self: Any, kind: str, session: dict[str, Any] | None = None
+    ) -> None:
+        sess = session or self.selected_session(kind)
         if not sess:
             QMessageBox.information(
                 self,
@@ -920,6 +956,20 @@ class SessionActionsMixin:
     def bulk_action(self: Any, kind: str, action: str, scope: str = "all") -> None:
         if self.demo or self.pending_action:
             return
+        if (
+            scope != "all"
+            and hasattr(self, "server_selector")
+            and self.server_selector.currentData() == "__unavailable__"
+        ):
+            QMessageBox.warning(
+                self,
+                translate_text("Group Unavailable", active_language()),
+                translate_text(
+                    "Previously selected group is no longer available. Explicitly choose a group or All Sessions before running actions.",
+                    active_language(),
+                ),
+            )
+            return
         candidates = self.server_targets(kind, scope)
         if action == "flush" or action == "pause":
             candidates = [s for s in candidates if not s.get("paused")]
@@ -936,6 +986,16 @@ class SessionActionsMixin:
                 self,
                 translate_text("No Sessions", active_language()),
                 translate_text("No eligible sessions for this action.", active_language()),
+            )
+            return
+        if len(ids) > BULK_OPERATION_LIMIT:
+            QMessageBox.warning(
+                self,
+                translate_text("Limit Exceeded", active_language()),
+                translate_text(
+                    "The selection contains {count} sessions, which exceeds the limit of {limit} targets for bulk actions. Narrow your selection using filters or server groups.",
+                    active_language(),
+                ).format(count=len(ids), limit=BULK_OPERATION_LIMIT),
             )
             return
         action_name = {

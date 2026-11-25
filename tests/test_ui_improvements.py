@@ -948,16 +948,15 @@ def test_modern_adapters() -> None:
 
 def test_button_metrics_prevent_descender_clipping() -> None:
     """Verify primary and standard buttons provide sufficient vertical height for font descenders."""
-    app = _app()
+    _app()
     from PySide6.QtGui import QFontMetrics
     from PySide6.QtWidgets import QPushButton, QStyle, QStyleOptionButton
 
     from mutaui.ui.styles.main_stylesheet import CSS
 
-    app.setStyleSheet(CSS)
-
     btn = QPushButton("+ Create first sync session")
     btn.setObjectName("primary")
+    btn.setStyleSheet(CSS)
     btn.adjustSize()
 
     opt = QStyleOptionButton()
@@ -980,6 +979,7 @@ def test_empty_state_guided_onboarding_and_diagnostics_hub(monkeypatch: Any) -> 
     from PySide6.QtWidgets import QFrame, QPushButton
 
     window = app_module.MainWindow(demo=True)
+    window.apply_ui_language("en")
     window.set_page(1)
 
     empty_frame = window.findChild(QFrame, "syncEmptyStateFrame")

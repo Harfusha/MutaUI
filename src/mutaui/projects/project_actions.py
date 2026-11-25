@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -214,7 +213,12 @@ def execute_project_action(
     try:
         action_result = executor.run(plan.argv, timeout_seconds=120, readonly=plan.read_only)
     except Exception as exc:
-        close_planner("native project action failed; refresh before retrying")
+        is_timeout = "timeout" in type(exc).__name__.lower() or "timeout" in str(exc).lower()
+        close_planner(
+            "native project action timed out; outcome uncertain"
+            if is_timeout
+            else "native project action failed; refresh before retrying"
+        )
         if not plan.read_only:
             assert audit_target is not None
             _append_audit(
@@ -222,10 +226,14 @@ def execute_project_action(
                 {
                     "event_id": event_id,
                     "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
-                    "phase": "failed",
+                    "phase": "timeout-uncertain" if is_timeout else "failed",
                     "error": str(exc),
                 },
             )
+        if is_timeout:
+            raise ProjectActionError(
+                f"Native project action timed out after 120s; execution status is uncertain: {exc}"
+            ) from exc
         raise
     if plan.read_only:
         return ProjectActionReceipt(plan, action_result, None)
@@ -291,13 +299,8 @@ def execute_project_action(
     return ProjectActionReceipt(plan, action_result, postcheck, postcheck_error)
 
 
+from mutaui.services.audit_retention import safe_append_audit_record
+
+
 def _append_audit(path: Path, event: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = (json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-    descriptor = os.open(path, flags, 0o600)
-    try:
-        os.write(descriptor, payload)
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    safe_append_audit_record(path, event)

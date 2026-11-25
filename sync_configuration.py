@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -224,8 +225,54 @@ def build_effective_forward_configuration(
         except ValueError as exc:
             return EffectiveSessionConfiguration(False, source_path=source_path, error=str(exc))
 
-    values = tuple((key, value, "global config") for key, value in defaults.items())
-    return EffectiveSessionConfiguration(True, values, source_path)
+    overrides: dict[str, Any] = {}
+    for argument in command_arguments:
+        if argument.startswith("--name="):
+            overrides["name"] = argument.partition("=")[2]
+        elif argument == "--paused":
+            overrides["paused"] = True
+        elif argument.startswith("--socket-overwrite-mode="):
+            mode_val = argument.partition("=")[2]
+            overrides["source.socket.overwriteMode"] = mode_val
+            overrides["destination.socket.overwriteMode"] = mode_val
+        elif argument.startswith("--socket-overwrite-mode-source="):
+            overrides["source.socket.overwriteMode"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-overwrite-mode-destination="):
+            overrides["destination.socket.overwriteMode"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-owner-source="):
+            overrides["source.socket.owner"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-owner-destination="):
+            overrides["destination.socket.owner"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-group-source="):
+            overrides["source.socket.group"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-group-destination="):
+            overrides["destination.socket.group"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-permission-mode-source="):
+            overrides["source.socket.permissionMode"] = argument.partition("=")[2]
+        elif argument.startswith("--socket-permission-mode-destination="):
+            overrides["destination.socket.permissionMode"] = argument.partition("=")[2]
+
+    combined = dict(defaults)
+    origins = {key: "global config" for key in defaults}
+    combined.update(overrides)
+    origins.update({key: "command line" for key in overrides})
+    rows = tuple((key, value, origins[key]) for key, value in combined.items())
+    return EffectiveSessionConfiguration(True, rows, source_path)
+
+
+def compute_global_config_fingerprint(
+    global_config_path: str | Path | None = None,
+) -> tuple[str, bool]:
+    """Compute sha256 fingerprint and existence of global Mutagen YAML configuration."""
+    path = Path(global_config_path or (Path.home() / ".mutagen.yml")).expanduser()
+    try:
+        data = path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()[:16]
+        return digest, True
+    except FileNotFoundError:
+        return "none", False
+    except OSError:
+        return "unreadable", False
 
 
 def load_effective_forward_configuration(

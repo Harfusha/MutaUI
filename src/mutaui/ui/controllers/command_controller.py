@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer
@@ -35,7 +36,7 @@ class CommandExecutionMixin:
             QMessageBox.warning(
                 self,
                 translate_text("Mutagen not found", active_language()),
-                translate_text("First, configure mutagen.exe in Settings.", active_language()),
+                translate_text("First, configure Mutagen CLI in Settings.", active_language()),
             )
             self.set_page(5)
             return
@@ -152,19 +153,66 @@ class CommandExecutionMixin:
                 return
         if create_plan is not None:
             language = active_language()
-            preview = "\n".join(
-                (
-                    f"{translate_text(create_plan.description, language)} · {create_plan.risk}",
-                    translate_text("Command preview: {command}", language).format(
-                        command="mutagen " + " ".join(create_plan.argv)
-                    ),
-                    (
-                        translate_text("A recoverable destination backup was confirmed.", language)
-                        if create_plan.backup_required
-                        else ""
-                    ),
+            preflight_fp = getattr(create_plan, "preflight_fingerprint", None)
+            if preflight_fp is not None:
+                from mutagen_client import create_plan_fingerprint
+
+                current_fingerprint = create_plan_fingerprint(list(create_plan.argv))
+                if preflight_fp != current_fingerprint:
+                    self.action_planner.cancel(create_plan.plan_id)
+                    QMessageBox.warning(
+                        self,
+                        translate_text("Configuration Changed", language),
+                        translate_text(
+                            "The global Mutagen configuration was modified after preflight preparation; execution aborted.",
+                            language,
+                        ),
+                    )
+                    return
+
+            from sync_configuration import compute_global_config_fingerprint
+
+            cfg_hash, cfg_exists = compute_global_config_fingerprint()
+            global_cfg_info = (
+                f"{translate_text('Global configuration fingerprint', language)}: {cfg_hash}"
+                if cfg_exists
+                else translate_text("Global configuration: none", language)
+            )
+
+            preview_lines = [
+                f"{translate_text(create_plan.description, language)} · {create_plan.risk}",
+                translate_text("Command preview: {command}", language).format(
+                    command="mutagen " + " ".join(create_plan.argv)
+                ),
+                global_cfg_info,
+            ]
+
+            if kind == "forward" and len(create_plan.argv) >= 3:
+                from forward_configuration import classify_forward_listener
+
+                source_ep = create_plan.argv[-2]
+                dest_ep = create_plan.argv[-1]
+                classification = classify_forward_listener(source_ep)
+                scope_str = (
+                    translate_text("Listener scope: Loopback only", language)
+                    if classification.is_loopback
+                    else f"{translate_text('WARNING: Listener scope', language)}: {translate_text(classification.description, language)}"
+                )
+                preview_lines.append(f"{scope_str} -> {dest_ep}")
+
+            if create_plan.backup_required:
+                preview_lines.append(
+                    translate_text("A recoverable destination backup was confirmed.", language)
+                )
+
+            preview_lines.append(
+                translate_text(
+                    "Built-in Mutagen defaults and remote server capabilities are confirmed upon session observation.",
+                    language,
                 )
             )
+
+            preview = "\n\n".join(preview_lines)
             answer = QMessageBox.question(
                 self,
                 translate_text("Review Planned Action", language),
@@ -339,6 +387,16 @@ class CommandExecutionMixin:
                     self.add_log(
                         f"Saved local creation provenance for {created_kind} session {created_id}"
                     )
+                    cap = self.session_provenance.capacity()
+                    if cap.is_near_limit:
+                        self.add_log(
+                            f"Notice: provenance store is near capacity ({cap.record_count}/{cap.max_records} records). "
+                            "Consider archiving inactive sessions."
+                        )
+            elif action == "create":
+                self.add_log(
+                    "Session creation finished, but provenance was not recorded due to unverified ID or endpoints."
+                )
             if output:
                 self.add_log(output[:1800])
             self.add_log(f"Completed: {kind} {action}")
@@ -357,3 +415,25 @@ class CommandExecutionMixin:
     def report_error(self: Any, message: str) -> None:
         self.add_log("ERROR: " + message)
         QMessageBox.critical(self, translate_text("Mutagen — Error", active_language()), message)
+
+    def archive_inactive_provenance(
+        self: Any,
+        active_session_ids: set[str] | list[str] | tuple[str, ...],
+        *,
+        archive_path: Path | None = None,
+    ) -> tuple[int, int]:
+        """Archive inactive provenance records to free capacity while retaining active sessions."""
+        store = getattr(self, "session_provenance", None)
+        if store is None:
+            return 0, 0
+        try:
+            archived, retained = store.archive_inactive_records(
+                active_session_ids, archive_path=archive_path
+            )
+            self.add_log(
+                f"Provenance archived: {archived} inactive records removed, {retained} active records retained."
+            )
+            return archived, retained
+        except Exception as exc:
+            self.report_error(f"Failed to archive provenance records: {exc}")
+            return 0, 0

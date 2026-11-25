@@ -457,11 +457,30 @@ class TroubleshooterDialog(QDialog):
 
     def _refresh_status(self) -> None:
         if self._on_refresh:
-            self._on_refresh()
-            # Brief visual feedback on button
-            orig_text = self.refresh_btn.text()
+            self.refresh_btn.setEnabled(False)
+            self.refresh_btn.setText("Probíhá…" if self._czech else "Refreshing…")
+            try:
+                self._on_refresh()
+            except Exception:
+                self.refresh_btn.setEnabled(True)
+                orig_text = "Zkontrolovat stav" if self._czech else "Refresh Status"
+                self.refresh_btn.setText(orig_text)
+
+    def update_diagnosis(
+        self, sessions: Sequence[SessionSnapshot], report: SessionDoctorReport
+    ) -> None:
+        self._sessions = list(sessions)
+        self._report = report
+        current_id = self.session_combo.currentData()
+        self.session_combo.blockSignals(True)
+        self._populate_sessions(str(current_id) if current_id else None)
+        self.session_combo.blockSignals(False)
+        self._render_current_diagnosis()
+        if hasattr(self, "refresh_btn") and self.refresh_btn is not None:
+            self.refresh_btn.setEnabled(True)
             self.refresh_btn.setText("Obnoveno!" if self._czech else "Refreshed!")
-            QTimer.singleShot(1500, lambda: self.refresh_btn.setText(orig_text))
+            orig_text = "Zkontrolovat stav" if self._czech else "Refresh Status"
+            QTimer.singleShot(2000, lambda: self.refresh_btn.setText(orig_text))
 
     def _generate_diagnostic_report(self, fmt: str = "markdown") -> str:
         selected_id = self.session_combo.currentData()

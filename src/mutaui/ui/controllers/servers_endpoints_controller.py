@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QMenu,
+    QMessageBox,
     QProgressBar,
     QScrollArea,
     QTableWidgetItem,
@@ -152,8 +153,10 @@ class ServersEndpointsMixin:
             status = translate_text(status, self.ui_language)
             source = endpoint_text(session.get("alpha" if kind == "sync" else "source"), kind)
             target = endpoint_text(session.get("beta" if kind == "sync" else "destination"), kind)
-            text = f"{kind_name} · {name} · {status} · {source} → {target}"
-            entries.append((kind, sid, text, f"{text}\nID: {sid}"))
+            short_id = sid[:8] if sid else "—"
+            text = f"{kind_name} · {name} ({short_id}) · {status}"
+            tooltip = f"{kind_name} · {name}\nID: {sid}\nStatus: {status}\nSource: {source}\nTarget: {target}"
+            entries.append((kind, sid, text, tooltip))
         keys = [(kind, sid) for kind, sid, _, _ in entries]
         old = [self.endpoint_combo.itemData(i) for i in range(self.endpoint_combo.count())]
         old_labels = [self.endpoint_combo.itemText(i) for i in range(self.endpoint_combo.count())]
@@ -316,16 +319,19 @@ class ServersEndpointsMixin:
             b_srv_sync, "Starts an immediate sync cycle for all sessions in the selected group."
         )
         first.addWidget(b_srv_sync)
+        self.b_srv_sync = b_srv_sync
         b_srv_pause = button(
             "⏸ Pause Sync Sessions", partial(self.bulk_action, "sync", "pause", "server")
         )
         set_localized_tooltip(b_srv_pause, "Pauses all sync sessions in the selected group.")
         first.addWidget(b_srv_pause)
+        self.b_srv_pause = b_srv_pause
         b_srv_resume = button(
             "▶ Resume Sync Sessions", partial(self.bulk_action, "sync", "resume", "server")
         )
         set_localized_tooltip(b_srv_resume, "Resumes paused sync sessions in the selected group.")
         first.addWidget(b_srv_resume)
+        self.b_srv_resume = b_srv_resume
         first.addStretch()
         ac.addLayout(first)
         second = QHBoxLayout()
@@ -334,18 +340,22 @@ class ServersEndpointsMixin:
         )
         set_localized_tooltip(b_fwd_pause, "Pauses all port forwards in the selected group.")
         second.addWidget(b_fwd_pause)
+        self.b_fwd_pause = b_fwd_pause
         b_fwd_resume = button(
             "▶ Resume Forwards", partial(self.bulk_action, "forward", "resume", "server")
         )
         set_localized_tooltip(b_fwd_resume, "Resumes paused port forwards in the selected group.")
         second.addWidget(b_fwd_resume)
+        self.b_fwd_resume = b_fwd_resume
         second.addStretch()
         ac.addLayout(second)
         advanced = button("More Bulk Actions ▾", self.show_server_advanced_actions)
+        self.server_advanced_button = advanced
         set_localized_tooltip(
             advanced, "Shows more bulk actions: terminate sessions, reset, and group diagnostics."
         )
         ac.addWidget(advanced)
+        self.b_server_advanced = advanced
         warning = label(
             "Bulk commands use only the selected IDs. Pausing and resuming take effect immediately "
             "and also affect these sessions after the daemon's next start. "
@@ -417,7 +427,15 @@ class ServersEndpointsMixin:
                 else:
                     self.server_selector.addItem(name, key)
             found = self.server_selector.findData(current)
-            self.server_selector.setCurrentIndex(max(0, found))
+            if found < 0 and current not in (None, "", "__all__"):
+                unavailable_text = "Previously selected group is no longer available"
+                self.server_selector.addItem(
+                    translate_text(unavailable_text, self.ui_language),
+                    "__unavailable__",
+                )
+                self.server_selector.setCurrentIndex(self.server_selector.count() - 1)
+            else:
+                self.server_selector.setCurrentIndex(max(0, found))
             self.server_selector.blockSignals(False)
         filter_widget = self.sync_server_filter
         filter_val = filter_widget.currentData()
@@ -469,6 +487,8 @@ class ServersEndpointsMixin:
         if scope == "all":
             return list(sessions)
         key = self.server_selector.currentData() if hasattr(self, "server_selector") else "__all__"
+        if key == "__unavailable__":
+            return []
         if key == "__all__":
             return list(sessions)
         return [session for session in sessions if key in session_servers(session, kind)]
@@ -477,6 +497,31 @@ class ServersEndpointsMixin:
         if not hasattr(self, "server_selector"):
             return
         selection_key = self.server_selector.currentData()
+        action_buttons = [
+            getattr(self, "b_srv_sync", None),
+            getattr(self, "b_srv_pause", None),
+            getattr(self, "b_srv_resume", None),
+            getattr(self, "b_fwd_pause", None),
+            getattr(self, "b_fwd_resume", None),
+            getattr(self, "server_advanced_button", None),
+        ]
+        if selection_key == "__unavailable__":
+            for btn in action_buttons:
+                if btn is not None:
+                    btn.setEnabled(False)
+            set_localized_text(
+                self.server_scope_label,
+                "Previously selected group is no longer available · Choose another group or All Sessions",
+                czech="Dříve vybraná skupina není dostupná · Vyberte jinou skupinu nebo Všechny relace",
+            )
+            self.server_sync_empty.setVisible(True)
+            self.server_forward_empty.setVisible(True)
+            self.server_sync_table.setRowCount(0)
+            self.server_forward_table.setRowCount(0)
+            return
+        for btn in action_buttons:
+            if btn is not None:
+                btn.setEnabled(True)
         selection_name = (
             "All Sessions" if selection_key == "__all__" else self.server_selector.currentText()
         )
@@ -523,23 +568,59 @@ class ServersEndpointsMixin:
         if not item:
             return
         identifier = item.data(Qt.ItemDataRole.UserRole)
-        self.set_page(1 if kind == "sync" else 2)
-        if kind == "sync":
-            self.sync_server_filter.setCurrentIndex(0)
-            self.sync_search.clear()
-            self.sync_state_filter.setCurrentIndex(0)
-            self.sync_favorites_only.setChecked(False)
-        else:
-            self.forward_search.clear()
-            self.forward_state_filter.setCurrentIndex(0)
-            self.forward_favorites_only.setChecked(False)
-        table = self.sync_table if kind == "sync" else self.forward_table
-        for index in range(table.rowCount()):
-            current = table.item(index, 0)
-            if current and current.data(Qt.ItemDataRole.UserRole) == identifier:
-                table.selectRow(index)
-                table.scrollToItem(current)
-                break
+        if not identifier:
+            return
+        identifier_str = str(identifier)
+        found = False
+        if hasattr(self, "focus_session_from_navigator"):
+            found = bool(self.focus_session_from_navigator(kind, identifier_str))
+        if not found:
+            self.set_page(1 if kind == "sync" else 2)
+            if kind == "sync":
+                if hasattr(self, "sync_server_filter"):
+                    self.sync_server_filter.setCurrentIndex(0)
+                if hasattr(self, "sync_search"):
+                    self.sync_search.clear()
+                if hasattr(self, "sync_state_filter"):
+                    self.sync_state_filter.setCurrentIndex(0)
+                if hasattr(self, "sync_favorites_only"):
+                    self.sync_favorites_only.setChecked(False)
+            else:
+                if hasattr(self, "forward_search"):
+                    self.forward_search.clear()
+                if hasattr(self, "forward_state_filter"):
+                    self.forward_state_filter.setCurrentIndex(0)
+                if hasattr(self, "forward_favorites_only"):
+                    self.forward_favorites_only.setChecked(False)
+            table = self.sync_table if kind == "sync" else self.forward_table
+            model = getattr(table, "model", lambda: None)()
+            if model is not None and hasattr(model, "row_for_identifier"):
+                target_row = model.row_for_identifier(identifier_str)
+                if target_row >= 0:
+                    table.selectRow(target_row)
+                    table.scrollTo(model.index(target_row, 0))
+                    found = True
+            elif hasattr(table, "rowCount") and hasattr(table, "item"):
+                for r in range(table.rowCount()):
+                    row_item = table.item(r, 0)
+                    if row_item is not None and (
+                        getattr(row_item, "identifier", None) == identifier_str
+                        or row_item.data(Qt.ItemDataRole.UserRole) == identifier_str
+                    ):
+                        table.selectRow(r)
+                        if hasattr(table, "scrollToItem"):
+                            table.scrollToItem(row_item)
+                        found = True
+                        break
+        if not found:
+            QMessageBox.information(
+                self,
+                translate_text("Session Unavailable", active_language()),
+                translate_text(
+                    "The selected session is no longer available in the current snapshot.",
+                    active_language(),
+                ),
+            )
 
     def show_server_advanced_actions(self: Any) -> None:
         """Keep reset/termination out of the one-click toolbar."""

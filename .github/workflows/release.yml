@@ -142,20 +142,7 @@ jobs:
         run: |
           python scripts/run_crash_recovery_self_test.py --executable "./dist-fast/MutagenControl/MutagenControl.exe"
           python scripts/run_crash_recovery_self_test.py --executable "./dist/MutagenControl.exe"
-      - name: Build Windows installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install innosetup --no-progress --yes
-          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
-          $compiler = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
-          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
-          $version = $env:VERSION.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Release tag must be a stable semantic version: $version" }
-          & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
-
-      - name: Sign Windows release binaries
+      - name: Sign inner Windows executables
         if: runner.os == 'Windows'
         env:
           SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
@@ -166,6 +153,60 @@ jobs:
             Write-Host 'Skipping Windows code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured. Generating unsigned release binary.'
             return
           }
+          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = ${env:ProgramFiles(x86)} }
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = 'C:\Program Files (x86)' }
+          $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
+          $kits = Join-Path $programFilesX86 'Windows Kits\10\bin'
+          $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
+          try {
+            $innerBinaries = @(
+              'dist-fast/MutagenControl/MutagenControl.exe',
+              'dist/MutagenControl.exe'
+            )
+            foreach ($binary in $innerBinaries) {
+              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary (exit $LASTEXITCODE)." }
+              & $signtool.FullName verify /pa /all $binary
+              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary (exit $LASTEXITCODE)." }
+            }
+          } finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --version 6.3.3 --no-progress --yes
+          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = ${env:ProgramFiles(x86)} }
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = 'C:\Program Files (x86)' }
+          $compiler = Join-Path $programFilesX86 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler was not installed.' }
+          $version = $env:VERSION.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Release tag must be a stable semantic version: $version" }
+          & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
+
+      - name: Sign Windows installer package
+        if: runner.os == 'Windows'
+        env:
+          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
+            Write-Host 'Skipping Windows installer code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured.'
+            return
+          }
+          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = ${env:ProgramFiles(x86)} }
+          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = 'C:\Program Files (x86)' }
           $version = $env:VERSION.TrimStart('v')
           $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
@@ -175,23 +216,22 @@ jobs:
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
           try {
-            $binaries = @(
-              'dist-fast/MutagenControl/MutagenControl.exe',
-              'dist/MutagenControl.exe',
-              "dist/MutagenControl-$version-windows-x64-setup.exe"
-            )
-            foreach ($binary in $binaries) {
-              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
-              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary (exit $LASTEXITCODE)." }
-              & $signtool.FullName verify /pa /all $binary
-              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary (exit $LASTEXITCODE)." }
-            }
+            $installer = "dist/MutagenControl-$version-windows-x64-setup.exe"
+            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $installer
+            if ($LASTEXITCODE -ne 0) { throw "Signing failed for $installer (exit $LASTEXITCODE)." }
+            & $signtool.FullName verify /pa /all $installer
+            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $installer (exit $LASTEXITCODE)." }
           } finally {
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
           }
       - name: Build macOS application bundle
         if: runner.os == 'macOS'
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
+      - name: Patch macOS Info.plist metadata
+        if: runner.os == 'macOS'
+        run: |
+          version="${VERSION#v}"
+          python scripts/ci/patch_macos_plist.py dist-platform/MutagenControl.app/Contents/Info.plist "$version"
       - name: Sign and notarize macOS release bundle
         if: runner.os == 'macOS'
         env:
@@ -298,7 +338,7 @@ jobs:
       - name: Build Linux AppImage and deb packages
         if: runner.os == 'Linux'
         env:
-          MUTAUI_VERSION: ${{ github.ref_name }}
+          MUTAUI_VERSION: ${{ env.VERSION }}
         run: |
           release_version="${VERSION#v}"
           python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
@@ -423,7 +463,7 @@ jobs:
         with:
           path: dist-fast/MutagenControl
           format: cyclonedx-json
-          output-file: dist/MutagenControl-${{ github.ref_name }}-windows-x64.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.VERSION }}-windows-x64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Generate macOS package SBOM
@@ -432,16 +472,16 @@ jobs:
         with:
           path: dist-platform/MutagenControl.app
           format: cyclonedx-json
-          output-file: dist/MutagenControl-${{ github.ref_name }}-macos-${{ runner.arch }}.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.VERSION }}-macos-${{ runner.arch }}.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Generate Linux package SBOM
         if: runner.os == 'Linux'
         uses: anchore/sbom-action@v0.24.3
         with:
-          path: dist
+          path: dist-platform/MutagenControl
           format: cyclonedx-json
-          output-file: dist/MutagenControl-${{ github.ref_name }}-linux-amd64.sbom.cdx.json
+          output-file: dist/MutagenControl-${{ env.VERSION }}-linux-amd64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
       - name: Attest platform packages and SBOM

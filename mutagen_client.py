@@ -11,11 +11,11 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import psutil
 
@@ -55,6 +55,36 @@ _FORWARD_SOCKET_FLAGS = frozenset(
     for endpoint in ("", "-source", "-destination")
 )
 _FORWARD_SOCKET_HELP_FLAG = re.compile(r"(?m)^\s*(--socket-[a-z0-9-]+)(?=[=\s]|$)")
+_CREATED_SESSION_ID_RE = re.compile(
+    r"(?:Created\s+session(?:\s+|:\s*)|Session\s+)([a-zA-Z0-9_\-]+)",
+    re.IGNORECASE,
+)
+BULK_OPERATION_LIMIT = 500
+
+
+def _endpoint_matches(session_endpoint: Any, requested_endpoint: str) -> bool:
+    if not requested_endpoint:
+        return True
+    req_clean = requested_endpoint.strip()
+    if isinstance(session_endpoint, str):
+        return (
+            os.path.normpath(session_endpoint) == os.path.normpath(req_clean)
+            or session_endpoint.strip() == req_clean
+        )
+    if isinstance(session_endpoint, dict):
+        url = str(session_endpoint.get("url") or "").strip()
+        path = str(session_endpoint.get("path") or "").strip()
+        req_norm = os.path.normpath(req_clean)
+        if path and (os.path.normpath(path) == req_norm or path == req_clean):
+            return True
+        if url and (url == req_clean or req_clean in url):
+            return True
+        for v in session_endpoint.values():
+            if isinstance(v, str):
+                v_clean = v.strip()
+                if v_clean == req_clean or os.path.normpath(v_clean) == req_norm:
+                    return True
+    return False
 
 
 def _create_action_key(area: str, options: list[str]) -> str:
@@ -172,8 +202,67 @@ def _known_mutagen_locations() -> tuple[Path, ...]:
     )
 
 
-def parse_sessions(output: str) -> list[dict[str, Any]]:
-    """JSON Go-template output; returns [] for an empty daemon."""
+@dataclass(frozen=True, slots=True)
+class SessionListParseResult:
+    """Validated session rows plus rejection metadata for M05 integrity checks."""
+
+    sessions: list[dict[str, Any]]
+    rejected_count: int = 0
+    rejected_reasons: tuple[str, ...] = ()
+    incomplete: bool = False
+
+
+def validate_session_entry(item: object) -> str | None:
+    """Return a short rejection reason for malformed rows or None when valid."""
+    if not isinstance(item, dict):
+        return "non_object"
+    identifier = item.get("identifier")
+    if not isinstance(identifier, str) or not identifier.strip():
+        return "missing_identifier"
+    if "name" in item and item["name"] is not None and not isinstance(item["name"], str):
+        return "invalid_name"
+    if "paused" in item and not isinstance(item["paused"], bool):
+        return "invalid_paused"
+    if "status" in item and item["status"] is not None:
+        raw_status = item["status"]
+        if isinstance(raw_status, bool) or not isinstance(raw_status, (int, str)):
+            return "invalid_status"
+    for endpoint_key in ("alpha", "beta", "source", "destination"):
+        if (
+            endpoint_key in item
+            and item[endpoint_key] is not None
+            and not isinstance(item[endpoint_key], dict)
+        ):
+            return "invalid_endpoint"
+    return None
+
+
+def validate_session_rows(
+    items: list[Any], *, allow_all_invalid_error: bool = False
+) -> SessionListParseResult:
+    """Separate valid session mappings from malformed rows without hiding corruption."""
+    valid: list[dict[str, Any]] = []
+    reasons: list[str] = []
+    for item in items:
+        reason = validate_session_entry(item)
+        if reason is None and isinstance(item, dict):
+            valid.append(item)
+        elif reason is not None:
+            reasons.append(reason)
+    if reasons and not valid and allow_all_invalid_error:
+        raise MutagenError(
+            "Mutagen returned malformed session entries instead of valid session objects."
+        )
+    return SessionListParseResult(
+        sessions=valid,
+        rejected_count=len(reasons),
+        rejected_reasons=tuple(dict.fromkeys(reasons)),
+        incomplete=bool(reasons),
+    )
+
+
+def parse_sessions_checked(output: str) -> SessionListParseResult:
+    """Parse and validate Mutagen Go-template JSON list output."""
     try:
         payload = json.loads(output.strip())
     except json.JSONDecodeError as exc:
@@ -182,7 +271,12 @@ def parse_sessions(output: str) -> list[dict[str, Any]]:
         ) from exc
     if not isinstance(payload, list):
         raise MutagenError("Unexpected data structure in Mutagen response.")
-    return [item for item in payload if isinstance(item, dict)]
+    return validate_session_rows(payload, allow_all_invalid_error=True)
+
+
+def parse_sessions(output: str) -> list[dict[str, Any]]:
+    """JSON Go-template output; returns [] only for a genuinely empty daemon list."""
+    return parse_sessions_checked(output).sessions
 
 
 def endpoint_text(endpoint: Any, kind: str = "sync") -> str:
@@ -278,6 +372,42 @@ def human_bytes(number: float | int) -> str:
     return f"{number:.1f} TB"
 
 
+def classify_daemon_error(error: str) -> Literal["stopped", "unavailable"]:
+    """Distinguish a confirmed stopped daemon from an unresponsive/unavailable CLI state."""
+    lowered = error.casefold()
+    if any(
+        token in lowered
+        for token in (
+            "timed out",
+            "timeout",
+            "failed to launch",
+            "permission denied",
+            "access is denied",
+            "not configured",
+            "not found",
+            "unreadable",
+            "malformed",
+            "did not return valid json",
+            "unexpected data structure",
+        )
+    ):
+        return "unavailable"
+    if any(
+        token in lowered
+        for token in (
+            "stopped",
+            "not running",
+            "unable to connect to daemon",
+            "unable to connect",
+            "connection refused",
+            "no daemon",
+            "daemon is unavailable",
+        )
+    ):
+        return "stopped"
+    return "unavailable" if lowered.strip() else "stopped"
+
+
 @dataclass
 class Snapshot:
     binary: str = ""
@@ -296,14 +426,93 @@ class Snapshot:
     forward_observed_at: datetime | None = None
     resource_observed_at: datetime | None = None
     command_durations: dict[str, float] = field(default_factory=dict)
+    daemon_state: Literal["unconfigured", "running", "stopped", "unavailable", "checking"] = (
+        "checking"
+    )
+    sync_status: Literal["fresh", "stale", "unavailable", "incomplete", "unknown"] = "unknown"
+    forward_status: Literal["fresh", "stale", "unavailable", "incomplete", "unknown"] = "unknown"
+    sync_error: str = ""
+    forward_error: str = ""
+    sync_incomplete_count: int = 0
+    forward_incomplete_count: int = 0
+    version_status: Literal["fresh", "cached", "unavailable", "invalid", "unknown"] = "unknown"
+    version_error: str = ""
+    last_contact_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        lowered_error = self.error.casefold()
+        if not self.forward_error and "forward" in lowered_error:
+            self.forward_error = self.error
+        if not self.sync_error and "sync" in lowered_error and "forward" not in lowered_error:
+            self.sync_error = self.error
+        if self.daemon_state == "checking":
+            if not self.binary:
+                self.daemon_state = "unconfigured"
+            elif self.daemon:
+                self.daemon_state = "running"
+            elif self.error:
+                self.daemon_state = classify_daemon_error(self.error)
+            else:
+                self.daemon_state = "stopped"
+        if self.sync_status == "unknown":
+            self.sync_status = self._infer_kind_status(
+                incomplete_count=self.sync_incomplete_count,
+                kind_error=self.sync_error,
+                other_error=self.forward_error,
+                observed_at=self.sync_observed_at,
+                has_rows=bool(self.sync),
+            )
+        if self.forward_status == "unknown":
+            self.forward_status = self._infer_kind_status(
+                incomplete_count=self.forward_incomplete_count,
+                kind_error=self.forward_error,
+                other_error=self.sync_error,
+                observed_at=self.forward_observed_at,
+                has_rows=bool(self.forward),
+            )
+        if self.version_status == "unknown" and self.version:
+            self.version_status = "fresh"
+        if self.last_contact_at is None and self.daemon:
+            self.last_contact_at = self.sync_observed_at or self.forward_observed_at
+
+    def _infer_kind_status(
+        self,
+        *,
+        incomplete_count: int,
+        kind_error: str,
+        other_error: str,
+        observed_at: datetime | None,
+        has_rows: bool,
+    ) -> Literal["fresh", "stale", "unavailable", "incomplete"]:
+        if incomplete_count > 0:
+            return "incomplete"
+        if kind_error or not self.daemon:
+            return "stale" if observed_at is not None else "unavailable"
+        if self.sessions_stale:
+            if other_error and (has_rows or observed_at is not None):
+                return "fresh"
+            return "stale" if observed_at is not None or has_rows else "unavailable"
+        return "fresh"
 
 
 def read_registration(binary: str) -> tuple[str, str]:
     r"""Official Windows daemon registration lives in HKCU\...\Run\Mutagen.
 
+    macOS daemon registration lives in ~/Library/LaunchAgents/io.mutagen.daemon.plist.
+    Linux is unsupported by upstream Mutagen daemon register.
     No registry modifications are done here.
     """
     if sys.platform != "win32":
+        if sys.platform == "darwin":
+            plist_path = Path.home() / "Library" / "LaunchAgents" / "io.mutagen.daemon.plist"
+            if plist_path.is_file():
+                try:
+                    content = plist_path.read_text(encoding="utf-8", errors="replace")
+                    if binary and binary in content:
+                        return "registered", str(plist_path)
+                    return "other", str(plist_path)
+                except OSError:
+                    return "unknown", ""
         return "unsupported", ""
     try:
         import winreg
@@ -328,7 +537,24 @@ def read_registration(binary: str) -> tuple[str, str]:
     return "other", raw
 
 
+def create_plan_fingerprint(arguments: Sequence[str]) -> str:
+    from sync_configuration import compute_global_config_fingerprint
+
+    cfg_hash, cfg_exists = compute_global_config_fingerprint()
+    data = {
+        "arguments": list(arguments),
+        "global_config": cfg_hash,
+        "global_config_exists": cfg_exists,
+    }
+    return hashlib.sha256(
+        json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 class MutagenClient:
+    _global_cli_launch_lock = threading.Lock()
+    _global_cli_launch_count = 0
+
     def __init__(
         self,
         binary: str = "",
@@ -346,14 +572,28 @@ class MutagenClient:
         self._cli_launch_lock = threading.Lock()
         self._cli_launch_count = 0
 
+    @classmethod
+    def total_cli_launches(cls) -> int:
+        """Total CLI executions across all client instances in this process."""
+        with cls._global_cli_launch_lock:
+            return cls._global_cli_launch_count
+
     @property
     def cli_launch_count(self) -> int:
+        """Instance CLI launch counter."""
+        with self._cli_launch_lock:
+            return self._cli_launch_count
+
+    @property
+    def instance_cli_launch_count(self) -> int:
         with self._cli_launch_lock:
             return self._cli_launch_count
 
     def _record_cli_launch(self) -> None:
         with self._cli_launch_lock:
             self._cli_launch_count += 1
+        with MutagenClient._global_cli_launch_lock:
+            MutagenClient._global_cli_launch_count += 1
 
     @staticmethod
     def session_preflight_fingerprint(sessions: list[dict[str, Any]]) -> str:
@@ -489,7 +729,7 @@ class MutagenClient:
                 action=action_key,
                 target_ids=tuple(target_ids),
                 argv=tuple(arguments),
-                preflight_fingerprint=expected_fingerprint,
+                preflight_fingerprint=expected_fingerprint or current_fingerprint,
                 capabilities=(action_key,),
             )
         )
@@ -505,11 +745,39 @@ class MutagenClient:
         try:
             output = self.command(arguments, timeout=timeout)
             after = self.list_sessions(area)
-            after_ids = {str(item.get("identifier") or "") for item in after}
+            after_by_id = {str(item.get("identifier") or ""): item for item in after}
+            after_ids = set(after_by_id)
             if action == "terminate":
-                if any(target in after_ids for target in target_ids):
+                still_present = [target for target in target_ids if target in after_ids]
+                if still_present:
                     raise MutagenError(
-                        "Native post-check found a terminated session still present."
+                        f"Native post-check found terminated session still present: {', '.join(still_present)}"
+                    )
+            elif action == "pause":
+                missing = [target for target in target_ids if target not in after_ids]
+                if missing:
+                    raise MutagenError(
+                        f"Native post-check could not find paused session(s): {', '.join(missing)}"
+                    )
+                not_paused = [
+                    target for target in target_ids if after_by_id[target].get("paused") is False
+                ]
+                if not_paused:
+                    raise MutagenError(
+                        f"Native post-check found session(s) not paused: {', '.join(not_paused)}"
+                    )
+            elif action == "resume":
+                missing = [target for target in target_ids if target not in after_ids]
+                if missing:
+                    raise MutagenError(
+                        f"Native post-check could not find resumed session(s): {', '.join(missing)}"
+                    )
+                still_paused = [
+                    target for target in target_ids if after_by_id[target].get("paused") is True
+                ]
+                if still_paused:
+                    raise MutagenError(
+                        f"Native post-check found session(s) still paused: {', '.join(still_paused)}"
                     )
             elif any(target not in after_ids for target in target_ids):
                 raise MutagenError("Native post-check could not find every selected session.")
@@ -520,10 +788,18 @@ class MutagenClient:
                 outcome="native result or post-check is uncertain; refresh before retrying",
             )
             raise
+        if action == "flush":
+            outcome = (
+                "native flush cycle requested; remote completion depends on subsequent observation"
+            )
+        elif action == "reset":
+            outcome = "native reset command executed; session state present"
+        else:
+            outcome = f"native exact-ID {action} post-check passed"
         self.action_planner.finish(
             plan.plan_id,
             verified_target_ids=target_ids,
-            outcome="native exact-ID post-check passed",
+            outcome=outcome,
         )
         return output
 
@@ -548,9 +824,7 @@ class MutagenClient:
         if area == "forward":
             self._verify_forward_socket_options(options)
         action_key = _create_action_key(area, options)
-        digest = hashlib.sha256(
-            json.dumps(arguments, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        digest = create_plan_fingerprint(arguments)
         target = f"create:{digest}"
         return self.action_planner.prepare(
             ActionRequest(
@@ -625,9 +899,7 @@ class MutagenClient:
         if not operator_consent or plan is None or plan.state != "consented":
             raise MutagenError("A consented create ActionPlan is required.")
         # Recompute the deterministic plan identity without creating a second lock.
-        digest = hashlib.sha256(
-            json.dumps(arguments, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        digest = create_plan_fingerprint(arguments)
         action_key = _create_action_key(arguments[0], arguments[2:])
         if (
             plan.action != action_key
@@ -635,6 +907,11 @@ class MutagenClient:
             or plan.preflight_fingerprint != digest
             or plan.target_ids != (f"create:{digest}",)
         ):
+            if plan.argv == tuple(arguments) and plan.action == action_key:
+                self.action_planner.cancel(plan.plan_id)
+                raise MutagenError(
+                    "Global Mutagen configuration was modified after preflight plan was created; execution aborted."
+                )
             self.action_planner.cancel(plan.plan_id)
             raise MutagenError("Create arguments do not match the consented ActionPlan.")
         try:
@@ -660,20 +937,71 @@ class MutagenClient:
         )
         if requested_name is not None:
             created = [item for item in created if item.get("name") == requested_name]
-        if (
-            len(created) != 1
-            or not isinstance(created[0].get("identifier"), str)
-            or not created[0].get("identifier")
+
+        cli_match = _CREATED_SESSION_ID_RE.search(output)
+        cli_returned_id = cli_match.group(1).strip() if cli_match else None
+
+        # Positional arguments after subcommands are target endpoints
+        positional = [arg for arg in arguments[2:] if not arg.startswith("-")]
+        req_ep1 = positional[0] if len(positional) > 0 else ""
+        req_ep2 = positional[1] if len(positional) > 1 else ""
+
+        if cli_returned_id:
+            # M07: Bind to exact ID returned by supported Mutagen CLI output
+            matching_after = [
+                item for item in after if str(item.get("identifier") or "") == cli_returned_id
+            ]
+            if not matching_after or cli_returned_id in before_ids:
+                self.action_planner.finish(
+                    plan.plan_id,
+                    verified_target_ids=(),
+                    outcome="created session ID returned by CLI not found in fresh native session list",
+                )
+                raise MutagenError(
+                    "Created session identifier returned by CLI could not be verified in the observed session list."
+                )
+            created_item = matching_after[0]
+            if created and not any(
+                str(c.get("identifier") or "") == cli_returned_id for c in created
+            ):
+                self.action_planner.finish(
+                    plan.plan_id,
+                    verified_target_ids=(),
+                    outcome="created session ID returned by CLI does not match observed session",
+                )
+                raise MutagenError(
+                    "Created session identifier returned by CLI does not match observed session."
+                )
+        else:
+            if (
+                len(created) != 1
+                or not isinstance(created[0].get("identifier"), str)
+                or not created[0].get("identifier")
+            ):
+                self.action_planner.finish(
+                    plan.plan_id,
+                    verified_target_ids=(),
+                    outcome="could not identify exactly one created session by native ID",
+                )
+                raise MutagenError(
+                    "Create completed, but the new exact session ID could not be verified."
+                )
+            created_item = created[0]
+
+        kind = arguments[0]
+        ep1_actual = created_item.get("alpha" if kind == "sync" else "source")
+        ep2_actual = created_item.get("beta" if kind == "sync" else "destination")
+        if (req_ep1 and ep1_actual is not None and not _endpoint_matches(ep1_actual, req_ep1)) or (
+            req_ep2 and ep2_actual is not None and not _endpoint_matches(ep2_actual, req_ep2)
         ):
             self.action_planner.finish(
                 plan.plan_id,
                 verified_target_ids=(),
-                outcome="could not identify exactly one created session by native ID",
+                outcome="created session endpoints do not match requested arguments",
             )
-            raise MutagenError(
-                "Create completed, but the new exact session ID could not be verified."
-            )
-        created_identifier = str(created[0]["identifier"])
+            raise MutagenError("Created session endpoints do not match the requested targets.")
+
+        created_identifier = str(created_item["identifier"])
         self.action_planner.finish(
             plan.plan_id,
             verified_target_ids=plan.target_ids,
@@ -691,7 +1019,8 @@ class MutagenClient:
         env_overrides: dict[str, str] | None = None,
     ) -> str:
         if not self.binary:
-            raise MutagenError("mutagen.exe was not found. Please select it in Settings.")
+            binary_name = "mutagen.exe" if sys.platform == "win32" else "mutagen"
+            raise MutagenError(f"{binary_name} was not found. Please select it in Settings.")
         # PATH lookup may have been reconfigured; never use a shell command string.
         if not os.path.isfile(self.binary) and not shutil.which(self.binary):
             raise MutagenError(f"Mutagen executable not found: {self.binary}")
@@ -737,12 +1066,15 @@ class MutagenClient:
             raise MutagenCommandError(detail[:1600])
         return (result.stdout or "").strip()
 
-    def list_sessions(self, kind: str) -> list[dict[str, Any]]:
+    def list_sessions_checked(self, kind: str) -> SessionListParseResult:
         if kind not in ("sync", "forward"):
             raise ValueError("Unknown session type")
-        return parse_sessions(
+        return parse_sessions_checked(
             self.command([kind, "list", "--template", "{{ json . }}"], timeout=12, readonly=True)
         )
+
+    def list_sessions(self, kind: str) -> list[dict[str, Any]]:
+        return self.list_sessions_checked(kind).sessions
 
     def execute(
         self,
@@ -824,8 +1156,8 @@ class MutagenClient:
         }
         if action not in allowed.get(area, set()):
             raise MutagenError("Bulk action is not allowed.")
-        if not targets or len(targets) > 500:
-            raise MutagenError("Select between 1 and 500 specific sessions.")
+        if not targets or len(targets) > BULK_OPERATION_LIMIT:
+            raise MutagenError(f"Select between 1 and {BULK_OPERATION_LIMIT} specific sessions.")
         if any(
             not isinstance(t, str)
             or not t.strip()

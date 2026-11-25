@@ -26,7 +26,7 @@ class LoggingMixin:
         else:
             with suppress(sqlite3.Error):
                 self.history.add_event(safe_message, severity)
-        if hasattr(self, "log_view"):
+        if hasattr(self, "log_view") and hasattr(self.log_view, "verticalScrollBar"):
             append_plain_text_preserving_view(self.log_view, self.logs[-1], follow_end=True)
         if hasattr(self, "log_count_label"):
             n = len(self.logs)
@@ -35,14 +35,55 @@ class LoggingMixin:
             )
 
     def clear_logs(self: Any) -> None:
+        """Clear entries from this view without modifying persistent database history."""
         self.logs.clear()
-        self.log_view.clear()
+        if getattr(self, "log_view", None) is not None:
+            self.log_view.clear()
+        if hasattr(self, "log_count_label"):
+            self.log_count_label.setText("0 entries")
+        self.add_log("UI history cleared")
+
+    def purge_database_history(self: Any) -> None:
+        """Permanently delete stored event history from database after explicit confirmation."""
+        reply = QMessageBox.question(
+            self,
+            translate_text("Delete Event History", active_language()),
+            translate_text(
+                "Permanently delete stored event history from the database? This cannot be undone.",
+                active_language(),
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
         if self.recorder is not None:
             self.recorder.clear_events()
+            if not self.recorder.wait_idle(timeout=4.0) and self.recorder.last_error:
+                QMessageBox.critical(
+                    self,
+                    translate_text("Delete Failed", active_language()),
+                    translate_text("Database locked or error: {err}", active_language()).format(
+                        err=self.recorder.last_error
+                    ),
+                )
+                return
         else:
-            with suppress(sqlite3.Error):
+            try:
                 self.history.clear_events()
-        self.add_log("UI history cleared")
+            except sqlite3.Error as exc:
+                QMessageBox.critical(
+                    self,
+                    translate_text("Delete Failed", active_language()),
+                    translate_text("Database error: {err}", active_language()).format(err=str(exc)),
+                )
+                return
+        self.logs.clear()
+        if getattr(self, "log_view", None) is not None:
+            self.log_view.clear()
+        if hasattr(self, "log_count_label"):
+            self.log_count_label.setText("0 entries")
+        self.add_log("Database event history permanently purged")
 
     def export_logs(self: Any) -> None:
         path, _ = QFileDialog.getSaveFileName(

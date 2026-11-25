@@ -8,35 +8,79 @@ from pathlib import Path
 
 
 class FileTail:
-    def __init__(self, path: str | Path, *, max_chunk: int = 128 * 1024) -> None:
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        max_chunk: int = 128 * 1024,
+        annotate_gaps: bool = False,
+    ) -> None:
         self.path = Path(path)
         self.offset = 0
         self.max_chunk = max(4096, min(int(max_chunk), 1_048_576))
         self._pending = b""
         self._identity: tuple[int, int] | None = None
+        self.annotate_gaps = annotate_gaps
+        self.last_skipped_bytes = 0
+        self.gaps: list[str] = []
 
     def poll(self) -> list[str]:
         """Read appended lines, detect truncation/replacement, cap read size."""
-        st = self.path.stat()
+        try:
+            st = self.path.stat()
+        except (FileNotFoundError, PermissionError, OSError):
+            # File may be temporarily unavailable or locked during rotation
+            return []
+
         identity = (st.st_dev, st.st_ino)
-        if st.st_size < self.offset or (self._identity is not None and identity != self._identity):
+        gap_lines: list[str] = []
+        if self._identity is not None and identity != self._identity:
             self.offset = 0
             self._pending = b""
+            gap_msg = "[Log file rotated / replaced; resuming from start]"
+            self.gaps.append(gap_msg)
+            if self.annotate_gaps:
+                gap_lines.append(gap_msg)
+        elif st.st_size < self.offset:
+            self.offset = 0
+            self._pending = b""
+            gap_msg = "[Log file truncated; resuming from start]"
+            self.gaps.append(gap_msg)
+            if self.annotate_gaps:
+                gap_lines.append(gap_msg)
         self._identity = identity
-        with self.path.open("rb") as stream:
-            if st.st_size - self.offset > self.max_chunk:
-                # Follow the newest content if a producer has written a lot.
-                self.offset = max(0, st.st_size - self.max_chunk)
-                self._pending = b""
-            stream.seek(self.offset)
-            data = stream.read(self.max_chunk)
-            self.offset = stream.tell()
+
+        skipped_bytes = 0
+        if st.st_size - self.offset > self.max_chunk:
+            skipped_bytes = (st.st_size - self.max_chunk) - self.offset
+            self.offset = max(0, st.st_size - self.max_chunk)
+            self._pending = b""
+            if skipped_bytes > 0:
+                self.last_skipped_bytes = skipped_bytes
+                gap_msg = f"[... skipped {skipped_bytes} bytes ...]"
+                self.gaps.append(gap_msg)
+                if self.annotate_gaps:
+                    gap_lines.append(gap_msg)
+
+        try:
+            with self.path.open("rb") as stream:
+                stream.seek(self.offset)
+                if skipped_bytes > 0 and self.offset > 0:
+                    # Drop partial line fragment whose beginning was skipped
+                    stream.readline()
+                    self.offset = stream.tell()
+                data = stream.read(self.max_chunk)
+                self.offset = stream.tell()
+        except (FileNotFoundError, PermissionError, OSError):
+            return gap_lines
+
         incoming = self._pending + data
         if b"\n" not in incoming:
             self._pending = incoming[-4096:]
-            return []
+            return gap_lines
         *lines, self._pending = incoming.split(b"\n")
-        return [line.decode("utf-8", "replace").rstrip("\r") for line in lines]
+        decoded = [line.decode("utf-8", "replace").rstrip("\r") for line in lines]
+        return gap_lines + decoded
 
 
 class TrackedLogLines:

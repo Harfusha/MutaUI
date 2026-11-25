@@ -4,7 +4,7 @@
 |---|---|---|---|---|
 | GUI runtime | CI packaged self-test passed; clean-user install/upgrade not verified | macOS ARM CI packaged self-test passed; signed Gatekeeper install not verified | Ubuntu 26.04 x86-64 CI package self-tests passed; desktop/file-manager session not verified | CI evidence is not a clean-user support guarantee |
 | Mutagen CLI | Discover installed binary and query `version`/`--help` | Same | Same | Runtime capability detection; do not infer from OS |
-| Daemon registration | Gate on installed CLI/platform | Gate on installed CLI/platform | Native user-controlled integration only | Never fake Linux `daemon register` |
+| Daemon registration | Windows HKCU Run (`mutagen daemon register`) | macOS launchd agent (`~/Library/LaunchAgents/io.mutagen.daemon.plist`) | Unsupported by upstream Mutagen CLI | Never fake Linux `daemon register` |
 | Forward transports | Capability-gate TCP/npipe | Capability-gate TCP/Unix | Capability-gate TCP/Unix | Exact installed CLI help is authoritative |
 | Packaging | Portable and single-file workflow; packaged self-test passed in CI | ARM CI disk image build and verification passed; signing/notarization remains open | AppImage and DEB built; AppImage self-test and installed DEB self-test passed on Ubuntu 26.04 x86-64 | Clean-user install and supported-distro matrix remain required |
 

@@ -72,6 +72,8 @@ class IgnoreMatchExplanation:
     matched_rule: str | None
     scope: str | None
     note: str
+    matched_rule_index: int | None = None
+    rule_count: int = 0
 
 
 def validate_ignore_pattern(pattern: str) -> str:
@@ -519,35 +521,60 @@ def explain_ignore_path(
     ignored = False
     last_rule = None
     last_scope = None
+    last_index = None
+    total_rule_count = 0
+    overall_index = 0
     for scope, rules in (
         ("global", global_rules),
         ("project", project_rules),
         ("session", session_rules),
     ):
         for raw in rules:
+            overall_index += 1
+            total_rule_count += 1
             pattern = validate_ignore_pattern(raw)
             negated = pattern.startswith("!")
-            body = pattern[1:] if negated else pattern
-            directory_only = body.endswith("/")
-            body = body.strip("/")
+            raw_body = pattern[1:] if negated else pattern
+            anchored = raw_body.startswith("/")
+            directory_only = raw_body.endswith("/")
+            body = raw_body.strip("/")
             if not body:
                 continue
-            if "/" in body:
+            if anchored:
                 matched = fnmatch.fnmatchcase(normalized, body)
                 if directory_only:
                     matched = matched or normalized.startswith(body + "/")
+            elif "/" in body:
+                matched = fnmatch.fnmatchcase(normalized, body) or fnmatch.fnmatchcase(
+                    normalized, "*/" + body
+                )
+                if directory_only:
+                    matched = (
+                        matched
+                        or normalized.startswith(body + "/")
+                        or ("/" + body + "/") in ("/" + normalized + "/")
+                    )
             else:
                 components = normalized.split("/")
                 matched = any(fnmatch.fnmatchcase(part, body) for part in components)
             if matched:
                 ignored = not negated
                 last_rule, last_scope = pattern, scope
+                last_index = overall_index
+    note = "Approximate preview only; confirm behavior with the installed Mutagen CLI."
+    if last_rule and last_rule.startswith("!"):
+        note = (
+            "Approximate preview only; path was explicitly re-included by a later negation rule (!). "
+            "Confirm behavior with the installed Mutagen CLI."
+        )
     return IgnoreMatchExplanation(
         normalized,
         ignored,
         last_rule,
         last_scope,
-        "Approximate preview only; confirm behavior with the installed Mutagen CLI.",
+        note,
+        matched_rule_index=last_index,
+        rule_count=total_rule_count,
     )
 
 
@@ -556,6 +583,7 @@ def format_ignore_layers(
     global_rules: tuple[str, ...] = (),
     project_rules: tuple[str, ...] = (),
     session_rules: tuple[str, ...] = (),
+    annotate: bool = False,
 ) -> str:
     """Render ordered known rules by layer for a reviewable preview."""
     layers = (
@@ -563,11 +591,21 @@ def format_ignore_layers(
         ("Project", project_rules),
         ("Session", session_rules),
     )
-    return "\n".join(
-        f"{name}:\n"
-        + (
-            "\n".join(f"  {index}. {rule}" for index, rule in enumerate(rules, 1))
-            or "  (none loaded)"
-        )
-        for name, rules in layers
-    )
+    layer_sections = []
+    overall_index = 1
+    for name, rules in layers:
+        rule_lines = []
+        for index, rule in enumerate(rules, 1):
+            if annotate:
+                tags = []
+                if rule.startswith("!"):
+                    tags.append("negation/override")
+                if rule.startswith("/") or (rule.startswith("!") and rule[1:].startswith("/")):
+                    tags.append("root-anchored")
+                tag_str = f" [{', '.join(tags)}]" if tags else ""
+                rule_lines.append(f"  {index}. {rule}{tag_str} (eval #{overall_index})")
+            else:
+                rule_lines.append(f"  {index}. {rule}")
+            overall_index += 1
+        layer_sections.append(f"{name}:\n" + ("\n".join(rule_lines) or "  (none loaded)"))
+    return "\n".join(layer_sections)

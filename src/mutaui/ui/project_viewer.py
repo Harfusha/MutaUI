@@ -6,7 +6,8 @@ import json
 from contextlib import suppress
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, Qt, QTimer
+from PySide6.QtCore import QFileSystemWatcher, Qt, QThreadPool, QTimer
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -43,6 +44,7 @@ from mutaui.projects.project_actions import (
     PROJECT_ACTIONS,
     ProjectActionError,
     ProjectActionPlan,
+    ProjectActionReceipt,
     execute_project_action,
     plan_project_action,
     prepare_action_plan,
@@ -50,6 +52,7 @@ from mutaui.projects.project_actions import (
 )
 from mutaui.services.action_planner import ACTION_SPECS, ActionPlanner
 from mutaui.ui.project_yaml_editor_dialog import ProjectYamlEditorDialog
+from mutaui.ui.worker import Worker
 
 
 class NativeProjectCreationDialog(QDialog):
@@ -191,6 +194,21 @@ class NativeProjectActionDialog(QDialog):
         self.execute_button.clicked.connect(self.execute)
         cancel_button.clicked.connect(self.reject)
         self.refresh_preview()
+        self._running: bool = False
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._running:
+            answer = QMessageBox.question(
+                self,
+                "Project Action in Progress",
+                "A native project action is currently executing. Closing now leaves the execution and verification status unverified. Close anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        event.accept()
 
     def selection_changed(self) -> None:
         self.consent.setChecked(False)
@@ -261,6 +279,8 @@ class NativeProjectActionDialog(QDialog):
         self.execute_button.setEnabled(True)
 
     def execute(self) -> None:
+        if self._running:
+            return
         action_plan = None
         plan = None
         try:
@@ -283,31 +303,72 @@ class NativeProjectActionDialog(QDialog):
                     current_preflight_fingerprint=action_plan.preflight_fingerprint,
                     typed_confirmation=typed_confirmation,
                 )
-            receipt = execute_project_action(
-                plan,
-                self.executor,
-                consent=self.consent.isChecked(),
-                shell_consent=self.shell_consent.isChecked(),
-                audit_path=self.audit_path,
-                action_planner=self.action_planner,
-                action_plan=action_plan,
-            )
         except Exception as exc:
             if action_plan is not None and self.action_planner is not None:
                 with suppress(ValueError):
                     self.action_planner.cancel(action_plan.plan_id)
             QMessageBox.warning(self, "Native Mutagen Project", str(exc))
             return
-        result = receipt.action_result.stdout.strip() or "Mutagen completed without output."
-        if receipt.postcheck_error:
-            result += "\n\nAction ran; verification or audit issue: " + receipt.postcheck_error
-        elif receipt.postcheck_result is not None:
-            result += "\n\nPost-check:\n" + (
-                receipt.postcheck_result.stdout.strip()
-                or "Mutagen returned no project status output."
+
+        self._running = True
+        self.execute_button.setEnabled(False)
+        self.action.setEnabled(False)
+        self.command.setEnabled(False)
+        self.consent.setEnabled(False)
+        self.shell_consent.setEnabled(False)
+        self.preview.appendPlainText("\nRunning project action in background thread…")
+
+        consent_checked = self.consent.isChecked()
+        shell_consent_checked = self.shell_consent.isChecked()
+
+        def do_action() -> ProjectActionReceipt:
+            return execute_project_action(
+                plan,
+                self.executor,
+                consent=consent_checked,
+                shell_consent=shell_consent_checked,
+                audit_path=self.audit_path,
+                action_planner=self.action_planner,
+                action_plan=action_plan,
             )
-        QMessageBox.information(self, "Native Mutagen Project", result)
-        self.accept()
+
+        def on_success(receipt: object) -> None:
+            self._running = False
+            if not isinstance(receipt, ProjectActionReceipt):
+                return
+            result = receipt.action_result.stdout.strip() or "Mutagen completed without output."
+            if receipt.postcheck_error:
+                result += (
+                    "\n\nAction ran; verification or audit issue (UNVERIFIED): "
+                    + receipt.postcheck_error
+                )
+            elif receipt.postcheck_result is not None:
+                result += "\n\nPost-check (VERIFIED):\n" + (
+                    receipt.postcheck_result.stdout.strip()
+                    or "Mutagen returned no project status output."
+                )
+            else:
+                result += "\n\nPost-check: unverified."
+            QMessageBox.information(self, "Native Mutagen Project", result)
+            self.accept()
+
+        def on_error(err_str: str) -> None:
+            self._running = False
+            self.execute_button.setEnabled(True)
+            self.action.setEnabled(True)
+            self.command.setEnabled(True)
+            self.consent.setEnabled(True)
+            self.shell_consent.setEnabled(True)
+            if action_plan is not None and self.action_planner is not None:
+                with suppress(ValueError):
+                    self.action_planner.cancel(action_plan.plan_id)
+            QMessageBox.warning(self, "Native Mutagen Project", str(err_str))
+
+        worker = Worker(do_action)
+        if worker.signals is not None:
+            worker.signals.result.connect(on_success)
+            worker.signals.error.connect(on_error)
+            QThreadPool.globalInstance().start(worker)
 
 
 class NativeProjectViewerDialog(QDialog):

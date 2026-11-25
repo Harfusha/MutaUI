@@ -25,6 +25,7 @@ from ignore_presets import (
     preset_to_record,
 )
 from mutagen_client import MutagenClient
+from mutaui import __version__
 from mutaui.adapters.cli_executor import MutagenCliExecutor
 from mutaui.ui.connection_profiles_dialog import ConnectionProfilesDialog
 from mutaui.ui.formatters import get_settings_path as settings_path
@@ -46,6 +47,16 @@ from settings import write_settings as save_settings_file
 
 
 class SettingsBundleMixin:
+    def migrate_current_settings(self: Any) -> None:
+        from mutaui.ui.settings_migration import migrate_local_settings
+
+        migrate_local_settings(self, settings_path())
+
+    def rollback_current_settings_migration(self: Any) -> None:
+        from mutaui.ui.settings_migration import rollback_local_settings_migration
+
+        rollback_local_settings_migration(self, settings_path())
+
     def export_portable_bundle(self: Any) -> None:
         profile_path = settings_path().with_name("connection-profiles.json")
         loaded = load_profile_store(profile_path)
@@ -91,7 +102,7 @@ class SettingsBundleMixin:
         result = build_bundle(
             list(loaded.profiles),
             load_settings(settings_path()).values,
-            app_version="8.2",
+            app_version=__version__,
             include_local_paths=answer == QMessageBox.StandardButton.Yes,
             ignore_presets=[preset_to_record(preset) for preset in ignore_store.presets],
         )
@@ -238,6 +249,19 @@ class SettingsBundleMixin:
         )
         if answer != QMessageBox.StandardButton.Yes:
             return
+        profile_path = store.path
+        ignore_path = ignore_store.path
+        settings_file_path = settings_path()
+
+        # Capture file snapshots for atomic rollback if any step fails (M29)
+        backups: dict[Path, bytes | None] = {}
+        for p in (profile_path, ignore_path, settings_file_path):
+            try:
+                backups[p] = p.read_bytes() if p.exists() else None
+            except OSError:
+                backups[p] = None
+
+        completed_steps: list[str] = []
         try:
             fresh_profiles = load_profile_store(profile_path)
             fresh_ignores = load_ignore_presets(ignore_path)
@@ -250,15 +274,18 @@ class SettingsBundleMixin:
                     "Local ignore presets changed after preview; reload and review again."
                 )
             merged_settings = selected_preferences(
-                load_settings(settings_path()).values, prefs, selected
+                load_settings(settings_file_path).values, prefs, selected
             )
             if any(value != "skip" for value in ignore_choices.values()):
                 apply_preset_import(
                     ignore_store, bundle.data["items"]["ignore_presets"], ignore_choices
                 )
+                completed_steps.append("ignore presets")
             outcomes = apply_profile_import(store, bundle, choices)
+            completed_steps.append("connection profiles")
             if selected:
-                save_settings_file(settings_path(), merged_settings)
+                save_settings_file(settings_file_path, merged_settings)
+                completed_steps.append("preferences")
             QMessageBox.information(
                 self,
                 translate_text("Portable Import", active_language()),
@@ -271,10 +298,27 @@ class SettingsBundleMixin:
                 ),
             )
         except (OSError, ValueError) as exc:
+            # Perform atomic rollback of all modified files
+            rollback_errors: list[str] = []
+            for target_path, original_bytes in backups.items():
+                try:
+                    if original_bytes is None:
+                        if target_path.exists():
+                            target_path.unlink()
+                    else:
+                        target_path.write_bytes(original_bytes)
+                except OSError as rollback_exc:
+                    rollback_errors.append(f"{target_path.name}: {rollback_exc}")
+            rollback_status = (
+                "All local changes were rolled back to their original state."
+                if not rollback_errors
+                else f"Rollback failed for: {'; '.join(rollback_errors)}."
+            )
+            failed_stage = completed_steps[-1] if completed_steps else "validation"
             QMessageBox.warning(
                 self,
                 translate_text("Portable Import", active_language()),
-                f"Import stopped with an error: {exc}",
+                f"Import stopped with an error at stage '{failed_stage}': {exc}\n{rollback_status}",
             )
 
     def save_settings(self: Any) -> None:
@@ -285,12 +329,14 @@ class SettingsBundleMixin:
                 self,
                 translate_text("Invalid File", active_language()),
                 translate_text(
-                    "The selected mutagen.exe file does not exist or is unavailable.",
+                    "The selected Mutagen CLI file does not exist or is unavailable.",
                     active_language(),
                 ),
             )
             return
-        self.conf.update(
+        # Prepare candidate dictionary without mutating active in-memory configuration (M30)
+        candidate_conf = dict(self.conf)
+        candidate_conf.update(
             binary=binary,
             interval=self.interval_input.value(),
             metric_interval=self.metric_interval_input.currentData(),
@@ -305,14 +351,17 @@ class SettingsBundleMixin:
             theme=self.theme_input.currentData(),
             language=self.language_input.currentData(),
         )
-        self.adaptive_policy.fast = self.fast_interval_input.value()
-        self.adaptive_policy.idle = self.idle_interval_input.value()
-        self.adaptive_policy.quiet_after = self.quiet_after_input.value()
         try:
-            write_settings(self.conf)
+            write_settings(candidate_conf)
         except OSError as exc:
             QMessageBox.critical(self, translate_text("Save Failed", active_language()), str(exc))
             return
+        # Only after confirmed disk write, commit changes to in-memory configuration
+        self.conf.clear()
+        self.conf.update(candidate_conf)
+        self.adaptive_policy.fast = self.fast_interval_input.value()
+        self.adaptive_policy.idle = self.idle_interval_input.value()
+        self.adaptive_policy.quiet_after = self.quiet_after_input.value()
         self.client = client
         self.apply_theme(self.conf["theme"])
         self.apply_ui_language(self.conf["language"])
@@ -325,11 +374,18 @@ class SettingsBundleMixin:
         self.refresh(force=True)
 
     def browse_binary(self: Any) -> None:
+        import sys
+
+        filter_str = (
+            translate_text("Executable (*.exe);;All files (*)", active_language())
+            if sys.platform == "win32"
+            else translate_text("All files (*)", active_language())
+        )
         path, _ = QFileDialog.getOpenFileName(
             self,
-            translate_text("Select mutagen.exe", active_language()),
+            translate_text("Select Mutagen CLI", active_language()),
             str(Path.home()),
-            translate_text("Executable (*.exe);;All files (*)", active_language()),
+            filter_str,
         )
         if path:
             self.binary_edit.setText(path)

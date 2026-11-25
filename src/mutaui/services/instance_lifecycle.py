@@ -78,6 +78,13 @@ class SingleInstanceBroker(QObject):
         socket = QLocalSocket(self)
         socket.connectToServer(self.socket_name)
         if not socket.waitForConnected(max(100, min(timeout_ms, 3000))):
+            socket.abort()
+            # If server cannot be reached, check for stale crash socket and attempt recovery
+            QLocalServer.removeServer(self.socket_name)
+            if self.server.listen(self.socket_name):
+                self.primary = True
+                self.server.newConnection.connect(self._accept_connections)
+                return True
             raise InstanceLifecycleError(
                 "Could not reach the existing instance; its socket was retained for safety."
             )

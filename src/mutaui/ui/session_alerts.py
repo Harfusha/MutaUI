@@ -59,17 +59,34 @@ def check_alerts(
             window.add_log(message)
 
     eligible_errors = {}
+    healthy_keys = set()
+    paused_keys = set()
+    terminated_keys = set()
+    current_snapshot_keys = set()
     for kind, group in (("sync", snapshot.sync), ("forward", snapshot.forward)):
         for sess in group:
             identifier = sess.get("identifier")
             key = (kind, str(identifier))
+            current_snapshot_keys.add(key)
+            state = new_states.get(key)
             session_notifications = (
                 window.conf.get("session_prefs", {})
                 .get(str(identifier), {})
                 .get("notifications", True)
             )
-            if new_states.get(key) == "error" and session_notifications:
+            if state == "error" and session_notifications:
                 eligible_errors[key] = sess.get("name") or str(identifier)[:14]
+            elif state == "paused":
+                paused_keys.add(key)
+            elif (
+                state in ("ok", "connected", "watching", "waiting_for_connection", "staging")
+                and session_notifications
+            ):
+                healthy_keys.add(key)
+
+    explicit_terminated: set[tuple[str, str]] = getattr(window, "_terminated_session_keys", set())
+    for k in explicit_terminated:
+        terminated_keys.add(k)
 
     notifications_allowed = bool(window.conf.get("alerts", True)) and window.tray.isVisible()
     if notifications_allowed:
@@ -89,6 +106,8 @@ def check_alerts(
     for notification in gate.update(
         eligible_errors,
         now=time.monotonic(),
+        terminated_keys=terminated_keys,
+        paused_keys=paused_keys,
         notifications_allowed=notifications_allowed,
     ):
         eligible = [
