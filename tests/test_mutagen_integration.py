@@ -213,6 +213,11 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
         return found
 
     client = MutagenClient(binary)
+    for pid in binary_process_ids():
+        with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            p = psutil.Process(pid)
+            p.terminate()
+            p.wait(timeout=1.0)
     before_daemon = binary_process_ids()
     daemon_pid = None
     window = None
@@ -274,7 +279,7 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
 
         def observe_cli_processes():
             nonlocal peak_cli_processes
-            live = binary_process_ids() - {daemon_pid}
+            live = (binary_process_ids() - before_daemon) - {daemon_pid}
             peak_cli_processes = max(peak_cli_processes, len(live))
 
         process_timer.timeout.connect(observe_cli_processes)

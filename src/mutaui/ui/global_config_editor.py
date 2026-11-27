@@ -174,7 +174,9 @@ def preview_global_config(window: Any) -> None:
     confirm = QMessageBox(window)
     set_localized_title(confirm, "Review Mutagen YAML changes")
     confirm.setIcon(QMessageBox.Icon.Question)
-    backup_target = snapshot.path.with_name(f"{snapshot.path.name}.bak")
+    raw_path = getattr(snapshot, "source_path", None) or getattr(snapshot, "path", None)
+    snapshot_path = Path(raw_path) if raw_path is not None else (Path.home() / ".mutagen.yml")
+    backup_target = snapshot_path.with_name(f"{snapshot_path.name}.bak")
     confirm_text = translate_text(
         "Target: {target}\n"
         "Backup: {backup}\n\n"
@@ -182,7 +184,7 @@ def preview_global_config(window: Any) -> None:
         "Currently running sessions will continue using their active configuration and are not changed. "
         "Save creates a backup and atomically replaces the file.",
         active_language(),
-    ).format(target=snapshot.path, backup=backup_target)
+    ).format(target=snapshot_path, backup=backup_target)
     confirm.setText(confirm_text)
     confirm.setDetailedText(preview.diff or "No changes.")
     apply_button = confirm.addButton(

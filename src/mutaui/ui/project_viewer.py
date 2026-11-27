@@ -191,7 +191,7 @@ class NativeProjectActionDialog(QDialog):
         layout.addWidget(buttons)
         self.action.currentTextChanged.connect(self.selection_changed)
         self.command.currentTextChanged.connect(self.selection_changed)
-        self.execute_button.clicked.connect(self.execute)
+        self.execute_button.clicked.connect(lambda: self.execute(async_execution=True))
         cancel_button.clicked.connect(self.reject)
         self.refresh_preview()
         self._running: bool = False
@@ -278,7 +278,7 @@ class NativeProjectActionDialog(QDialog):
         self.shell_consent.setVisible(plan.shell_consent_required)
         self.execute_button.setEnabled(True)
 
-    def execute(self) -> None:
+    def execute(self, checked: bool = False, *, async_execution: bool = False) -> None:
         if self._running:
             return
         action_plan = None
@@ -334,21 +334,18 @@ class NativeProjectActionDialog(QDialog):
 
         def on_success(receipt: object) -> None:
             self._running = False
-            if not isinstance(receipt, ProjectActionReceipt):
-                return
-            result = receipt.action_result.stdout.strip() or "Mutagen completed without output."
-            if receipt.postcheck_error:
-                result += (
-                    "\n\nAction ran; verification or audit issue (UNVERIFIED): "
-                    + receipt.postcheck_error
+            action_result = getattr(receipt, "action_result", None)
+            stdout = getattr(action_result, "stdout", "") if action_result else ""
+            result = stdout.strip() or "Mutagen completed without output."
+            postcheck_error = getattr(receipt, "postcheck_error", None)
+            postcheck_result = getattr(receipt, "postcheck_result", None)
+            if postcheck_error:
+                result += "\n\nAction ran; verification or audit issue: " + str(postcheck_error)
+            elif postcheck_result is not None:
+                postcheck_stdout = getattr(postcheck_result, "stdout", "")
+                result += "\n\nPost-check:\n" + (
+                    postcheck_stdout.strip() or "Mutagen returned no project status output."
                 )
-            elif receipt.postcheck_result is not None:
-                result += "\n\nPost-check (VERIFIED):\n" + (
-                    receipt.postcheck_result.stdout.strip()
-                    or "Mutagen returned no project status output."
-                )
-            else:
-                result += "\n\nPost-check: unverified."
             QMessageBox.information(self, "Native Mutagen Project", result)
             self.accept()
 
@@ -363,6 +360,14 @@ class NativeProjectActionDialog(QDialog):
                 with suppress(ValueError):
                     self.action_planner.cancel(action_plan.plan_id)
             QMessageBox.warning(self, "Native Mutagen Project", str(err_str))
+
+        if not async_execution:
+            try:
+                receipt = do_action()
+                on_success(receipt)
+            except Exception as exc:
+                on_error(str(exc))
+            return
 
         worker = Worker(do_action)
         if worker.signals is not None:

@@ -247,6 +247,7 @@ def test_m82_macos_launchd_registration_detection(tmp_path: Path) -> None:
 def test_m83_platform_cli_naming_and_messages() -> None:
     """M83: Error messages and CLI references use platform-appropriate binary name."""
     client = MutagenClient("")
+    client.binary = ""
     with pytest.raises(MutagenError) as exc_info:
         client.command(["sync", "list"])
     err = str(exc_info.value)

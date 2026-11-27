@@ -368,7 +368,7 @@ def test_diagnostics_controller_branches(monkeypatch: pytest.MonkeyPatch, tmp_pa
     # 4.2 copy_diagnostics
     window.diag_summary.setText("Summary text")
     window.diagnostics_view.setPlainText("Diagnostics text")
-    window.copy_diagnostics()
+    window.copy_diagnostics(safe=False)
     assert "Summary text" in QApplication.clipboard().text()
 
     # 4.3 export_snapshot with write OSError

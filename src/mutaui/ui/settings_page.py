@@ -265,10 +265,6 @@ def build_settings_page(window: Any) -> QScrollArea:
     transfer = QVBoxLayout()
     transfer.addWidget(button("Export Portable Bundle…", window.export_portable_bundle))
     transfer.addWidget(button("Import Portable Bundle…", window.import_portable_bundle))
-    transfer.addWidget(button("Migrate Current Settings…", window.migrate_current_settings))
-    transfer.addWidget(
-        button("Rollback Settings Migration…", window.rollback_current_settings_migration)
-    )
     portability_layout.addLayout(transfer)
     layout.addWidget(portability)
     note, nl = card()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import getpass
 import hashlib
 import json
@@ -80,7 +81,10 @@ class SingleInstanceBroker(QObject):
         if not socket.waitForConnected(max(100, min(timeout_ms, 3000))):
             socket.abort()
             # If server cannot be reached, check for stale crash socket and attempt recovery
-            QLocalServer.removeServer(self.socket_name)
+            remove_server = getattr(QLocalServer, "removeServer", None)
+            if callable(remove_server):
+                with contextlib.suppress(AttributeError, TypeError):
+                    remove_server(self.socket_name)
             if self.server.listen(self.socket_name):
                 self.primary = True
                 self.server.newConnection.connect(self._accept_connections)

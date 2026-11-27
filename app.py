@@ -412,6 +412,9 @@ if __name__ in ("__main__", "app") or "app" not in sys.modules:
     ):
         for _name, _attr in _mixin.__dict__.items():
             if isinstance(_attr, types.FunctionType):
+                for _k, _v in _attr.__globals__.items():
+                    if _k not in _target_dict:
+                        _target_dict[_k] = _v
                 _rebound = types.FunctionType(
                     _attr.__code__,
                     _target_dict,

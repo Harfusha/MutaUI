@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -33,10 +34,11 @@ class CommandExecutionMixin:
             )
             return
         if not self.client.binary:
+            binary_label = "mutagen.exe" if sys.platform == "win32" else "Mutagen CLI"
             QMessageBox.warning(
                 self,
                 translate_text("Mutagen not found", active_language()),
-                translate_text("First, configure Mutagen CLI in Settings.", active_language()),
+                translate_text(f"First, configure {binary_label} in Settings.", active_language()),
             )
             self.set_page(5)
             return

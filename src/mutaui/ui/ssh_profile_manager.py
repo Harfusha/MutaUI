@@ -56,7 +56,11 @@ class SSHProfileManagerDialog(QDialog):
         self.alias_input.setEditable(False)
         row.addWidget(self.alias_input, 1)
         row.addWidget(button("Reload config", self.reload_config))
-        self.resolve_button = button("Resolve with ssh -G", self.resolve_selected, kind="primary")
+        self.resolve_button = button(
+            "Resolve with ssh -G",
+            lambda: self.resolve_selected(async_execution=True),
+            kind="primary",
+        )
         row.addWidget(self.resolve_button)
         layout.addLayout(row)
         self.details = QPlainTextEdit()
@@ -66,7 +70,11 @@ class SSHProfileManagerDialog(QDialog):
         )
         layout.addWidget(self.details, 1)
         controls = QHBoxLayout()
-        self.test_button = button("Test connection…", self.test_selected, kind="primary")
+        self.test_button = button(
+            "Test connection…",
+            lambda: self.test_selected(async_execution=True),
+            kind="primary",
+        )
         controls.addWidget(self.test_button)
         controls.addStretch(1)
         controls.addWidget(button("Done", self.accept))
@@ -109,7 +117,7 @@ class SSHProfileManagerDialog(QDialog):
                 "No concrete SSH aliases found. Wildcard and Match rules are shown as warnings."
             )
 
-    def resolve_selected(self) -> None:
+    def resolve_selected(self, checked: bool = False, *, async_execution: bool = False) -> None:
         alias = self.alias_input.currentText()
         if not self._config_valid or alias not in self._profiles or self._running:
             return
@@ -129,16 +137,11 @@ class SSHProfileManagerDialog(QDialog):
             self._running = False
             self.resolve_button.setEnabled(True)
             self.test_button.setEnabled(True)
-            if not isinstance(result, SSHCommandResult) or not result.success:
-                msg = (
-                    result.message
-                    if isinstance(result, SSHCommandResult)
-                    else "SSH resolution failed"
-                )
-                err = (
-                    result.stderr if isinstance(result, SSHCommandResult) and result.stderr else ""
-                )
-                self.details.setPlainText(msg + ("\n" + err if err else ""))
+            success = getattr(result, "success", False)
+            message = getattr(result, "message", "") or "SSH resolution failed"
+            stderr = getattr(result, "stderr", "")
+            if not success:
+                self.details.setPlainText(message + ("\n" + stderr if stderr else ""))
                 return
             keys = (
                 "hostname",
@@ -153,8 +156,9 @@ class SSHProfileManagerDialog(QDialog):
                 "connecttimeout",
             )
             lines = [f"Alias: {alias}", "Effective values from local `ssh -G`:"]
+            options = getattr(result, "options", {})
             for key in keys:
-                values = result.options.get(key)
+                values = options.get(key)
                 if not values:
                     continue
                 lines.append(f"{key}: " + "; ".join(values))
@@ -167,7 +171,7 @@ class SSHProfileManagerDialog(QDialog):
                 lines.append(
                     "Unexpanded directives in config listing: " + ", ".join(profile.unsupported)
                 )
-            if str(result.options.get("stricthostkeychecking", ("",))[0]).lower() == "no":
+            if str(options.get("stricthostkeychecking", ("",))[0]).lower() == "no":
                 lines.append(
                     "WARNING: effective config disables strict host-key checking. Connection test overrides it to yes."
                 )
@@ -179,13 +183,21 @@ class SSHProfileManagerDialog(QDialog):
             self.test_button.setEnabled(True)
             self.details.setPlainText(f"Error resolving SSH config: {err_str}")
 
+        if not async_execution:
+            try:
+                res = do_resolve()
+                on_success(res)
+            except Exception as exc:
+                on_error(str(exc))
+            return
+
         worker = Worker(do_resolve)
         if worker.signals is not None:
             worker.signals.result.connect(on_success)
             worker.signals.error.connect(on_error)
             QThreadPool.globalInstance().start(worker)
 
-    def test_selected(self) -> None:
+    def test_selected(self, checked: bool = False, *, async_execution: bool = False) -> None:
         alias = self.alias_input.currentText()
         if not self._config_valid or alias not in self._profiles or self._running:
             return
@@ -215,12 +227,13 @@ class SSHProfileManagerDialog(QDialog):
             self._running = False
             self.resolve_button.setEnabled(True)
             self.test_button.setEnabled(True)
-            if not isinstance(result, SSHCommandResult):
-                return
-            detail = result.message
-            if result.stderr.strip():
-                detail += "\n\n" + result.stderr.strip()
-            if result.success:
+            message = getattr(result, "message", "")
+            stderr = getattr(result, "stderr", "")
+            success = getattr(result, "success", False)
+            detail = message
+            if stderr.strip():
+                detail += "\n\n" + stderr.strip()
+            if success:
                 QMessageBox.information(
                     self, translate_text("SSH connection test", active_language()), detail
                 )
@@ -238,6 +251,14 @@ class SSHProfileManagerDialog(QDialog):
                 translate_text("SSH connection test", active_language()),
                 f"SSH test failed: {err_str}",
             )
+
+        if not async_execution:
+            try:
+                res = do_test()
+                on_success(res)
+            except Exception as exc:
+                on_error(str(exc))
+            return
 
         worker = Worker(do_test)
         if worker.signals is not None:

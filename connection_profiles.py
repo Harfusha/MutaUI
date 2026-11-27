@@ -119,19 +119,6 @@ def _parse_profile(raw: Any) -> ConnectionProfile:
             )
         if "\x00" in endpoint:
             raise ProfileStoreError("Profile endpoints cannot contain NUL characters.")
-    if (
-        not isinstance(endpoint_a, str)
-        or not endpoint_a.strip()
-        or len(endpoint_a) > 4096
-        or not isinstance(endpoint_b, str)
-        or not endpoint_b.strip()
-        or len(endpoint_b) > 4096
-    ):
-        raise ProfileStoreError(
-            "Profile endpoints must be non-empty strings of at most 4096 characters."
-        )
-    if "\x00" in endpoint_a or "\x00" in endpoint_b:
-        raise ProfileStoreError("Profile endpoints cannot contain NUL characters.")
     if type(favorite) is not bool:
         raise ProfileStoreError("Profile favorite must be a boolean.")
     tags = _clean_tags(raw.get("tags", []))

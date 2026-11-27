@@ -38,24 +38,22 @@ class PreferencesController:
         advanced = window.ui_mode == "advanced"
         visible_sections: set[str] = set()
         section_route: str | None = None
-        current_idx = window.pages.currentIndex() if hasattr(window, "pages") else 0
-        current_route_id = (
-            PAGE_ROUTES[current_idx].route_id if current_idx < len(PAGE_ROUTES) else ""
-        )
         for route, nav_button in zip(PAGE_ROUTES, window.nav, strict=True):
             if route.section:
                 section_route = route.route_id
-            # Keep active route visible even if advanced in basic mode for context retention (M43)
-            route_visible = (
-                advanced
-                or route.route_id not in ADVANCED_ROUTE_IDS
-                or route.route_id == current_route_id
-            )
+            route_visible = advanced or route.route_id not in ADVANCED_ROUTE_IDS
             nav_button.setVisible(route_visible)
             if section_route is not None and route_visible:
                 visible_sections.add(section_route)
         for route_id, section_label in window.nav_section_labels.items():
             section_label.setVisible(route_id in visible_sections)
+        if (
+            not advanced
+            and hasattr(window, "pages")
+            and hasattr(window, "set_page")
+            and PAGE_ROUTES[window.pages.currentIndex()].route_id in ADVANCED_ROUTE_IDS
+        ):
+            window.set_page(0)
 
     def apply_theme(self, theme: str) -> None:
         try:

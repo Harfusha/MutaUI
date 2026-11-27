@@ -2376,7 +2376,7 @@ def test_language_switch_updates_navigation_page_header_and_returns_to_english(
     assert favorite_button.text() == "☆ Přidat k oblíbeným"
 
     window.set_page(0)
-    assert window.windowTitle() == "Mutagen Control 8.2 · Správce serverů"
+    assert window.windowTitle() == f"Mutagen Control {app_module.APP_VERSION} · Správce serverů"
     assert window.footer.text() == "DEMO • Všechny akce jsou vypnuté"
     assert window.daemon_title.text() == "●  Spuštěno"
     assert window.daemon_desc.text() == "Služba Mutagen odpovídá."
@@ -2439,7 +2439,7 @@ def test_language_switch_updates_navigation_page_header_and_returns_to_english(
     assert forwarding_model.headerData(0, app_module.Qt.Orientation.Horizontal) == "NAME"
     assert forwarding_model.data(forwarding_model.index(0, 1)) == "Forwarding active"
     assert favorite_button.text() == "☆ Add to Favorites"
-    assert window.windowTitle() == "Mutagen Control 8.2 · Server Manager"
+    assert window.windowTitle() == f"Mutagen Control {app_module.APP_VERSION} · Server Manager"
     assert window.footer.text() == "DEMO • All actions are disabled"
     assert window.page_name.text() == "Settings"
     assert window.server_overview.horizontalHeaderItem(1).text() == "SYNC"

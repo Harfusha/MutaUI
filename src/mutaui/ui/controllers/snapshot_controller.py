@@ -103,7 +103,8 @@ class SnapshotLifecycleMixin:
                 snap.daemon_state = "unconfigured"
                 snap.sync_status = "unavailable"
                 snap.forward_status = "unavailable"
-                snap.error = "Mutagen CLI is not configured. Open Settings."
+                binary_label = "mutagen.exe" if sys.platform == "win32" else "Mutagen CLI"
+                snap.error = f"{binary_label} is not configured. Open Settings."
                 return snap
 
             list_results: dict[

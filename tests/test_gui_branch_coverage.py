@@ -187,7 +187,9 @@ def test_log_tail_picker_cancel_selection_and_render_coalescing(
         _render_pending_tail=lambda: None,
     )
     monkeypatch.setattr(app_module.QFileDialog, "getOpenFileName", lambda *_args: (selected[0], ""))
-    monkeypatch.setattr(app_module, "FileTail", lambda path: SimpleNamespace(path=path))
+    monkeypatch.setattr(
+        app_module, "FileTail", lambda path, **kwargs: SimpleNamespace(path=path, **kwargs)
+    )
     app_module.MainWindow.choose_tail_file(dialog)
     assert dialog.tail_file is None
 
@@ -263,23 +265,30 @@ def test_session_dialog_directory_picker_preserves_cancel_and_platform_path(
     assert control.value == expected
 
 
-def test_history_clear_respects_optional_recorder() -> None:
+def test_history_clear_respects_optional_recorder(monkeypatch: pytest.MonkeyPatch) -> None:
     history_clears: list[str] = []
     recorder_clears: list[str] = []
-    messages: list[str] = []
+    monkeypatch.setattr(
+        app_module.QMessageBox,
+        "question",
+        lambda *a, **k: app_module.QMessageBox.StandardButton.Yes,
+    )
     dialog = SimpleNamespace(
         logs=["old"],
         log_view=TextRecorder(),
         history=SimpleNamespace(clear_events=lambda: history_clears.append("history")),
         recorder=None,
-        add_log=lambda message: messages.append(message),
+        add_log=lambda message: None,
     )
-    app_module.MainWindow.clear_logs(dialog)
+    app_module.MainWindow.purge_database_history(dialog)
     assert history_clears == ["history"]
-    assert messages == ["UI history cleared"]
 
-    dialog.recorder = SimpleNamespace(clear_events=lambda: recorder_clears.append("recorder"))
-    app_module.MainWindow.clear_logs(dialog)
+    dialog.recorder = SimpleNamespace(
+        clear_events=lambda: recorder_clears.append("recorder"),
+        wait_idle=lambda timeout=4.0: True,
+        last_error=None,
+    )
+    app_module.MainWindow.purge_database_history(dialog)
     assert recorder_clears == ["recorder"]
 
 

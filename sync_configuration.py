@@ -227,11 +227,7 @@ def build_effective_forward_configuration(
 
     overrides: dict[str, Any] = {}
     for argument in command_arguments:
-        if argument.startswith("--name="):
-            overrides["name"] = argument.partition("=")[2]
-        elif argument == "--paused":
-            overrides["paused"] = True
-        elif argument.startswith("--socket-overwrite-mode="):
+        if argument.startswith("--socket-overwrite-mode="):
             mode_val = argument.partition("=")[2]
             overrides["source.socket.overwriteMode"] = mode_val
             overrides["destination.socket.overwriteMode"] = mode_val

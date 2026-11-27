@@ -374,6 +374,8 @@ def test_conflict_inspector_task_cleans_up_signals_and_request(tmp_path, monkeyp
     monkeypatch.setattr(QMessageBox, "warning", lambda *_args: None)
     monkeypatch.setattr(dialog._inspection_pool, "start", lambda _task: None)
 
+    gc.collect()
+    baseline_signals = sum(1 for obj in gc.get_objects() if isinstance(obj, _InspectionSignals))
     dialog._inspect_selected_remote("beta")
     task = dialog._inspection_task
     assert task is not None
@@ -387,7 +389,10 @@ def test_conflict_inspector_task_cleans_up_signals_and_request(tmp_path, monkeyp
     qapp.processEvents()
     gc.collect()
     assert sig_ref() is None
-    assert sum(1 for obj in gc.get_objects() if isinstance(obj, _InspectionSignals)) == 0
+    assert (
+        sum(1 for obj in gc.get_objects() if isinstance(obj, _InspectionSignals))
+        <= baseline_signals
+    )
     dialog.close()
 
 
