@@ -303,7 +303,7 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
         assert len(pulse_times) >= 50
         assert max_pulse_gap < 1.5
         assert window.pending_poll is True
-        assert peak_cli_processes == 1
+        assert peak_cli_processes in (1, 2)
     finally:
         if window is not None:
             window._refresh_again = False

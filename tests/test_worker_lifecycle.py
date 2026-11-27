@@ -46,9 +46,8 @@ class _TaskPayload:
 def _drain_qt_and_gc(qapp: QApplication, pool: QThreadPool) -> None:
     assert pool.waitForDone(10_000)
     qapp.processEvents()
-    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    qapp.processEvents()
     gc.collect()
+    qapp.processEvents()
     gc.collect()
 
 

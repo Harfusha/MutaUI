@@ -229,6 +229,7 @@ def test_connection_profiles_dialog_edit_and_duplicate_branches(
 
     # 6. duplicate_selected with no selection
     dlg.table.clearSelection()
+    dlg.table.setCurrentItem(None)
     dlg.duplicate_selected()  # does nothing safely
 
     # 7. duplicate_selected with selection

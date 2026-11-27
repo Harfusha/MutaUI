@@ -1,6 +1,6 @@
 [project]
 name = "mutagen-control"
-version = "9.2.0"
+version = "9.3.0"
 license = "MIT"
 description = "Desktop management for Mutagen synchronization and forwarding sessions"
 readme = "README.md"

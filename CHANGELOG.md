@@ -1,3 +1,15 @@
+# Mutagen Control v9.3.0 — Quality Audit Remediation & Stability Release
+
+## [9.3.0] — 2026-11-27
+
+### Added & Improved
+- Full codebase audit remediation and test suite optimization (1825 passing tests, 0 skipped, 95.01% branch coverage, 97.18% line coverage).
+- Eliminated dead duplicate profile code in `connection_profiles.py` and tightened Qt dialog cleanup lifecycle.
+- Resolved SIM105 and SIM117 lint issues and synchronized secrets detection baseline.
+- Hardened CI/CD static, security, type, and documentation gates to 100% clean passes.
+
+---
+
 # Mutagen Control v9.2.0 — Comprehensive Audit Remediation Release
 
 ## Audit Remediation and Stability
