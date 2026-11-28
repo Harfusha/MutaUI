@@ -1274,14 +1274,14 @@ def test_sync_replacement_requires_fresh_live_snapshot(qapp, monkeypatch, demo, 
             [],
             "Session status is stale. Refresh and review again.",
         ),
-        (app_module.datetime.now(app_module.UTC), [], "The exact session is no longer loaded."),
+        ("fresh", [], "The exact session is no longer loaded."),
         (
-            app_module.datetime.now(app_module.UTC),
+            "fresh",
             [{"identifier": "sync-1", "labels": ["malformed"]}],
             "Project-owned sessions must be changed through their native project workflow.",
         ),
         (
-            app_module.datetime.now(app_module.UTC),
+            "fresh",
             [{"identifier": "sync-1", "labels": {"io.mutagen.project": "project-1"}}],
             "Project-owned sessions must be changed through their native project workflow.",
         ),
@@ -1290,6 +1290,8 @@ def test_sync_replacement_requires_fresh_live_snapshot(qapp, monkeypatch, demo, 
 def test_sync_replacement_rejects_stale_missing_or_project_owned_target(
     qapp, monkeypatch, observed_at, sessions, expected
 ):
+    if observed_at == "fresh":
+        observed_at = app_module.datetime.now(app_module.UTC)
     warnings = []
     monkeypatch.setattr(
         app_module.QMessageBox,
