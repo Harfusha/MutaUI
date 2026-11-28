@@ -141,12 +141,12 @@
         "Unsigned Windows/Linux assets, Linux CycloneDX SBOM, checksums, and release notes match the exact tag; no signatures, notarization, provenance, or attestations are produced.",
         "Public distribution license notices and LGPL obligations remain present and the repository's recorded owner approval is retained."
       ],
-      "blocker": "Release candidate is not yet committed, pushed, or tested by exact-tag CI. Signing and macOS runtime are explicitly excluded.",
+      "blocker": "GitHub Checks run 46156810570 failed the logic and integration tests on both Windows and Ubuntu for commit 62f380657853fe662cd691586284233a723ec9e1. Public APIs expose only the failed step; report artifacts require authentication. Local Windows strict suite passed; Docker Linux suite reached 1845 passed and 95.00% branch coverage, but its final evidence manifest was not created because the archived workspace lacked .git metadata. The Linux process-crash test failure was isolated to Docker without --init and passed with --init. No v9.4.0 tag or release until a fresh exact-commit Windows/Linux CI run passes.",
       "clarifications": [],
       "depends_on": [],
       "description": "Prepare and publish the next minor release with unsigned Windows and Linux assets. Run current candidate CI on Windows/Linux only; macOS is static-only per user. No signing, notarization, or signed provenance.",
       "kind": "code",
-      "next_action": "Commit and push the prepared v9.4.0 candidate to master; require Windows/Linux CI to pass, then push v9.4.0 and verify the unsigned release assets and checksums.",
+      "next_action": "Resolve access to the exact failed JUnit reports or trigger a fresh host CI run after an evidence-backed change. Keep macOS static-only. Then require green Windows/Linux checks before tagging v9.4.0 and verify unsigned release assets.",
       "title": "Unsigned v9.4.0 minor release",
       "work_status": "in_progress"
     },
