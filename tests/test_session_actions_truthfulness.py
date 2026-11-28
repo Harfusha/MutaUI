@@ -677,7 +677,7 @@ def test_m54_autosafe_records_attempt_only_when_snapshot_completes(window, monke
     window.pending_poll = False
     window.pending_action = False
 
-    now = 1000.0
+    now = time.monotonic() - window.health_tracker.policy.failure_elapsed_seconds - 150.0
     window.snapshot.sync = [
         {
             "identifier": "sync_err_2",
