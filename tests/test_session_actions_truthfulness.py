@@ -672,12 +672,14 @@ def test_m54_autosafe_does_not_record_premature_success_during_pending_poll(wind
 def test_m54_autosafe_records_attempt_only_when_snapshot_completes(window, monkeypatch):
     """When idle, auto-safe queues session; attempt is recorded when snapshot arrives."""
     window.health_tracker.update_policy(
-        dataclasses.replace(window.health_tracker.policy, mode="auto_safe")
+        dataclasses.replace(
+            window.health_tracker.policy, mode="auto_safe", failure_elapsed_seconds=0
+        )
     )
     window.pending_poll = False
     window.pending_action = False
 
-    now = time.monotonic() - window.health_tracker.policy.failure_elapsed_seconds - 150.0
+    now = 0.0
     window.snapshot.sync = [
         {
             "identifier": "sync_err_2",
