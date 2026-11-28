@@ -136,6 +136,7 @@ class PagesMixin:
                 f"QPushButton#metricValue:hover {{ background:#1A263A; border-color:{BORDER}; }}"
                 f"QPushButton#metricValue:focus {{ border-color:{BLUE}; }}"
             )
+            val.setProperty("mutauiBaseStyleSheet", val.styleSheet())
             val.clicked.connect(lambda _checked=False, k=key: self.show_metric_menu(k))
             c.addWidget(val)
             note_label = label(note + " · click to open", muted=True, size=10)

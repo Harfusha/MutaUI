@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import sys
+import tempfile
 from contextlib import suppress
 from pathlib import Path
 from typing import Final
@@ -18,9 +19,13 @@ class IntegrationError(RuntimeError):
 
 _NAUTILUS_RELATIVE: Final = Path("nautilus/scripts/MutaUI/Open folder in MutaUI")
 _DOLPHIN_RELATIVE: Final = Path("kio/servicemenus/mutaui-open-folder.desktop")
+_NEMO_RELATIVE: Final = Path("nemo/scripts/Open folder in MutaUI")
 _MANIFEST_RELATIVE: Final = Path("mutaui/integrations/linux-file-manager.json")
-_MANAGED_FILES: Final = (_NAUTILUS_RELATIVE, _DOLPHIN_RELATIVE)
-_MANIFEST_VERSION: Final = 2
+_LEGACY_MANAGED_FILES: Final = (_NAUTILUS_RELATIVE, _DOLPHIN_RELATIVE)
+_MANAGED_FILES: Final = (*_LEGACY_MANAGED_FILES, _NEMO_RELATIVE)
+_LEGACY_MANIFEST_VERSION: Final = 2
+_PREVIOUS_MANIFEST_VERSION: Final = 3
+_MANIFEST_VERSION: Final = 4
 
 
 def _assert_linux(platform_name: str | None) -> None:
@@ -66,18 +71,25 @@ def _desktop_exec_arg(value: str) -> str:
 def _hook_contents(executable: Path) -> dict[Path, bytes]:
     executable_text = str(executable)
     shell_executable = shlex.quote(executable_text)
-    nautilus = (
-        "#!/bin/sh\n"
-        "set -eu\n"
-        "selected=${NAUTILUS_SCRIPT_SELECTED_FILE_PATHS-}\n"
-        "newline='\n'\n"
-        'case "$selected" in\n'
-        '  *"$newline") selected=${selected%"$newline"} ;;\n'
-        "esac\n"
-        '[ -n "$selected" ] || exit 2\n'
-        'case "$selected" in *"$newline"*) exit 2 ;; esac\n'
-        f'exec {shell_executable} --open-folder "$selected"\n'
-    ).encode()
+
+    def selection_script(environment_variable: str) -> bytes:
+        return (
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "if [ ! -r /dev/fuse ] || [ ! -w /dev/fuse ]; then\n"
+            "  APPIMAGE_EXTRACT_AND_RUN=1\n"
+            "  export APPIMAGE_EXTRACT_AND_RUN\n"
+            "fi\n"
+            f"selected=${{{environment_variable}-}}\n"
+            "newline='\n'\n"
+            'case "$selected" in\n'
+            '  *"$newline") selected=${selected%"$newline"} ;;\n'
+            "esac\n"
+            '[ -n "$selected" ] || exit 2\n'
+            'case "$selected" in *"$newline"*) exit 2 ;; esac\n'
+            f'exec {shell_executable} --open-folder "$selected"\n'
+        ).encode()
+
     dolphin = (
         "[Desktop Entry]\n"
         "Type=Service\n"
@@ -88,10 +100,14 @@ def _hook_contents(executable: Path) -> dict[Path, bytes]:
         "\n"
         "[Desktop Action mutauiOpenFolder]\n"
         "Name=Open folder in MutaUI\n"
-        f"Exec={_desktop_exec_arg(executable_text)} --open-folder %f\n"
+        f"Exec=/usr/bin/env APPIMAGE_EXTRACT_AND_RUN=1 {_desktop_exec_arg(executable_text)} --open-folder %f\n"
         "Icon=folder-open\n"
     ).encode()
-    return {_NAUTILUS_RELATIVE: nautilus, _DOLPHIN_RELATIVE: dolphin}
+    return {
+        _NAUTILUS_RELATIVE: selection_script("NAUTILUS_SCRIPT_SELECTED_FILE_PATHS"),
+        _DOLPHIN_RELATIVE: dolphin,
+        _NEMO_RELATIVE: selection_script("NEMO_SCRIPT_SELECTED_FILE_PATHS"),
+    }
 
 
 def _digest(contents: bytes) -> str:
@@ -105,10 +121,17 @@ def _load_manifest(path: Path) -> dict[str, object]:
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise IntegrationError("Integration ownership manifest is invalid.") from exc
-    if not isinstance(manifest, dict) or manifest.get("version") != _MANIFEST_VERSION:
+    if not isinstance(manifest, dict):
+        raise IntegrationError("Integration ownership manifest has an unsupported format.")
+    version = manifest.get("version")
+    if version == _LEGACY_MANIFEST_VERSION:
+        managed_files: tuple[Path, ...] = _LEGACY_MANAGED_FILES
+    elif version in (_PREVIOUS_MANIFEST_VERSION, _MANIFEST_VERSION):
+        managed_files = _MANAGED_FILES
+    else:
         raise IntegrationError("Integration ownership manifest has an unsupported format.")
     files = manifest.get("files")
-    expected = {relative.as_posix() for relative in _MANAGED_FILES}
+    expected = {relative.as_posix() for relative in managed_files}
     if not isinstance(files, dict) or set(files) != expected:
         raise IntegrationError("Integration ownership manifest has unexpected paths.")
     executable = manifest.get("executable")
@@ -121,7 +144,8 @@ def _verify_owned_files(root: Path, manifest: dict[str, object]) -> list[tuple[P
     files = manifest["files"]
     assert isinstance(files, dict)
     verified: list[tuple[Path, str]] = []
-    for relative in _MANAGED_FILES:
+    for relative_text in files:
+        relative = Path(relative_text)
         destination = _safe_path(root, relative)
         expected_hash = files[relative.as_posix()]
         if not isinstance(expected_hash, str):
@@ -173,6 +197,39 @@ def _write_exclusive(path: Path, contents: bytes, mode: int) -> None:
         raise
 
 
+def _ensure_dolphin_executable(path: Path) -> int | None:
+    """Set the user execute bit required for Dolphin service-menu actions."""
+    if os.name != "posix":
+        return None
+    mode = path.stat().st_mode & 0o777
+    if mode & 0o100:
+        return None
+    path.chmod(mode | 0o100)
+    return mode
+
+
+def _replace_file(path: Path, contents: bytes, mode: int) -> None:
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", prefix=f".{path.name}.", dir=path.parent, delete=False
+        ) as stream:
+            temporary_path = Path(stream.name)
+            stream.write(contents)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary_path.chmod(mode)
+        os.replace(temporary_path, path)
+    except OSError:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def _replace_manifest(path: Path, contents: bytes) -> None:
+    _replace_file(path, contents, path.stat().st_mode & 0o777)
+
+
 def is_transient_extraction_path(path: Path | str) -> bool:
     """Check if the path is located in a transient AppImage or PyInstaller extraction directory."""
     str_path = str(path)
@@ -188,7 +245,7 @@ def install_linux_file_manager_integration(
     data_home: Path | str | None = None,
     platform_name: str | None = None,
 ) -> str:
-    """Install Nautilus and Dolphin hooks in the current user's data directory."""
+    """Install Nautilus, Dolphin, and Nemo hooks for the current user."""
     _assert_linux(platform_name)
     binary = Path(executable).expanduser()
     if is_transient_extraction_path(binary):
@@ -219,8 +276,77 @@ def install_linux_file_manager_integration(
                 raise IntegrationError(
                     "Integration is installed for a different executable; remove it before reinstalling."
                 )
+        elif manifest["version"] == _MANIFEST_VERSION:
+            try:
+                repaired_mode = _ensure_dolphin_executable(destinations[_DOLPHIN_RELATIVE])
+            except OSError as exc:
+                raise IntegrationError(f"Could not enable the Dolphin service menu: {exc}") from exc
+            return "installed" if repaired_mode is not None else "already_installed"
         else:
-            return "already_installed"
+            files = manifest["files"]
+            assert isinstance(files, dict)
+            missing = [relative for relative in _MANAGED_FILES if relative.as_posix() not in files]
+            if any(destinations[relative].exists() for relative in missing):
+                raise IntegrationError(
+                    "Integration conflict: refusing to overwrite an existing file."
+                )
+
+            migration_created_dirs: list[Path] = []
+            migration_created_files: list[Path] = []
+            migration_replaced_files: list[tuple[Path, bytes, int]] = []
+            dolphin_mode_before: int | None = None
+            try:
+                for relative, destination in destinations.items():
+                    if relative in missing:
+                        _make_parents(root, destination, migration_created_dirs)
+                        _write_exclusive(destination, contents[relative], 0o755)
+                        migration_created_files.append(destination)
+                    elif destination.read_bytes() != contents[relative]:
+                        old_contents = destination.read_bytes()
+                        old_mode = destination.stat().st_mode & 0o777
+                        mode = 0o755 if relative == _DOLPHIN_RELATIVE else old_mode
+                        _replace_file(destination, contents[relative], mode)
+                        migration_replaced_files.append((destination, old_contents, old_mode))
+
+                if _DOLPHIN_RELATIVE not in missing:
+                    dolphin_mode_before = _ensure_dolphin_executable(
+                        destinations[_DOLPHIN_RELATIVE]
+                    )
+
+                upgraded_files = {
+                    relative.as_posix(): _digest(contents[relative]) for relative in _MANAGED_FILES
+                }
+                upgraded_manifest = (
+                    json.dumps(
+                        {
+                            "version": _MANIFEST_VERSION,
+                            "executable": str(binary),
+                            "files": upgraded_files,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    ).encode("utf-8")
+                    + b"\n"
+                )
+                _replace_manifest(manifest_path, upgraded_manifest)
+            except (OSError, IntegrationError) as exc:
+                if dolphin_mode_before is not None:
+                    with suppress(OSError):
+                        destinations[_DOLPHIN_RELATIVE].chmod(dolphin_mode_before)
+                for path, old_contents, old_mode in reversed(migration_replaced_files):
+                    with suppress(OSError):
+                        _replace_file(path, old_contents, old_mode)
+                for path in reversed(migration_created_files):
+                    path.unlink(missing_ok=True)
+                for directory in reversed(migration_created_dirs):
+                    with suppress(OSError):
+                        directory.rmdir()
+                if isinstance(exc, IntegrationError):
+                    raise
+                raise IntegrationError(
+                    f"Could not upgrade Linux file-manager integration: {exc}"
+                ) from exc
+            return "installed"
 
     if any(path.exists() for path in (*destinations.values(), manifest_path)):
         raise IntegrationError("Integration conflict: refusing to overwrite an existing file.")
@@ -230,7 +356,11 @@ def install_linux_file_manager_integration(
     try:
         for relative, destination in destinations.items():
             _make_parents(root, destination, created_dirs)
-            mode = 0o755 if relative == _NAUTILUS_RELATIVE else 0o644
+            mode = (
+                0o755
+                if relative in (_NAUTILUS_RELATIVE, _DOLPHIN_RELATIVE, _NEMO_RELATIVE)
+                else 0o644
+            )
             _write_exclusive(destination, contents[relative], mode)
             created_files.append(destination)
         _make_parents(root, manifest_path, created_dirs)
@@ -282,7 +412,7 @@ def remove_linux_file_manager_integration(
     for path, _ in verified:
         path.unlink()
     manifest_path.unlink()
-    nautilus_directory = root / "nautilus/scripts/MutaUI"
-    with suppress(OSError):
-        nautilus_directory.rmdir()
+    for directory in (root / "nautilus/scripts/MutaUI", root / "nemo/scripts"):
+        with suppress(OSError):
+            directory.rmdir()
     return "removed"

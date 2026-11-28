@@ -20,6 +20,8 @@ class FileTail:
         self.max_chunk = max(4096, min(int(max_chunk), 1_048_576))
         self._pending = b""
         self._identity: tuple[int, int] | None = None
+        self._prefix_sample = b""
+        self._anchor_sample = b""
         self.annotate_gaps = annotate_gaps
         self.last_skipped_bytes = 0
         self.gaps: list[str] = []
@@ -37,6 +39,8 @@ class FileTail:
         if self._identity is not None and identity != self._identity:
             self.offset = 0
             self._pending = b""
+            self._prefix_sample = b""
+            self._anchor_sample = b""
             gap_msg = "[Log file rotated / replaced; resuming from start]"
             self.gaps.append(gap_msg)
             if self.annotate_gaps:
@@ -44,10 +48,31 @@ class FileTail:
         elif st.st_size < self.offset:
             self.offset = 0
             self._pending = b""
+            self._prefix_sample = b""
+            self._anchor_sample = b""
             gap_msg = "[Log file truncated; resuming from start]"
             self.gaps.append(gap_msg)
             if self.annotate_gaps:
                 gap_lines.append(gap_msg)
+        elif self._prefix_sample or self._anchor_sample:
+            try:
+                with self.path.open("rb") as stream:
+                    prefix = stream.read(len(self._prefix_sample))
+                    replaced = prefix != self._prefix_sample
+                    if not replaced and self._anchor_sample:
+                        stream.seek(self.offset - len(self._anchor_sample))
+                        replaced = stream.read(len(self._anchor_sample)) != self._anchor_sample
+            except (FileNotFoundError, PermissionError, OSError):
+                return gap_lines
+            if replaced:
+                self.offset = 0
+                self._pending = b""
+                self._prefix_sample = b""
+                self._anchor_sample = b""
+                gap_msg = "[Log file rotated / replaced; resuming from start]"
+                self.gaps.append(gap_msg)
+                if self.annotate_gaps:
+                    gap_lines.append(gap_msg)
         self._identity = identity
 
         skipped_bytes = 0
@@ -64,6 +89,8 @@ class FileTail:
 
         try:
             with self.path.open("rb") as stream:
+                if not self._prefix_sample:
+                    self._prefix_sample = stream.read(64)
                 stream.seek(self.offset)
                 if skipped_bytes > 0 and self.offset > 0:
                     # Drop partial line fragment whose beginning was skipped
@@ -73,6 +100,8 @@ class FileTail:
                 self.offset = stream.tell()
         except (FileNotFoundError, PermissionError, OSError):
             return gap_lines
+        if data:
+            self._anchor_sample = data[-64:]
 
         incoming = self._pending + data
         if b"\n" not in incoming:

@@ -59,6 +59,72 @@ def _mutagen_binary():
     )
 
 
+def _mutagen_process_ids(binary: str | Path, data_directory: Path) -> set[int]:
+    import psutil
+
+    expected_binary = os.path.normcase(os.path.realpath(binary))
+    expected_data_directory = os.path.normcase(os.path.realpath(data_directory))
+    found = set()
+    for process in psutil.process_iter(["pid", "exe", "environ"]):
+        try:
+            info = process.info
+            executable = info.get("exe")
+            environment = info.get("environ") or {}
+            process_data_directory = environment.get("MUTAGEN_DATA_DIRECTORY")
+            if (
+                executable
+                and os.path.normcase(os.path.realpath(executable)) == expected_binary
+                and process_data_directory
+                and os.path.normcase(os.path.realpath(process_data_directory))
+                == expected_data_directory
+            ):
+                found.add(int(info["pid"]))
+        except (
+            psutil.AccessDenied,
+            psutil.NoSuchProcess,
+            psutil.ZombieProcess,
+            OSError,
+            ValueError,
+        ):
+            continue
+    return found
+
+
+def test_mutagen_process_enumeration_filters_to_isolated_data_directory(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import psutil
+
+    binary = tmp_path / "mutagen.exe"
+    data_directory = tmp_path / "isolated-data"
+    processes = [
+        SimpleNamespace(
+            info={
+                "pid": 101,
+                "exe": str(binary),
+                "environ": {"MUTAGEN_DATA_DIRECTORY": str(data_directory)},
+            }
+        ),
+        SimpleNamespace(
+            info={
+                "pid": 202,
+                "exe": str(binary),
+                "environ": {"MUTAGEN_DATA_DIRECTORY": str(tmp_path / "other-data")},
+            }
+        ),
+        SimpleNamespace(
+            info={
+                "pid": 303,
+                "exe": str(tmp_path / "other-mutagen.exe"),
+                "environ": {"MUTAGEN_DATA_DIRECTORY": str(data_directory)},
+            }
+        ),
+    ]
+    monkeypatch.setattr(psutil, "process_iter", lambda _attrs: processes)
+
+    assert _mutagen_process_ids(str(binary), data_directory) == {101}
+
+
 def _start_daemon_ready(client: MutagenClient, timeout: float = 20.0) -> None:
     """Start the isolated daemon and poll until it actively responds to queries."""
     client.command(["daemon", "start"], timeout=timeout)
@@ -201,23 +267,9 @@ def test_frozen_real_mutagen_refresh_does_not_spawn_process_storm(
     monkeypatch.setenv("MUTAGEN_DISABLE_AUTOSTART", "0")
 
     def binary_process_ids():
-        found = set()
-        expected = os.path.normcase(os.path.realpath(binary))
-        for process in psutil.process_iter(["pid", "exe"]):
-            try:
-                executable = process.info.get("exe")
-                if executable and os.path.normcase(os.path.realpath(executable)) == expected:
-                    found.add(process.info["pid"])
-            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-                continue
-        return found
+        return _mutagen_process_ids(binary, daemon_data)
 
     client = MutagenClient(binary)
-    for pid in binary_process_ids():
-        with suppress(psutil.NoSuchProcess, psutil.AccessDenied):
-            p = psutil.Process(pid)
-            p.terminate()
-            p.wait(timeout=1.0)
     before_daemon = binary_process_ids()
     daemon_pid = None
     window = None

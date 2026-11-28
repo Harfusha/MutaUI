@@ -40,7 +40,7 @@ PR-035 follow-up: The expanded benchmark now starts the full `MainWindow` in dem
 
 ## Current execution
 
-E14 Linux file-manager scope: optional per-user Nautilus and Dolphin hooks now have explicit install/remove CLI routes, ownership-manifested cleanup that refuses modified files, refuses relocation until old hooks are removed, and has EN/CS instructions. Focused integration tests pass; native Linux desktop visibility and packaged AppImage acceptance remain open.
+E14 Linux file-manager scope: optional per-user Nautilus, Dolphin, and Nemo hooks now have explicit install/remove CLI routes, ownership-manifested cleanup that refuses modified files, refuses relocation until old hooks are removed, and has EN/CS instructions. Focused integration tests pass; native Linux desktop visibility and packaged AppImage acceptance remain open.
 
 E16 local notification and tray gaps now include configurable quiet hours, 10-second error debounce, 60-second per-session throttle, grouped issue/recovery notifications, exact session routing from notification clicks, and a tray icon/tooltip reflecting the worst confirmed state. Quiet periods suppress desktop delivery while preserving Action History. Power-event adapters subscribe to Windows broadcasts, Linux logind `PrepareForSleep`, and macOS NSWorkspace sleep/wake notifications. Focused adapter tests pass; native event delivery and full desktop acceptance still need hosted and manual platform runs.
 

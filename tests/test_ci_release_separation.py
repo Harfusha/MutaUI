@@ -17,13 +17,29 @@ def test_pull_request_workflow_does_not_request_release_secrets() -> None:
     assert "refs/tags/" not in workflow
 
 
-def test_release_workflow_owns_signing_and_provenance() -> None:
+def test_ci_and_release_workflows_do_not_schedule_macos_runners() -> None:
+    for workflow_path in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
+        workflow = Path(workflow_path).read_text(encoding="utf-8")
+        assert "os: [windows-latest, ubuntu-latest]" in workflow
+        assert "macos-latest" not in workflow
+        assert "macos-15-intel" not in workflow
+
+
+def test_release_workflow_publishes_without_signing_or_provenance() -> None:
     release = Path(".github/workflows/release.yml").read_text(encoding="utf-8")
-    assert "APPLE_CERTIFICATE_BASE64" in release
-    assert "WINDOWS_SIGNING_CERT_BASE64" in release
-    assert "notarytool submit" in release
-    assert "id-token: write" in release
-    assert "actions/attest" in release
+    assert "APPLE_CERTIFICATE_BASE64" not in release
+    assert "APPLE_NOTARY_KEY_BASE64" not in release
+    assert "WINDOWS_SIGNING_CERT_BASE64" not in release
+    assert "notarytool" not in release
+    assert "codesign" not in release
+    assert "signtool" not in release
+    assert "Get-AuthenticodeSignature" not in release
+    assert "id-token: write" not in release
+    assert "attestations: write" not in release
+    assert "attestations: read" not in release
+    assert "actions/attest" not in release
+    assert "gh attestation verify" not in release
+    assert "Upload release package" in release
 
 
 def test_release_workflow_uploads_sha_bound_test_evidence() -> None:

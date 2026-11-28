@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import plistlib
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -86,8 +88,14 @@ def test_m64_file_manager_integration_transient_path_rejection_and_appimage_reso
     assert str(transient_exe) != manifest_data["executable"]
 
 
-def test_m64_file_manager_integration_auto_heals_missing_old_binary(tmp_path: Path) -> None:
+def test_m64_file_manager_integration_auto_heals_missing_old_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """M64: Re-registering when previous executable target no longer exists auto-heals."""
+    monkeypatch.setattr(
+        "mutaui.services.linux_file_manager_integration.is_transient_extraction_path",
+        lambda _path: False,
+    )
     first_bin = tmp_path / "first_app" / "MutagenControl"
     first_bin.parent.mkdir()
     first_bin.write_bytes(b"first")
@@ -204,15 +212,63 @@ def test_packaging_scripts_and_workflows_consistency() -> None:
     # Must not contain bare github.ref_name for Linux package version or SBOM
     assert "MUTAUI_VERSION: ${{ github.ref_name }}" not in release_yml
     assert "dist/MutagenControl-${{ github.ref_name }}-linux" not in release_yml
-    # Must sign inner binaries before Inno Setup packaging
-    assert release_yml.index("Sign inner Windows executables") < release_yml.index(
-        "Build Windows installer"
-    )
+    # Releases stay unsigned while retaining reproducible Windows packaging.
+    assert "Sign inner Windows executables" not in release_yml
+    assert "Sign Windows installer package" not in release_yml
+    assert "codesign" not in release_yml
+    assert "notarytool" not in release_yml
     assert release_yml.index("Build Windows installer") < release_yml.index(
-        "Sign Windows installer package"
+        "Package Windows release files"
     )
     # Must pin Inno Setup
     assert "innosetup --version 6.3.3" in release_yml
+
+    installer_script = Path("packaging/windows/MutagenControl.iss").read_text(encoding="utf-8")
+    # x64-compatible mode includes Arm64 Windows 11 emulation and avoids deprecated x64.
+    assert "ArchitecturesInstallIn64BitMode=x64compatible" in installer_script
+
+
+def test_appimage_apprun_reexecs_in_extract_mode_by_default(tmp_path: Path) -> None:
+    apprun_source = Path("packaging/linux/AppRun").read_text(encoding="utf-8")
+    if os.name == "nt":
+        # Windows can't execute POSIX shell; verify both AppRun routes statically.
+        assert (
+            'if [ "${APPIMAGE_EXTRACT_AND_RUN:-}" != 1 ] && [ -n "${APPIMAGE:-}" ]; then'
+            in apprun_source
+        )
+        assert 'APPIMAGE_EXTRACT_AND_RUN=1 exec "$APPIMAGE" "$@"' in apprun_source
+        assert 'exec "$HERE/usr/bin/mutagen-control/MutagenControl" "$@"' in apprun_source
+        return
+
+    appdir = tmp_path / "appdir"
+    apprun = appdir / "AppRun"
+    executable = appdir / "usr/bin/mutagen-control/MutagenControl"
+    executable.parent.mkdir(parents=True)
+    apprun.write_text(apprun_source, encoding="utf-8")
+    apprun.chmod(0o755)
+    executable.write_text(
+        '#!/bin/sh\nprintf "extract=%s arg=%s\\n" "${APPIMAGE_EXTRACT_AND_RUN:-unset}" "$1"\n',
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+
+    fake_appimage = tmp_path / "fake.AppImage"
+    fake_appimage.write_text(
+        "#!/bin/sh\n"
+        '[ "${APPIMAGE_EXTRACT_AND_RUN:-}" = 1 ] || exit 42\n'
+        'exec "$APPDIR/AppRun" "$@"\n',
+        encoding="utf-8",
+    )
+    fake_appimage.chmod(0o755)
+    env = os.environ.copy()
+    env.update(APPIMAGE=str(fake_appimage), APPDIR=str(appdir))
+    env.pop("APPIMAGE_EXTRACT_AND_RUN", None)
+
+    result = subprocess.run(
+        [str(apprun), "--self-test"], capture_output=True, text=True, env=env, check=True
+    )
+
+    assert result.stdout == "extract=1 arg=--self-test\n"
 
 
 def test_documentation_truthfulness_and_notarization_accuracy() -> None:

@@ -60,6 +60,7 @@ def window(tmp_path, monkeypatch, qapp):
     if hasattr(instance, "cleanup_worker_dispatcher"):
         instance.cleanup_worker_dispatcher()
     instance.deleteLater()
+    qapp.sendPostedEvents(instance, QEvent.Type.DeferredDelete)
     qapp.processEvents()
 
 
@@ -121,6 +122,21 @@ def test_dashboard_fits_narrow_window_without_horizontal_scroll(window, qapp):
         f"window={window.size()}, pages={window.pages.size()}, "
         f"viewport={dashboard_scroll.viewport().size()}, body={dashboard_scroll.widget().size()}"
     )
+
+
+def test_dashboard_metric_values_follow_light_and_dark_theme(window):
+    values = window.findChildren(QPushButton, "metricValue")
+    assert len(values) == 4
+
+    window.apply_theme("light")
+    light_colors = ["#17212B", "#087F68", "#9A6200", "#B91C1C"]
+    for value, color in zip(values, light_colors, strict=True):
+        assert color in value.styleSheet()
+
+    window.apply_theme("dark")
+    dark_colors = ["#F1F6FA", "#61E0B9", "#F2BF70", "#FB8696"]
+    for value, color in zip(values, dark_colors, strict=True):
+        assert color in value.styleSheet()
 
 
 def test_session_dialog_is_exported_from_its_ui_module():
@@ -4359,7 +4375,8 @@ def test_create_session_missing_cli_routes_to_settings(window, monkeypatch):
 
     window.create_session("sync")
 
-    assert warnings == ["First, configure mutagen.exe in Settings."]
+    executable_label = "mutagen.exe" if os.name == "nt" else "Mutagen CLI"
+    assert warnings == [f"First, configure {executable_label} in Settings."]
     assert pages == [5]
 
 
@@ -4768,7 +4785,13 @@ def test_full_snapshot_export_requires_privacy_confirmation(window, monkeypatch,
 @pytest.mark.parametrize(
     ("stage", "expected_error", "expected_version"),
     [
-        ("missing_binary", "mutagen.exe is not configured. Open Settings.", ""),
+        (
+            "missing_binary",
+            "mutagen.exe is not configured. Open Settings."
+            if os.name == "nt"
+            else "Mutagen CLI is not configured. Open Settings.",
+            "",
+        ),
         ("sync_error", "Sync: sync unavailable", "3.2.1"),
         ("forward_error", "Forwarding: forward unavailable", "3.2.1"),
         ("cached_version", "", "cached 3.2.1"),

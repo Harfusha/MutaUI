@@ -14,9 +14,18 @@ def _endpoint(raw: object, *, kind: Literal["sync", "forward"]) -> Endpoint | No
         return None
     protocol = raw.get("protocol")
     protocol_text = str(protocol) if protocol is not None else None
-    protocol_kinds = {0: "local", 1: "ssh", 11: "docker"}
+    protocol_kinds = {
+        0: "local",
+        1: "ssh",
+        11: "docker",
+        "local": "local",
+        "ssh": "ssh",
+        "docker": "docker",
+    }
     endpoint_kind = (
-        protocol_kinds.get(protocol, "unknown") if isinstance(protocol, int) else "unknown"
+        protocol_kinds.get(protocol, "unknown")
+        if isinstance(protocol, (int, str)) and not isinstance(protocol, bool)
+        else "unknown"
     )
     host = raw.get("host") if isinstance(raw.get("host"), str) else None
     user = raw.get("user") if isinstance(raw.get("user"), str) else None

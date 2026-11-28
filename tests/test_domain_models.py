@@ -29,6 +29,17 @@ def test_golden_sync_snapshot_preserves_orientation_and_unknown_fields():
     assert snapshot.measured_at == measured_at
 
 
+def test_snapshot_maps_string_protocols_from_current_mutagen_cli():
+    native = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    native["alpha"]["protocol"] = "local"
+    native["beta"]["protocol"] = "ssh"
+
+    snapshot = from_legacy_session("sync", native, measured_at=datetime.now(UTC))
+
+    assert snapshot.alpha_or_source.kind == "local"
+    assert snapshot.beta_or_destination.kind == "ssh"
+
+
 def test_snapshot_ids_must_exist_but_names_need_not_be_unique():
     native = json.loads(FIXTURE.read_text(encoding="utf-8"))
     native.pop("identifier")

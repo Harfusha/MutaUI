@@ -43,11 +43,14 @@ class _TaskPayload:
         self.index = index
 
 
-def _drain_qt_and_gc(qapp: QApplication, pool: QThreadPool) -> None:
+def _drain_qt_and_gc(pool: QThreadPool, host: object) -> None:
     assert pool.waitForDone(10_000)
-    qapp.processEvents()
+    dispatcher = getattr(host, "_worker_dispatcher", None)
+    if dispatcher is not None:
+        # Drain only this worker's events; unrelated app-wide events may be queued.
+        QCoreApplication.sendPostedEvents(dispatcher, QEvent.Type.MetaCall)
+        QCoreApplication.sendPostedEvents(dispatcher, QEvent.Type.DeferredDelete)
     gc.collect()
-    qapp.processEvents()
     gc.collect()
 
 
@@ -82,7 +85,7 @@ def test_submit_releases_workers_signals_payloads_and_handles_across_batches(
 
     for _ in range(8):
         app_module.MainWindow.submit(host, lambda: 1, on_done=_warmup_done)
-    _drain_qt_and_gc(qapp, pool)
+    _drain_qt_and_gc(pool, host)
     assert warmup_done == 8
 
     baseline_handles = _process_handle_count()
@@ -117,7 +120,7 @@ def test_submit_releases_workers_signals_payloads_and_handles_across_batches(
             )
     del token
 
-    _drain_qt_and_gc(qapp, pool)
+    _drain_qt_and_gc(pool, host)
 
     assert completed == 540
     assert errors == 60
@@ -136,13 +139,21 @@ def test_submit_releases_workers_signals_payloads_and_handles_across_batches(
         assert after_handles - baseline_handles < 32
 
 
-def test_submit_shutdown_ignores_late_callbacks_and_schedules_close(qapp: QApplication) -> None:
+def test_submit_shutdown_ignores_late_callbacks_and_schedules_close(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pool = QThreadPool()
     pool.setMaxThreadCount(2)
     gate = threading.Event()
     started = threading.Event()
     events: list[str] = []
     closed: list[bool] = []
+    scheduled: list[tuple[int, object]] = []
+    monkeypatch.setattr(
+        app_module.QTimer,
+        "singleShot",
+        lambda delay, callback: scheduled.append((delay, callback)),
+    )
     host = SimpleNamespace(
         workers=set(),
         _shutdown_pending=False,
@@ -174,10 +185,14 @@ def test_submit_shutdown_ignores_late_callbacks_and_schedules_close(qapp: QAppli
         on_result=lambda _v: events.append("late_result"),
     )
     gate.set()
-    _drain_qt_and_gc(qapp, pool)
+    _drain_qt_and_gc(pool, host)
 
     assert host.workers == set()
     assert events == []
+    assert len(scheduled) == 1
+    assert scheduled[0][0] == 0
+    assert callable(scheduled[0][1])
+    scheduled[0][1]()  # type: ignore[operator]
     assert closed == [True]
 
 
@@ -215,22 +230,25 @@ def test_mainwindow_close_after_worker_burst_leaves_no_live_workers(
     results: list[int] = []
     for idx in range(50):
         win.submit(lambda i=idx: i, on_result=results.append)
-    _drain_qt_and_gc(qapp, win.pool)
+    _drain_qt_and_gc(win.pool, win)
 
     assert len(results) == 50
     assert win.workers == set()
 
+    dispatcher = win._worker_dispatcher
+    dispatcher_ref = weakref.ref(dispatcher) if dispatcher is not None else None
     win._allow_exit = True
     event = QCloseEvent()
     win.closeEvent(event)
     assert event.isAccepted()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    qapp.processEvents()
+    dispatcher = None
     gc.collect()
 
     assert sum(1 for obj in gc.get_objects() if isinstance(obj, Worker)) == 0
     assert sum(1 for obj in gc.get_objects() if isinstance(obj, WorkerSignals)) == 0
-    assert sum(1 for obj in gc.get_objects() if isinstance(obj, WorkerDispatcher)) == 0
+    assert win._worker_dispatcher is None
+    assert dispatcher_ref is None or dispatcher_ref() is None
 
 
 def test_submit_cleans_up_when_qthreadpool_start_raises(qapp: QApplication) -> None:
@@ -277,7 +295,6 @@ def test_submit_custom_pool_fallback_and_cleanup(qapp: QApplication) -> None:
         lambda: (_ for _ in ()).throw(RuntimeError("bad")),
         on_done=_inc_done,
     )
-    qapp.processEvents()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     gc.collect()
     assert results == ["ok"]
@@ -300,7 +317,6 @@ def test_worker_second_run_and_background_helper_branches(qapp: QApplication) ->
     disp_ref = weakref.ref(dispatcher)
     _run_background_task(11, lambda: "ok", disp_ref)
     _run_background_task(12, lambda: (_ for _ in ()).throw(RuntimeError("err")), disp_ref)
-    qapp.processEvents()
     assert received == [(11, False, "ok"), (12, True, "err")]
 
     del dispatcher
@@ -344,7 +360,6 @@ def test_custom_pool_failure_and_empty_cleanup(qapp: QApplication) -> None:
         lambda: 1,
         on_done=lambda: done_flags.append(True),
     )
-    qapp.processEvents()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     gc.collect()
     assert host_finish.workers == set()
@@ -385,7 +400,6 @@ def test_conflict_inspector_task_cleans_up_signals_and_request(tmp_path, monkeyp
     assert task.signals is None
     del task
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-    qapp.processEvents()
     gc.collect()
     assert sig_ref() is None
     assert (

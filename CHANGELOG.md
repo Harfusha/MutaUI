@@ -1,3 +1,15 @@
+# Mutagen Control v9.4.0 — Nemo Integration & Unsigned Release
+
+## [9.4.0] — 2026-11-28
+
+### Added & Improved
+- Added per-user Nemo Scripts integration alongside Nautilus and Dolphin, including safe install, upgrade, and removal behavior.
+- Made AppImage launch fall back to extraction when direct FUSE mounting is unavailable.
+- Improved Windows package compatibility and hardened snapshot, worker, logging, and theme behavior.
+- Release assets are unsigned Windows and Linux builds. macOS receives static workflow checks only; no macOS runner, signing, notarization, or provenance is used.
+
+---
+
 # Mutagen Control v9.3.0 — Quality Audit Remediation & Stability Release
 
 ## [9.3.0] — 2026-11-27

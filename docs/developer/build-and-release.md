@@ -12,7 +12,7 @@ The CI workflow is the source of truth for static checks and automated tests. Fr
 
 ### Build and release
 
-Release builds run from versioned `v*` tags. The release workflow checks that the tag matches the application version, builds Windows, macOS, and Linux artifacts, and publishes checksums, a CycloneDX SBOM, and build provenance. Windows signing and macOS signing/notarization depend on configured release secrets. Review the acceptance traceability report and release checklist before release; do not infer that a missing signature or an untested platform passed its gate. A local build is for development and is not a release artifact.
+Release builds run from versioned `v*` tags. The current release workflow checks that the tag matches the application version, builds unsigned Windows and Linux artifacts, publishes checksums and a Linux CycloneDX SBOM, and does not create signatures, notarization, or provenance. macOS workflow configuration is reviewed statically; no macOS runner or macOS artifact is part of this release scope. Review the acceptance traceability report and release checklist before release; do not infer that an untested platform passed its gate. A local build is for development and is not a release artifact.
 
 Only a maintainer may create and push a release tag after all applicable manual and hosted gates pass. This guide does not grant release authorization.
 
@@ -28,6 +28,6 @@ Workflow CI určuje závazné statické kontroly a automatické testy. V kořeni
 
 ### Build a vydání
 
-Vydávací workflow se spouští z verzovaných tagů `v*`. Ověří shodu tagu s verzí aplikace, sestaví balíčky pro Windows, macOS a Linux a vytvoří kontrolní součty, CycloneDX SBOM a provenance sestavení. Podepisování Windows a podepisování/notarizace macOS vyžadují nastavená tajemství vydání. Před vydáním zkontroluj přehled akceptace a vydávací checklist. Chybějící podpis ani neověřenou platformu nepovažuj za splněnou bránu. Místní build slouží vývoji, není vydávacím artefaktem.
+Vydávací workflow se spouští z verzovaných tagů `v*`. Ověří shodu tagu s verzí aplikace, sestaví nepodepsané balíčky pro Windows a Linux a vytvoří kontrolní součty a Linux CycloneDX SBOM; podpisy, notarizaci ani provenance nevytváří. Konfiguraci macOS kontrolujeme staticky; v tomto rozsahu se nespouští macOS runner ani nevzniká macOS balíček. Před vydáním zkontroluj přehled akceptace a vydávací checklist. Neověřenou platformu nepovažuj za splněnou bránu. Místní build slouží vývoji, není vydávacím artefaktem.
 
 Vydávací tag smí vytvořit a odeslat pouze maintainer po splnění příslušných ručních a hostovaných bran. Tento návod nedává oprávnění vydat produkt.

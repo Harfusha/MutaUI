@@ -171,11 +171,29 @@ def test_m25_file_tail_skips_truncated_leading_fragment_on_large_jump(tmp_path: 
             assert l == "middle line" or l == "middle line"
 
 
-def test_m25_file_tail_handles_missing_file_during_rotation_gracefully(tmp_path: Path):
+@pytest.mark.parametrize("annotate_gaps", [True, False])
+def test_m25_file_tail_handles_missing_file_during_rotation_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, annotate_gaps: bool
+):
     """M25: FileTail does not crash with FileNotFoundError when log file is rotated."""
     log_file = tmp_path / "rotating.log"
     log_file.write_text("line 1\nline 2\n", encoding="utf-8")
-    tail = FileTail(log_file, annotate_gaps=True)
+    tail = FileTail(log_file, annotate_gaps=annotate_gaps)
+
+    original_stat = Path.stat
+    original_identity = original_stat(log_file)
+
+    def _stat_with_reused_inode(path: Path, *args: object, **kwargs: object) -> SimpleNamespace:
+        stat = original_stat(path, *args, **kwargs)
+        if path == log_file:
+            return SimpleNamespace(
+                st_dev=original_identity.st_dev,
+                st_ino=original_identity.st_ino,
+                st_size=stat.st_size,
+            )
+        return stat
+
+    monkeypatch.setattr(Path, "stat", _stat_with_reused_inode)
     assert tail.poll() == ["line 1", "line 2"]
 
     # Simulate rotation: file deleted / unlinked temporarily
@@ -187,7 +205,54 @@ def test_m25_file_tail_handles_missing_file_during_rotation_gracefully(tmp_path:
     log_file.write_text("line 3 after rotation\n", encoding="utf-8")
     lines = tail.poll()
     assert "line 3 after rotation" in lines
-    assert any("rotated" in l or "resuming" in l for l in lines)
+    assert any("rotated" in gap or "resuming" in gap for gap in tail.gaps)
+    assert any("rotated" in line or "resuming" in line for line in lines) is annotate_gaps
+
+
+@pytest.mark.parametrize("annotate_gaps", [True, False])
+def test_file_tail_records_truncation_with_optional_gap_annotation(
+    tmp_path: Path, annotate_gaps: bool
+) -> None:
+    log_file = tmp_path / "truncated.log"
+    log_file.write_text("before\n", encoding="utf-8")
+    tail = FileTail(log_file, annotate_gaps=annotate_gaps)
+    assert tail.poll() == ["before"]
+
+    log_file.write_text("after\n", encoding="utf-8")
+    lines = tail.poll()
+    expected = ["after"]
+    if annotate_gaps:
+        expected.insert(0, "[Log file truncated; resuming from start]")
+    assert lines == expected
+    assert any("truncated" in gap for gap in tail.gaps)
+
+
+def test_file_tail_annotates_replacement_with_changed_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log_file = tmp_path / "replaced.log"
+    log_file.write_text("before\n", encoding="utf-8")
+    tail = FileTail(log_file, annotate_gaps=True)
+    original_stat = Path.stat
+    initial_identity = original_stat(log_file)
+    replaced = False
+
+    def _stat_with_new_identity(path: Path, *args: object, **kwargs: object) -> SimpleNamespace:
+        stat = original_stat(path, *args, **kwargs)
+        if path == log_file and replaced:
+            return SimpleNamespace(
+                st_dev=initial_identity.st_dev,
+                st_ino=initial_identity.st_ino + 1,
+                st_size=stat.st_size,
+            )
+        return stat
+
+    monkeypatch.setattr(Path, "stat", _stat_with_new_identity)
+    assert tail.poll() == ["before"]
+    log_file.write_text("after\n", encoding="utf-8")
+    replaced = True
+
+    assert tail.poll() == ["[Log file rotated / replaced; resuming from start]", "after"]
 
 
 # =========================================================================

@@ -51,11 +51,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, macos-15-intel, ubuntu-latest]
+        os: [windows-latest, ubuntu-latest]
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     env:
       VERSION: ${{ github.event.inputs.version || github.ref_name }}
       QT_QPA_PLATFORM: offscreen
@@ -67,7 +65,7 @@ jobs:
           cache: pip
       - name: Install Linux Qt runtime libraries
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libdbus-1-3 libfontconfig1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libglib2.0-0 libdbus-1-3 libfontconfig1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0
       - name: Install build and quality dependencies
         run: python -m pip install uv==0.13.8
       - name: Sync locked release environment (Windows)
@@ -142,42 +140,6 @@ jobs:
         run: |
           python scripts/run_crash_recovery_self_test.py --executable "./dist-fast/MutagenControl/MutagenControl.exe"
           python scripts/run_crash_recovery_self_test.py --executable "./dist/MutagenControl.exe"
-      - name: Sign inner Windows executables
-        if: runner.os == 'Windows'
-        env:
-          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
-            Write-Host 'Skipping Windows code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured. Generating unsigned release binary.'
-            return
-          }
-          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
-          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = ${env:ProgramFiles(x86)} }
-          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = 'C:\Program Files (x86)' }
-          $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-          $kits = Join-Path $programFilesX86 'Windows Kits\10\bin'
-          $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
-            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
-          try {
-            $innerBinaries = @(
-              'dist-fast/MutagenControl/MutagenControl.exe',
-              'dist/MutagenControl.exe'
-            )
-            foreach ($binary in $innerBinaries) {
-              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $binary
-              if ($LASTEXITCODE -ne 0) { throw "Signing failed for $binary (exit $LASTEXITCODE)." }
-              & $signtool.FullName verify /pa /all $binary
-              if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $binary (exit $LASTEXITCODE)." }
-            }
-          } finally {
-            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
-          }
-
       - name: Build Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -193,37 +155,6 @@ jobs:
           & $compiler "/DMyAppVersion=$version" packaging/windows/MutagenControl.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed: $LASTEXITCODE" }
 
-      - name: Sign Windows installer package
-        if: runner.os == 'Windows'
-        env:
-          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
-          SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64) -or [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_PASSWORD)) {
-            Write-Host 'Skipping Windows installer code signing: WINDOWS_SIGNING_CERT_BASE64 / PASSWORD secrets not configured.'
-            return
-          }
-          $programFilesX86 = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
-          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = ${env:ProgramFiles(x86)} }
-          if ([string]::IsNullOrWhiteSpace($programFilesX86)) { $programFilesX86 = 'C:\Program Files (x86)' }
-          $version = $env:VERSION.TrimStart('v')
-          $pfx = Join-Path $env:RUNNER_TEMP 'mutaui-signing.pfx'
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGNING_CERT_BASE64))
-          $kits = Join-Path $programFilesX86 'Windows Kits\10\bin'
-          $signtool = Get-ChildItem $kits -Filter signtool.exe -Recurse -ErrorAction Stop |
-            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if ($null -eq $signtool) { throw 'Windows SDK signtool.exe was not found.' }
-          try {
-            $installer = "dist/MutagenControl-$version-windows-x64-setup.exe"
-            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr https://timestamp.digicert.com /f $pfx /p $env:SIGNING_CERT_PASSWORD $installer
-            if ($LASTEXITCODE -ne 0) { throw "Signing failed for $installer (exit $LASTEXITCODE)." }
-            & $signtool.FullName verify /pa /all $installer
-            if ($LASTEXITCODE -ne 0) { throw "Signature verification failed for $installer (exit $LASTEXITCODE)." }
-          } finally {
-            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
-          }
       - name: Build macOS application bundle
         if: runner.os == 'macOS'
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --collect-all paramiko --paths src --name MutagenControl --distpath dist-platform --workpath build-platform app.py
@@ -232,56 +163,6 @@ jobs:
         run: |
           version="${VERSION#v}"
           python scripts/ci/patch_macos_plist.py dist-platform/MutagenControl.app/Contents/Info.plist "$version"
-      - name: Sign and notarize macOS release bundle
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
-          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${APPLE_CERTIFICATE_BASE64:-}" || -z "${APPLE_CERTIFICATE_PASSWORD:-}" || -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-            echo "Skipping macOS code signing and notarization: secrets not configured. Generating unsigned release bundle."
-            exit 0
-          fi
-          for name in APPLE_NOTARY_KEY_BASE64 APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID; do
-            if [[ -z "${!name}" ]]; then
-              echo "Skipping macOS notarization: secret $name not configured."
-              exit 0
-            fi
-          done
-          keychain="$RUNNER_TEMP/mutaui-signing.keychain-db"
-          keychain_unlock_material="$(openssl rand -hex 24)"
-          certificate="$RUNNER_TEMP/mutaui-signing.p12"
-          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          archive="$RUNNER_TEMP/MutagenControl-notary.zip"
-          trap 'security delete-keychain "$keychain" >/dev/null 2>&1 || true; rm -f "$certificate" "$notary_file" "$archive"' EXIT
-          printf '%s' "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$certificate"
-          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
-          security create-keychain -p "$keychain_unlock_material" "$keychain"
-          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_unlock_material" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_unlock_material" "$keychain"
-          while IFS= read -r -d '' binary; do
-            if file -b "$binary" | grep -q 'Mach-O'; then
-              codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$binary"
-            fi
-          done < <(find dist-platform/MutagenControl.app -type f -print0)
-          while IFS= read -r -d '' bundle; do
-            codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" "$bundle"
-          done < <(find dist-platform/MutagenControl.app -depth -type d \( -name '*.framework' -o -name '*.bundle' \) -print0)
-          codesign --force --options runtime --timestamp --entitlements packaging/macos/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" dist-platform/MutagenControl.app
-          codesign --verify --deep --strict --verbose=2 dist-platform/MutagenControl.app
-          ditto -c -k --keepParent dist-platform/MutagenControl.app "$archive"
-          xcrun notarytool submit "$archive" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
-          xcrun stapler staple dist-platform/MutagenControl.app
-          xcrun stapler validate dist-platform/MutagenControl.app
       - name: Build macOS DMG
         if: runner.os == 'macOS'
         shell: bash
@@ -301,27 +182,6 @@ jobs:
             sleep 3
           done
           rm -rf dist/dmg-root
-      - name: Notarize macOS DMG
-        if: runner.os == 'macOS'
-        env:
-          APPLE_NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
-          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
-          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -z "${APPLE_NOTARY_KEY_BASE64:-}" || -z "${APPLE_NOTARY_KEY_ID:-}" || -z "${APPLE_NOTARY_ISSUER_ID:-}" ]]; then
-            echo "Skipping macOS DMG notarization: notarization secrets not configured."
-            exit 0
-          fi
-          version="${VERSION#v}"
-          notary_file="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
-          printf '%s' "$APPLE_NOTARY_KEY_BASE64" | base64 --decode > "$notary_file"
-          trap 'rm -f "$notary_file"' EXIT
-          image="dist/MutagenControl-${version}-macos-$(uname -m).dmg"
-          xcrun notarytool submit "$image" --key "$notary_file" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER_ID" --wait
-          xcrun stapler staple "$image"
-          xcrun stapler validate "$image"
       - name: Verify mounted macOS DMG
         if: runner.os == 'macOS'
         shell: bash
@@ -358,7 +218,6 @@ jobs:
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}
         run: |
           $selectionJson = & python scripts/ci/select_upgrade_baseline.py --repo $env:GITHUB_REPOSITORY --current-tag $env:VERSION --allow-missing-prior-installer
           if ($LASTEXITCODE -ne 0) { throw 'Could not verify the release history; refusing to skip upgrade acceptance.' }
@@ -366,7 +225,7 @@ jobs:
           if ($selection.mode -eq 'initial') {
             Write-Host '::notice::No published older stable release exists. First-release install smoke applies.'
           } elseif ($selection.mode -eq 'upgrade') {
-            $baselinePath = Join-Path $env:RUNNER_TEMP 'mutaui-previous-signed-setup.exe'
+            $baselinePath = Join-Path $env:RUNNER_TEMP 'mutaui-previous-setup.exe'
             Invoke-WebRequest -Uri $selection.url -OutFile $baselinePath -TimeoutSec 180
             if ((Get-Item -LiteralPath $baselinePath).Length -lt 50000) {
               throw 'Previous Windows installer is unexpectedly small.'
@@ -376,24 +235,6 @@ jobs:
               if ($observed -ne $selection.sha256) {
                 throw 'Previous installer SHA-256 does not match the authenticated release manifest.'
               }
-            }
-            if (-not [string]::IsNullOrWhiteSpace($env:SIGNING_CERT_BASE64)) {
-              $signed = Get-AuthenticodeSignature -LiteralPath $baselinePath
-              if ($signed.Status -ne 'Valid') {
-                throw "Previous Windows installer has an invalid Authenticode signature: $($signed.Status)"
-              }
-              $version = $env:VERSION.TrimStart('v')
-              $currentSetup = "dist/MutagenControl-$version-windows-x64-setup.exe"
-              $currentSigned = Get-AuthenticodeSignature -LiteralPath $currentSetup
-              if ($currentSigned.Status -ne 'Valid') {
-                throw 'Current release installer signature verification failed.'
-              }
-              if (-not $signed.SignerCertificate -or -not $currentSigned.SignerCertificate -or
-                  $signed.SignerCertificate.Subject -ne $currentSigned.SignerCertificate.Subject) {
-                throw 'Previous installer publisher identity does not match the current release.'
-              }
-            } else {
-              Write-Host 'Skipping Authenticode signature validation: signing certificate secrets not configured.'
             }
             "BASELINE_SETUP_PATH=$baselinePath" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
             "BASELINE_RELEASE_TAG=$($selection.tag)" | Add-Content -LiteralPath $env:GITHUB_ENV -Encoding utf8
@@ -484,10 +325,6 @@ jobs:
           output-file: dist/MutagenControl-${{ env.VERSION }}-linux-amd64.sbom.cdx.json
           upload-artifact: false
           upload-release-assets: false
-      - name: Attest platform packages and SBOM
-        uses: actions/attest@v4
-        with:
-          subject-path: dist/*
       - name: Upload release package
         uses: actions/upload-artifact@v7
         with:
@@ -502,7 +339,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      attestations: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
@@ -514,16 +350,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python scripts/write_checksums.py release-assets
-      - name: Verify package provenance
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for asset in release-assets/*; do
-            if [[ ! -f "$asset" ]]; then continue; fi
-            if [[ "$(basename "$asset")" == 'SHA256SUMS.txt' ]]; then continue; fi
-            echo "Verifying provenance for $(basename "$asset")..."
-            gh attestation verify "$asset" --repo "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
-          done
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -8,6 +8,17 @@
 | Forward transports | Capability-gate TCP/npipe | Capability-gate TCP/Unix | Capability-gate TCP/Unix | Exact installed CLI help is authoritative |
 | Packaging | Portable and single-file workflow; packaged self-test passed in CI | ARM CI disk image build and verification passed; signing/notarization remains open | AppImage and DEB built; AppImage self-test and installed DEB self-test passed on Ubuntu 26.04 x86-64 | Clean-user install and supported-distro matrix remain required |
 
+## Linux package and file-manager smoke (2026-11-28)
+
+| Distribution | Package and install evidence | File-manager evidence | Limits |
+|---|---|---|---|
+| Ubuntu 24.04 x86-64 | Final 9.3.0 DEB installed; packaged UI self-test passed; uninstall removed the executable and retained user settings | Nautilus, Dolphin, and Nemo menu actions passed | Container/Xvfb validation |
+| Fedora 40 x86-64 | Final 9.3.0 AppImage self-test and per-user hook install, v3-to-v4 upgrade, and removal passed | Nemo Scripts menu launched the app with a selected path containing spaces | Container/Xvfb; `/dev/fuse` unavailable, so the hook's extraction fallback ran |
+| Arch x86-64 | Final 9.3.0 AppImage self-test and per-user hook install, v3-to-v4 upgrade, and removal passed | Nemo Scripts menu launched the app with a selected path containing spaces | Container/Xvfb; `/dev/fuse` unavailable, so the hook's extraction fallback ran |
+| Other distributions | Not acceptance-tested | Not acceptance-tested | GLIBC compatibility floor alone does not establish distro support |
+
+These container checks do not establish physical desktop, FUSE, accessibility, DPI, soak, or hosted-candidate acceptance. The candidate CI run #121 failed in its logic and integration test jobs; the cause remains unverified.
+
 ## Candidate Mutagen CLI matrix (2026-11-17)
 
 The official stable release list identifies v0.18.1 as latest and v0.18.0 as the immediately preceding stable release. These are the candidate test pair only; this table does not claim either version is supported by MutaUI.

@@ -62,6 +62,11 @@ class PreferencesController:
             system_is_light = False
         resolved = resolve_theme(theme, system_is_light=system_is_light)
         self.window.setStyleSheet(theme_stylesheet(self.stylesheet, resolved))
+        if hasattr(self.window, "findChildren"):
+            for widget in self.window.findChildren(QWidget, "metricValue"):
+                base_stylesheet = widget.property("mutauiBaseStyleSheet")
+                if isinstance(base_stylesheet, str):
+                    widget.setStyleSheet(theme_stylesheet(base_stylesheet, resolved))
 
     def apply_ui_language(self, language: str) -> None:
         window = self.window

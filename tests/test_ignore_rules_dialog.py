@@ -83,7 +83,7 @@ def test_preset_manager_update_delete_and_empty_selection_paths(tmp_path, monkey
 
 def test_sync_wizard_loads_saved_custom_presets_and_applies_in_order(tmp_path, monkeypatch):
     _app()
-    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.setenv("MUTAGEN_CONTROL_CONFIG_DIR", str(tmp_path / "MutagenControl"))
     from app import SessionDialog
     from ignore_presets import IgnorePresetStore
 

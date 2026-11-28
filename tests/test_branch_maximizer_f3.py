@@ -92,6 +92,63 @@ def test_settings_path_darwin_and_linux_branches(
     legacy_config.unlink()
     assert settings_path() == linux_home / ".config" / "MutagenControl" / "settings.json"
 
+    # 7. Windows uses APPDATA without requiring a Windows host.
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    assert settings_path() == tmp_path / "roaming" / "MutagenControl" / "settings.json"
+
+    # 8. Explicit configuration directory overrides the platform default.
+    custom_config = tmp_path / "custom-config"
+    monkeypatch.setenv("MUTAGEN_CONTROL_CONFIG_DIR", str(custom_config))
+    assert settings_path() == custom_config / "settings.json"
+    monkeypatch.delenv("MUTAGEN_CONTROL_CONFIG_DIR")
+
+    # 9. Existing Linux primary takes precedence over legacy files.
+    monkeypatch.setattr(sys, "platform", "linux")
+    linux_primary = linux_home / ".config" / "MutagenControl" / "settings.json"
+    linux_primary.parent.mkdir(parents=True, exist_ok=True)
+    linux_primary.write_text("{}", encoding="utf-8")
+    legacy_mutaui.write_text("{}", encoding="utf-8")
+    assert settings_path() == linux_primary
+
+
+def test_profile_and_ignore_preset_atomic_saves_skip_directory_fsync_on_nt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import connection_profiles as connection_profiles_module
+    import ignore_presets as ignore_presets_module
+    from ignore_presets import IgnorePresetStore
+
+    class WindowsOSProxy:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(os, name)
+
+        def open(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise AssertionError("NT saves must not open a directory for fsync")
+
+    monkeypatch.setattr(connection_profiles_module, "os", WindowsOSProxy())
+    monkeypatch.setattr(ignore_presets_module, "os", WindowsOSProxy())
+
+    profile_path = tmp_path / "connection-profiles.json"
+    profile = ConnectionProfile(
+        id="nt-profile",
+        name="NT profile",
+        kind="sync",
+        endpoint_a="/local",
+        endpoint_b="user@host:/remote",
+        tags=(),
+        favorite=False,
+        defaults={},
+    )
+    ConnectionProfileStore(profile_path).add(profile)
+    assert json.loads(profile_path.read_text(encoding="utf-8"))["profiles"][0]["id"] == "nt-profile"
+
+    preset_path = tmp_path / "ignore-presets.json"
+    IgnorePresetStore(preset_path).create("NT preset", ("*.tmp",))
+    assert json.loads(preset_path.read_text(encoding="utf-8"))["presets"][0]["name"] == "NT preset"
+
 
 # -----------------------------------------------------------------------------
 # 2. app.py linux file manager integration branches
@@ -944,6 +1001,7 @@ def test_snapshot_controller_branches() -> None:
             self.health_tracker = SimpleNamespace(note_environment_event=MagicMock())
             self.logs = []
             self.updated = QLabel()
+            self.version_label = QLabel()
             self.hero_title = QLabel()
             self.hero_sub = QLabel()
             self.hero_badge = QLabel()
@@ -994,6 +1052,13 @@ def test_snapshot_controller_branches() -> None:
     assert ctrl._refresh_generation == 0
 
     ctrl.poll_backoff.can_retry = lambda force: True
+    ctrl.demo = True
+    ctrl.apply_snapshot = MagicMock()
+    ctrl.refresh()
+    ctrl.apply_snapshot.assert_called_once_with(ctrl.snapshot)
+    del ctrl.apply_snapshot
+    ctrl.demo = False
+
     ctrl.pending_action = True
     ctrl.refresh()
     assert ctrl._refresh_generation == 0
@@ -1002,6 +1067,10 @@ def test_snapshot_controller_branches() -> None:
     ctrl.pending_poll = True
     ctrl.refresh(force=True)
     assert ctrl._refresh_again is True
+    ctrl._refresh_again = False
+    ctrl.refresh(force=False)
+    assert ctrl._refresh_generation == 1
+    assert ctrl._refresh_again is False
 
     # Run work function with errors
     ctrl.pending_poll = False
@@ -1042,6 +1111,41 @@ def test_snapshot_controller_branches() -> None:
     new_snap2 = Snapshot(sync=[], forward=[], binary=str(Path(sys.executable)), version="")
     ctrl.apply_snapshot(new_snap2)
     assert not ctrl.hero_badge.isVisible()
+    assert ctrl.version_label.text() == "Version: unavailable"
+
+    cached_version = Snapshot(
+        sync=[],
+        forward=[],
+        binary=str(Path(sys.executable)),
+        version="0.18.1",
+        version_status="cached",
+    )
+    ctrl.apply_snapshot(cached_version)
+    assert ctrl.version_label.toolTip() == "Cached CLI version"
+
+    failed_version = Snapshot(
+        sync=[],
+        forward=[],
+        binary=str(Path(sys.executable)),
+        version="0.18.1",
+        version_status="invalid",
+        version_error="invalid version output",
+    )
+    ctrl.apply_snapshot(failed_version)
+    assert ctrl.version_label.toolTip() == "invalid version output"
+
+    incomplete_snapshot = Snapshot(
+        sync=[],
+        forward=[],
+        binary=str(Path(sys.executable)),
+        sync_status="incomplete",
+        sync_error="sync listing incomplete",
+        forward_status="incomplete",
+        forward_error="forward listing incomplete",
+    )
+    ctrl.apply_snapshot(incomplete_snapshot)
+    assert any("sync listing incomplete" in message for message in ctrl.logs)
+    assert any("forward listing incomplete" in message for message in ctrl.logs)
 
 
 def test_session_actions_controller_branches() -> None:
@@ -1340,5 +1444,8 @@ def test_coverage_gap_closers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     dt.dashboard_select(QModelIndex())
     dt._start_initial_refresh()
     assert not dt.refresh.called
+    dt.pending_poll = False
+    dt._start_initial_refresh()
+    dt.refresh.assert_called_once_with(force=True)
     delivered, alert_msg = dt.send_test_alert()
     assert not delivered

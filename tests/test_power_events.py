@@ -1,5 +1,6 @@
 import ctypes
-from ctypes import wintypes
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,9 +29,13 @@ def test_ignores_unrelated_windows_power_events():
 
 
 def test_native_filter_installs_and_forwards_only_known_power_events(monkeypatch):
-    if not hasattr(wintypes, "MSG"):
-        pytest.skip("ctypes Windows MSG is available only on Windows")
-    monkeypatch.setattr(power_events.sys, "platform", "win32")
+    host_platform = sys.platform
+    monkeypatch.setattr(power_events, "sys", SimpleNamespace(platform="win32"))
+
+    class FakeMessage(ctypes.Structure):
+        _fields_ = [("message", ctypes.c_uint32)]
+
+    monkeypatch.setattr(power_events, "wintypes", SimpleNamespace(MSG=FakeMessage))
     installed = []
     received = []
 
@@ -42,7 +47,7 @@ def test_native_filter_installs_and_forwards_only_known_power_events(monkeypatch
     assert event_filter is not None
     assert installed == [event_filter]
 
-    message = wintypes.MSG()
+    message = FakeMessage()
     message.message = 0x0004
     assert event_filter.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(message)) == (
         False,
@@ -54,6 +59,7 @@ def test_native_filter_installs_and_forwards_only_known_power_events(monkeypatch
         0,
     )
     assert received == ["sleep"]
+    assert sys.platform == host_platform
 
 
 def test_native_power_filter_is_unavailable_off_windows(monkeypatch):

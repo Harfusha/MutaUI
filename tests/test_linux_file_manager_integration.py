@@ -1,6 +1,9 @@
 import importlib
 import importlib.util
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -11,10 +14,18 @@ MODULE_NAME = "mutaui.services.linux_file_manager_integration"
 
 
 @pytest.fixture
-def integration_module():
+def integration_module(monkeypatch):
     if importlib.util.find_spec(MODULE_NAME) is None:
         pytest.skip("Linux file-manager integration module is not implemented yet")
-    return importlib.import_module(MODULE_NAME)
+    module = importlib.import_module(MODULE_NAME)
+    # pytest's tmp_path is under /tmp on Linux; keep fixture binaries distinct
+    # from explicit AppImage extraction paths exercised in packaging tests.
+    monkeypatch.setattr(
+        module,
+        "is_transient_extraction_path",
+        lambda path: any(token in str(path) for token in (".mount_", "appimage_extracted")),
+    )
+    return module
 
 
 def test_linux_file_manager_integration_module_exists():
@@ -36,7 +47,7 @@ def test_linux_file_manager_integration_requires_explicit_cli_action(arguments, 
     assert launch.linux_file_manager_action == action
 
 
-def test_install_is_opt_in_idempotent_and_adds_both_user_level_hooks(integration_module, tmp_path):
+def test_install_is_opt_in_idempotent_and_adds_all_user_level_hooks(integration_module, tmp_path):
     executable = tmp_path / "Muta UI.AppImage"
     executable.write_bytes(b"app")
     data_home = tmp_path / "xdg-data"
@@ -56,12 +67,314 @@ def test_install_is_opt_in_idempotent_and_adds_both_user_level_hooks(integration
 
     nautilus = data_home / "nautilus" / "scripts" / "MutaUI" / "Open folder in MutaUI"
     dolphin = data_home / "kio" / "servicemenus" / "mutaui-open-folder.desktop"
+    nemo = data_home / "nemo" / "scripts" / "Open folder in MutaUI"
     assert nautilus.is_file()
     assert "NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" in nautilus.read_text(encoding="utf-8")
     assert "--open-folder" in nautilus.read_text(encoding="utf-8")
     assert dolphin.is_file()
     assert "MimeType=inode/directory;" in dolphin.read_text(encoding="utf-8")
+    assert "Exec=/usr/bin/env APPIMAGE_EXTRACT_AND_RUN=1 " in dolphin.read_text(encoding="utf-8")
     assert "--open-folder %f" in dolphin.read_text(encoding="utf-8")
+    if os.name == "posix":
+        assert dolphin.stat().st_mode & 0o100
+    assert nemo.is_file()
+    assert "NEMO_SCRIPT_SELECTED_FILE_PATHS" in nemo.read_text(encoding="utf-8")
+    assert "--open-folder" in nemo.read_text(encoding="utf-8")
+    assert "APPIMAGE_EXTRACT_AND_RUN=1" in nemo.read_text(encoding="utf-8")
+
+
+def test_reinstall_repairs_non_executable_dolphin_service_menu(integration_module, tmp_path):
+    if os.name != "posix":
+        return
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    integration_module.install_linux_file_manager_integration(
+        executable, data_home=data_home, platform_name="linux"
+    )
+    dolphin = data_home / "kio" / "servicemenus" / "mutaui-open-folder.desktop"
+    dolphin.chmod(0o644)
+
+    result = integration_module.install_linux_file_manager_integration(
+        executable, data_home=data_home, platform_name="linux"
+    )
+
+    assert result == "installed"
+    assert dolphin.stat().st_mode & 0o100
+
+
+if sys.platform.startswith("linux"):
+
+    def test_nemo_script_preserves_path_and_uses_appimage_no_fuse_fallback(
+        integration_module, tmp_path
+    ):
+        executable = tmp_path / "Muta UI.AppImage"
+        capture = tmp_path / "arguments.bin"
+        executable.write_text(
+            '#!/bin/sh\nprintf \'%s\\0\' "$@" > "$MUTAUI_CAPTURE"\n'
+            'printf \'%s\' "${APPIMAGE_EXTRACT_AND_RUN-}" > "$MUTAUI_FALLBACK_CAPTURE"\n',
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
+        data_home = tmp_path / "xdg-data"
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+        nemo = data_home / "nemo" / "scripts" / "Open folder in MutaUI"
+        env = os.environ.copy()
+        env["MUTAUI_CAPTURE"] = str(capture)
+        fallback_capture = tmp_path / "fallback.txt"
+        env["MUTAUI_FALLBACK_CAPTURE"] = str(fallback_capture)
+        env.pop("APPIMAGE_EXTRACT_AND_RUN", None)
+        env["NEMO_SCRIPT_SELECTED_FILE_PATHS"] = "/tmp/folder with spaces\n"
+
+        subprocess.run([str(nemo)], env=env, check=True)
+
+        assert capture.read_bytes() == b"--open-folder\0/tmp/folder with spaces\0"
+        fallback = fallback_capture.read_text(encoding="utf-8")
+        if not os.access("/dev/fuse", os.R_OK | os.W_OK):
+            assert fallback == "1"
+        else:
+            assert fallback == ""
+        env["NEMO_SCRIPT_SELECTED_FILE_PATHS"] = "/tmp/first\n/tmp/second\n"
+        assert subprocess.run([str(nemo)], env=env).returncode == 2
+
+
+def test_install_refuses_unowned_nemo_hook_without_partial_writes(integration_module, tmp_path):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    nemo = data_home / "nemo" / "scripts" / "Open folder in MutaUI"
+    nemo.parent.mkdir(parents=True)
+    nemo.write_text("user-owned content", encoding="utf-8")
+
+    with pytest.raises(integration_module.IntegrationError, match="conflict"):
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+
+    assert nemo.read_text(encoding="utf-8") == "user-owned content"
+    assert not (data_home / "nautilus/scripts/MutaUI/Open folder in MutaUI").exists()
+    assert not (data_home / "kio/servicemenus/mutaui-open-folder.desktop").exists()
+
+
+def _write_legacy_integration(integration_module, executable, data_home):
+    legacy_paths = (
+        integration_module._NAUTILUS_RELATIVE,
+        integration_module._DOLPHIN_RELATIVE,
+    )
+    contents = integration_module._hook_contents(executable)
+    legacy_contents = {relative: contents[relative] for relative in legacy_paths}
+    for relative, payload in legacy_contents.items():
+        destination = data_home / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+    manifest_path = data_home / integration_module._MANIFEST_RELATIVE
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "executable": str(executable),
+                "files": {
+                    relative.as_posix(): integration_module._digest(payload)
+                    for relative, payload in legacy_contents.items()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return legacy_contents, manifest_path
+
+
+def _write_version_three_integration(integration_module, executable, data_home):
+    contents = integration_module._hook_contents(executable)
+    old_contents = dict(contents)
+    fallback = (
+        b"if [ ! -r /dev/fuse ] || [ ! -w /dev/fuse ]; then\n"
+        b"  APPIMAGE_EXTRACT_AND_RUN=1\n"
+        b"  export APPIMAGE_EXTRACT_AND_RUN\n"
+        b"fi\n"
+    )
+    for relative in (integration_module._NAUTILUS_RELATIVE, integration_module._NEMO_RELATIVE):
+        old_contents[relative] = contents[relative].replace(fallback, b"")
+        assert old_contents[relative] != contents[relative]
+    for relative, payload in old_contents.items():
+        destination = data_home / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        destination.chmod(0o755)
+    (data_home / integration_module._NAUTILUS_RELATIVE).chmod(0o644)
+    manifest_path = data_home / integration_module._MANIFEST_RELATIVE
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "executable": str(executable),
+                "files": {
+                    relative.as_posix(): integration_module._digest(payload)
+                    for relative, payload in old_contents.items()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return old_contents, contents, manifest_path
+
+
+def test_install_upgrades_legacy_manifest_with_nemo_hook(integration_module, tmp_path):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    legacy_contents, manifest_path = _write_legacy_integration(
+        integration_module, executable, data_home
+    )
+
+    assert (
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+        == "installed"
+    )
+
+    updated = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert updated["version"] == 4
+    assert len(updated["files"]) == 3
+    for relative, payload in legacy_contents.items():
+        assert (data_home / relative).read_bytes() == payload
+    assert (data_home / "nemo/scripts/Open folder in MutaUI").is_file()
+    if os.name == "posix":
+        dolphin = data_home / "kio/servicemenus/mutaui-open-folder.desktop"
+        assert dolphin.stat().st_mode & 0o100
+
+
+def test_install_upgrades_version_three_hooks_after_hook_change(integration_module, tmp_path):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    _old_contents, contents, manifest_path = _write_version_three_integration(
+        integration_module, executable, data_home
+    )
+
+    result = integration_module.install_linux_file_manager_integration(
+        executable, data_home=data_home, platform_name="linux"
+    )
+
+    assert result == "installed"
+    for relative, payload in contents.items():
+        assert (data_home / relative).read_bytes() == payload
+    if os.name == "posix":
+        assert (data_home / integration_module._NAUTILUS_RELATIVE).stat().st_mode & 0o777 == 0o644
+    updated = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert updated["version"] == 4
+    assert updated["files"] == {
+        relative.as_posix(): integration_module._digest(payload)
+        for relative, payload in contents.items()
+    }
+
+
+def test_version_three_upgrade_rolls_back_changed_hooks_on_manifest_failure(
+    integration_module, monkeypatch, tmp_path
+):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    old_contents, _contents, manifest_path = _write_version_three_integration(
+        integration_module, executable, data_home
+    )
+    original_manifest = manifest_path.read_bytes()
+
+    def fail_manifest_replace(*args, **kwargs):
+        raise OSError("simulated manifest replacement failure")
+
+    monkeypatch.setattr(integration_module, "_replace_manifest", fail_manifest_replace)
+    with pytest.raises(integration_module.IntegrationError, match="Could not upgrade"):
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+
+    assert manifest_path.read_bytes() == original_manifest
+    for relative, payload in old_contents.items():
+        assert (data_home / relative).read_bytes() == payload
+
+
+def test_legacy_upgrade_refuses_unowned_nemo_script(integration_module, tmp_path):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    legacy_contents, manifest_path = _write_legacy_integration(
+        integration_module, executable, data_home
+    )
+    original_manifest = manifest_path.read_bytes()
+    nemo = data_home / "nemo/scripts/Open folder in MutaUI"
+    nemo.parent.mkdir(parents=True)
+    nemo.write_text("user-owned content", encoding="utf-8")
+
+    with pytest.raises(integration_module.IntegrationError, match="conflict"):
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+
+    assert manifest_path.read_bytes() == original_manifest
+    assert nemo.read_text(encoding="utf-8") == "user-owned content"
+    for relative, payload in legacy_contents.items():
+        assert (data_home / relative).read_bytes() == payload
+
+
+def test_legacy_upgrade_rolls_back_nemo_script_if_manifest_replace_fails(
+    integration_module, monkeypatch, tmp_path
+):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    legacy_contents, manifest_path = _write_legacy_integration(
+        integration_module, executable, data_home
+    )
+    original_manifest = manifest_path.read_bytes()
+
+    def fail_replace(source, destination):
+        raise OSError("simulated manifest replacement failure")
+
+    monkeypatch.setattr(integration_module.os, "replace", fail_replace)
+    with pytest.raises(integration_module.IntegrationError, match="Could not upgrade"):
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+
+    assert manifest_path.read_bytes() == original_manifest
+    assert not (data_home / "nemo/scripts/Open folder in MutaUI").exists()
+    assert not (data_home / "nemo/scripts").exists()
+    if os.name == "posix":
+        dolphin = data_home / "kio/servicemenus/mutaui-open-folder.desktop"
+        assert not dolphin.stat().st_mode & 0o100
+    for relative, payload in legacy_contents.items():
+        assert (data_home / relative).read_bytes() == payload
+
+
+def test_legacy_upgrade_rolls_back_if_manifest_temp_file_creation_fails(
+    integration_module, monkeypatch, tmp_path
+):
+    executable = tmp_path / "Muta UI.AppImage"
+    executable.write_bytes(b"app")
+    data_home = tmp_path / "xdg-data"
+    _legacy_contents, manifest_path = _write_legacy_integration(
+        integration_module, executable, data_home
+    )
+    original_manifest = manifest_path.read_bytes()
+
+    def fail_temp_file(*args, **kwargs):
+        raise OSError("simulated temporary file creation failure")
+
+    monkeypatch.setattr(integration_module.tempfile, "NamedTemporaryFile", fail_temp_file)
+    with pytest.raises(integration_module.IntegrationError, match="Could not upgrade"):
+        integration_module.install_linux_file_manager_integration(
+            executable, data_home=data_home, platform_name="linux"
+        )
+
+    assert manifest_path.read_bytes() == original_manifest
+    assert not (data_home / "nemo/scripts/Open folder in MutaUI").exists()
+    assert not (data_home / "nemo").exists()
 
 
 def test_uninstall_removes_only_unchanged_owned_hooks(integration_module, tmp_path):
@@ -80,6 +393,7 @@ def test_uninstall_removes_only_unchanged_owned_hooks(integration_module, tmp_pa
     )
     assert not (data_home / "nautilus" / "scripts" / "MutaUI" / "Open folder in MutaUI").exists()
     assert not (data_home / "kio" / "servicemenus" / "mutaui-open-folder.desktop").exists()
+    assert not (data_home / "nemo" / "scripts" / "Open folder in MutaUI").exists()
     assert not (data_home / "mutaui" / "integrations" / "linux-file-manager.json").exists()
 
 
@@ -391,6 +705,7 @@ def test_install_rolls_back_and_reraises_unsafe_path_failure(
 @pytest.mark.parametrize(
     "manifest_text",
     [
+        "[]",
         "not-json",
         '{"version": 999, "files": {}, "executable": "/tmp/app"}',
         '{"version": 2, "files": [], "executable": "/tmp/app"}',
