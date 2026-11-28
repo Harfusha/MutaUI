@@ -628,7 +628,7 @@ def test_m20_diagnostics_separates_global_from_session_issues(window):
 # ---------------------------------------------------------------------------
 
 
-def test_m54_autosafe_does_not_record_premature_success_during_pending_poll(window):
+def test_m54_autosafe_does_not_record_premature_success_during_pending_poll(window, monkeypatch):
     """Auto-safe coalesces requests during pending_poll without recording premature success."""
     window.health_tracker.update_policy(
         dataclasses.replace(window.health_tracker.policy, mode="auto_safe")
@@ -636,7 +636,8 @@ def test_m54_autosafe_does_not_record_premature_success_during_pending_poll(wind
     window.pending_poll = True
 
     # Setup failing session
-    now = 1000.0
+    monkeypatch.setattr(time, "monotonic", lambda: 10_000.0)
+    now = time.monotonic() - window.health_tracker.policy.failure_elapsed_seconds - 150.0
     window.snapshot.sync = [
         {
             "identifier": "sync_err_1",
@@ -663,6 +664,7 @@ def test_m54_autosafe_does_not_record_premature_success_during_pending_poll(wind
 
     # In update_diagnostics:
     window.update_diagnostics(window.snapshot)
+    assert "coalesced" in window.diagnostics_view.toPlainText()
 
     # No recovery attempt should have been recorded as succeeded
     state = window.health_tracker._states["sync_err_1"]

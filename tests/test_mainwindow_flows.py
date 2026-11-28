@@ -6626,18 +6626,22 @@ def test_main_forwards_launch_request_or_opens_primary_window(monkeypatch, prima
         assert ("launch", {"command": "open_session", "session_id": "exact-id"}) in events
 
 
+@pytest.mark.parametrize("monitor_state", ["none", "without_stop", "stoppable"])
 def test_main_focus_command_does_not_forward_launch_request_and_hooks_power_monitor(
-    monkeypatch,
+    monkeypatch, monitor_state
 ):
     events = []
 
     class FakeSignal:
+        def __init__(self, name):
+            self.name = name
+
         def connect(self, callback):
-            events.append(("connected", callback))
+            events.append(("connected", self.name, callback))
 
     class FakeApplication:
         def __init__(self, _args):
-            self.aboutToQuit = FakeSignal()
+            self.aboutToQuit = FakeSignal("quit")
 
         def setApplicationName(self, _name):
             pass
@@ -6653,7 +6657,7 @@ def test_main_focus_command_does_not_forward_launch_request_and_hooks_power_moni
 
     class FakeBroker:
         def __init__(self):
-            self.request_received = FakeSignal()
+            self.request_received = FakeSignal("request")
 
         def start_or_forward(self, message):
             return True
@@ -6676,14 +6680,22 @@ def test_main_focus_command_does_not_forward_launch_request_and_hooks_power_moni
     monkeypatch.setattr(app_module, "QApplication", FakeApplication)
     monkeypatch.setattr(instance_lifecycle, "SingleInstanceBroker", FakeBroker)
     monkeypatch.setattr(app_module, "MainWindow", FakeWindow)
+    monitor = {
+        "none": None,
+        "without_stop": SimpleNamespace(),
+        "stoppable": SimpleNamespace(stop=lambda: events.append("stopped")),
+    }[monitor_state]
     monkeypatch.setattr(
         "mutaui.services.power_events.install_platform_power_event_monitor",
-        lambda app, cb: SimpleNamespace(stop=lambda: events.append("stopped")),
+        lambda app, cb: monitor,
     )
 
     assert app_module.main() == 0
     assert "show" in events
     assert not any(event[0] == "launch" for event in events if isinstance(event, tuple))
+    assert any(event[:2] == ("connected", "quit") for event in events) is (
+        monitor_state == "stoppable"
+    )
 
 
 def test_main_reports_single_instance_failure(monkeypatch, capsys):
